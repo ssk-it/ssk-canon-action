@@ -2,13 +2,16 @@
 #
 # La publication manuelle avait produit exactement le décalage qu'on cherche à
 # éviter : une version en ligne en retard sur le dépôt, sans qu'aucune trace ne
-# le signale. Publier depuis un tag lie chaque version publiée à un commit
-# identifiable.
+# le signale. Publier depuis une release lie chaque version publiée à un commit
+# identifiable, et à des notes qui disent ce qu'elle change.
+#
+# Sur la release, non sur le tag : un tag poussé seul publiait sans que rien ne
+# raconte la version — les notes se rattrapaient après coup, quand on y pensait.
 name: Publier sur npm
 
 on:
-  push:
-    tags: ['v*.*.*']
+  release:
+    types: [published]
 
 # `id-token: write` est ce qui permet à npm de reconnaître ce workflow sans
 # jeton : GitHub signe une attestation OIDC, npm vérifie qu'elle vient bien du
@@ -45,15 +48,18 @@ jobs:
           npm run check
           npm run propagate:dry
 
-      # Le tag et la version du paquet doivent désigner la même chose. Sans ce
-      # contrôle, taguer sans avoir incrémenté republierait une version déjà en
-      # ligne — l'erreur qui a motivé ce workflow.
-      - name: Vérifier que le tag correspond à la version
+      # L'étiquette de la release et la version du paquet doivent désigner la
+      # même chose. Sans ce contrôle, publier une release sans avoir incrémenté
+      # republierait une version déjà en ligne.
+      #
+      # `GITHUB_REF_NAME` porte le nom du tag de la release — c'est lui que la
+      # plateforme désigne, y compris déclenchée par `release`.
+      - name: Vérifier que la release correspond à la version
         run: |
           TAG="${GITHUB_REF_NAME#v}"
           VERSION="$(node -p 'require("./package.json").version')"
           if [ "$TAG" != "$VERSION" ]; then
-            echo "::error::Le tag v$TAG ne correspond pas à la version $VERSION du paquet."
+            echo "::error::La release v$TAG ne correspond pas à la version $VERSION du paquet."
             exit 1
           fi
           echo "Publication de $VERSION."

@@ -142,11 +142,20 @@ n'apporteraient qu'une ambiguïté sur ce que `v1.3.0` désigne.
 ```bash
 npm version patch          # ou minor, major — met à jour package.json et tague
 git push && git push --tags
+gh release create v1.5.0 --generate-notes
 ```
 
-Le workflow vérifie que le tag correspond à la version du paquet, rejoue les
-tests et la vérification, puis publie. Un tag posé sans avoir incrémenté la
-version échoue avant toute publication.
+C'est la **publication de la release** qui déclenche npm, non la pose du tag. Un
+tag seul publiait sans que rien ne raconte la version : les notes se rattrapaient
+après coup, quand on y pensait.
+
+Les notes se génèrent depuis les demandes de fusion mergées depuis la version
+précédente — raison pour laquelle les modifications de ce dépôt passent par une
+demande de fusion, même seul.
+
+Le workflow vérifie ensuite que l'étiquette correspond à la version du paquet,
+rejoue les tests et la vérification, puis publie. Une release posée sans avoir
+incrémenté la version échoue avant toute publication.
 
 L'alias de version majeure, que les dépôts cadrés consomment, se déplace
 séparément :
