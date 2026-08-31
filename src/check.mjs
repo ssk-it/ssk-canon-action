@@ -39,7 +39,11 @@ export function check(root, { ignorerIndexDerives = false } = {}) {
   for (const [id, r] of rules) {
     if (!id) errors.push(`${r.path} : identifiant manquant`);
     if (!STATUTS_REGLE.has(r.statut)) errors.push(`règle ${id} : statut invalide « ${r.statut} »`);
-    if (!r.fonctionnalites?.length) warnings.push(`règle ${id} : rattachée à aucune fonctionnalité`);
+    // Bloquant, et non un simple avertissement : la navigation du référentiel
+    // passe par les domaines puis les fonctionnalités. Une règle rattachée à
+    // rien est introuvable — elle est livrée sans exister pour ses lecteurs.
+    if (!r.fonctionnalites?.length)
+      errors.push(`règle ${id} : rattachée à aucune fonctionnalité — introuvable dans le référentiel`);
     for (const f of r.fonctionnalites ?? [])
       if (!features.has(f)) errors.push(`règle ${id} → fonctionnalité inconnue : ${f}`);
 
