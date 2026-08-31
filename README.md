@@ -155,9 +155,25 @@ séparément :
 git tag -f -a v1 -m "Alias vers la dernière v1.x" && git push --force origin v1
 ```
 
-Le secret `NPM_TOKEN` doit être un jeton **Automation** créé sur npmjs.com :
-c'est le seul type qui contourne la double authentification, laquelle ne peut
-pas être saisie depuis un runner.
+### Aucun jeton à détenir
+
+La publication s'authentifie par attestation — npm reconnaît le workflow lui-même
+plutôt qu'un secret. Rien à faire tourner, rien qui puisse fuir, et l'origine de
+chaque version publiée est vérifiable publiquement.
+
+Le paramétrage se fait une fois, sur npmjs.com, dans les réglages du paquet →
+*Trusted Publisher* :
+
+| Champ | Valeur |
+|---|---|
+| Provider | GitHub Actions |
+| Organization | `ssk-it` |
+| Repository | `ssk-canon-action` |
+| Workflow filename | `publier.yml` |
+
+Le nom du fichier doit correspondre **exactement**, casse comprise : c'est lui
+que npm vérifie dans l'attestation. Renommer ce workflow sans mettre à jour ce
+réglage ferait échouer la publication.
 
 ## Licence
 

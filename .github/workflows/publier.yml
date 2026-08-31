@@ -10,11 +10,12 @@ on:
   push:
     tags: ['v*.*.*']
 
-# Rien d'autre que la lecture du dépôt n'est nécessaire : le jeton npm vient des
-# secrets, pas du GITHUB_TOKEN.
+# `id-token: write` est ce qui permet à npm de reconnaître ce workflow sans
+# jeton : GitHub signe une attestation OIDC, npm vérifie qu'elle vient bien du
+# dépôt et du fichier déclarés. Aucun secret de publication à détenir, donc aucun
+# à faire tourner ni à voir fuir.
 permissions:
   contents: read
-  # exigée par la provenance npm, qui atteste publiquement d'où vient le paquet
   id-token: write
 
 jobs:
@@ -28,6 +29,11 @@ jobs:
           node-version: '22'
           cache: npm
           registry-url: 'https://registry.npmjs.org'
+
+      # Node 22 embarque npm 10, antérieur au support de la publication par
+      # attestation. Sans cette montée de version, npm retombe sur une
+      # authentification par jeton et le registre répond 404.
+      - run: npm install -g npm@latest
 
       - run: npm ci
 
