@@ -52,6 +52,12 @@ export function loadRepo(root) {
     // sont pas des entités : on les ignore sans rien en dire
     if (parts.length < 2 || !CONTENT_DIRS.has(parts[0])) continue;
 
+    // Un README à l'intérieur d'un répertoire de contenu n'en est pas une non
+    // plus : il explique ce que le répertoire attend, ce qui est utile à qui
+    // ouvre le dépôt sur la plateforme. Le traiter comme une entité ferait
+    // échouer la vérification sur de la documentation.
+    if (parts.at(-1) === 'README.md') continue;
+
     // Les fichiers rattachés à un cadrage — décisions, pièces jointes — sont
     // chargés plus bas, avec leur cadrage. Les traiter ici aussi signalerait
     // deux fois la même erreur.
