@@ -44,7 +44,7 @@ function socle(racine) {
   );
 }
 
-function ecrireCadrage(racine, id, statut, impacts, enonces) {
+function ecrireCadrage(racine, id, statut, impacts, enonces = {}) {
   mkdirSync(join(racine, 'cadrages', id), { recursive: true });
   const lignesImpacts = impacts
     .map((i) => `  - { regle: ${i.regle}, operation: ${i.operation} }`)
@@ -230,6 +230,65 @@ test('l’état attendu ignore les cadrages non livrés', (racine) => {
   });
   const attendu = etatAttendu(loadRepo(racine));
   assert(attendu.size === 0, `${attendu.size} règle(s) attendue(s) pour un seul brouillon`);
+});
+
+// --- frontmatter illisible ---
+//
+// Un YAML invalide levait une exception qui traversait tout : le lecteur
+// recevait une trace de pile sans savoir quel fichier reprendre. Ces cas
+// vérifient qu'il est signalé, situé, et qu'il n'arrête pas le chargement.
+
+test('signale un frontmatter illisible sans lever', (racine) => {
+  socle(racine);
+  // le cas rencontré en usage : un « : » non quoté dans une valeur
+  writeFileSync(
+    join(racine, 'rules', 'RG-casse.md'),
+    '---\nid: RG-casse\ntitre: Un titre : avec deux-points\n---\n\nTexte.\n',
+  );
+
+  const { errors } = loadRepo(racine);
+  const erreur = errors.find((e) => e.includes('RG-casse.md'));
+  assert(erreur, `aucune erreur pour le fichier cassé : ${errors.join(' | ')}`);
+  assert(/ligne \d+/.test(erreur), `l'erreur ne situe pas la ligne : ${erreur}`);
+});
+
+test('charge les autres fichiers malgré un fichier illisible', (racine) => {
+  socle(racine);
+  ecrireRegle(racine, 'RG-saine', 'Texte.');
+  writeFileSync(join(racine, 'rules', 'RG-casse.md'), '---\nstatut: [actif\n---\n\nTexte.\n');
+
+  const repo = loadRepo(racine);
+  assert(repo.rules.has('RG-saine'), 'une règle saine a été perdue à cause d’un fichier cassé');
+});
+
+test('signale une décision illisible une seule fois', (racine) => {
+  socle(racine);
+  ecrireCadrage(racine, '2026-001', 'livree', []);
+  mkdirSync(join(racine, 'cadrages', '2026-001', 'decisions'), { recursive: true });
+  writeFileSync(
+    join(racine, 'cadrages', '2026-001', 'decisions', '01-x.md'),
+    '---\ntitre: Choisir : ceci ou cela\n---\n\nTexte.\n',
+  );
+
+  const { errors } = loadRepo(racine);
+  const pour = errors.filter((e) => e.includes('01-x.md'));
+  assert(pour.length === 1, `${pour.length} erreur(s) pour un seul fichier`);
+});
+
+test('n’écrit rien quand un fichier est illisible', (racine) => {
+  socle(racine);
+  ecrireRegle(racine, 'RG-a', 'Ancien.');
+  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
+    'RG-a': 'Nouveau.',
+  });
+  writeFileSync(join(racine, 'rules', 'RG-casse.md'), '---\nstatut: [actif\n---\n\nTexte.\n');
+
+  const { ok } = propager(racine, { dryRun: false });
+  assert(!ok, 'la propagation a accepté d’écrire malgré un fichier illisible');
+  assert(
+    readFileSync(join(racine, 'rules', 'RG-a.md'), 'utf8').includes('Ancien.'),
+    'une écriture a eu lieu alors qu’un fichier était illisible',
+  );
 });
 
 // --- rapport ---
