@@ -69,7 +69,10 @@ export function checkRepo(repo, { ignorerIndexDerives = false } = {}) {
     for (const d of c.domaines ?? [])
       if (!domains.has(d)) errors.push(`cadrage ${id} → domaine inconnu : ${d}`);
 
-    const enonces = extractEnonces(c.body);
+    // Deux provenances possibles : un cadrage lu depuis un fichier porte son
+    // corps brut, un cadrage déjà parsé porte ses énoncés indexés. Accepter les
+    // deux évite à l'appelant de reconstruire un corps qu'il a déjà découpé.
+    const enonces = c.enonces instanceof Map ? c.enonces : extractEnonces(c.body ?? '');
     const vus = new Set();
 
     for (const impact of c.impacts ?? []) {

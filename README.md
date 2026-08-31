@@ -79,6 +79,32 @@ règle inexistante, un énoncé manquant pour une création ou une modification,
 rattachement vers une entité inconnue, une règle abrogée par un cadrage non
 livré.
 
+## Comme bibliothèque
+
+Le vérificateur est aussi publié comme paquet, pour être exécuté ailleurs que
+dans l'intégration continue — une interface qui rédige un cadrage peut ainsi
+signaler ce qui empêcherait sa livraison pendant la saisie, plutôt que de
+laisser le rédacteur le découvrir après coup.
+
+```bash
+npm install @ssk-it/canon-check
+```
+
+```js
+import { checkRepo } from '@ssk-it/canon-check';
+
+// domaines, fonctionnalités, règles et cadrages indexés par identifiant
+const { errors, warnings, counts } = checkRepo(referentiel);
+```
+
+Le paquet ne dépend d'aucun système de fichiers : il prend un référentiel déjà
+chargé, d'où qu'il vienne. C'est ce qui permet aux mêmes règles de s'appliquer
+dans l'intégration continue et dans un navigateur — les dupliquer garantirait
+qu'elles divergent.
+
+`@ssk-it/canon-check/format` expose le découpage du frontmatter et l'extraction
+des énoncés, pour construire ce référentiel depuis des fichiers Markdown.
+
 ## En ligne de commande
 
 Le propagateur et le vérificateur s'utilisent hors CI :
