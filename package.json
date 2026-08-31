@@ -1,10 +1,24 @@
 {
-  "name": "ssk-canon-action",
+  "name": "@ssk-it/canon-check",
   "version": "1.0.0",
-  "private": true,
   "type": "module",
   "license": "Apache-2.0",
-  "description": "Vérification d'intégrité et propagation des impacts d'un référentiel SSK Canon",
+  "description": "Vérification d'intégrité d'un référentiel SSK Canon, et propagation des impacts",
+  "homepage": "https://github.com/ssk-it/ssk-canon-action",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ssk-it/ssk-canon-action.git"
+  },
+  "exports": {
+    ".": "./src/verifier.mjs",
+    "./format": "./src/format.mjs"
+  },
+  "files": [
+    "src/verifier.mjs",
+    "src/format.mjs",
+    "NOTICE"
+  ],
+  "keywords": ["ssk-canon", "cadrage", "referentiel"],
   "scripts": {
     "check": "node src/check.mjs test/fixture-repo",
     "propagate:dry": "node src/propagate.mjs test/fixture-repo --dry-run",
@@ -12,5 +26,8 @@
   },
   "dependencies": {
     "js-yaml": "^4.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
