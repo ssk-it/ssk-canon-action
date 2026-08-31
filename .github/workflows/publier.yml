@@ -54,8 +54,3 @@ jobs:
 
       - name: Publier
         run: npm publish --provenance --access public
-        env:
-          # Jeton « Automation » créé sur npmjs.com : c'est le seul type qui
-          # contourne la double authentification, laquelle ne peut pas être
-          # saisie dans un runner.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
