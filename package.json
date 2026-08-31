@@ -1,0 +1,16 @@
+{
+  "name": "ssk-canon-action",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Vérification d'intégrité et propagation des impacts d'un référentiel SSK Canon",
+  "scripts": {
+    "check": "node src/check.mjs test/fixture-repo",
+    "propagate:dry": "node src/propagate.mjs test/fixture-repo --dry-run",
+    "test": "node src/propagate.test.mjs"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

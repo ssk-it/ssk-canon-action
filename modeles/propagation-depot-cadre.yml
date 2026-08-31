@@ -1,0 +1,41 @@
+# Workflow à installer dans un DÉPÔT CADRÉ, sous `.github/workflows/`.
+#
+# Il applique au référentiel les impacts des cadrages livrés, à chaque arrivée
+# sur la branche principale — donc à chaque merge de cadrage.
+#
+# Deux propriétés du propagateur rendent ce déclenchement systématique sûr :
+# il est idempotent, donc une exécution sans changement n'écrit rien ; et il est
+# tout-ou-rien, donc une incohérence l'arrête avant la première écriture.
+name: Propagation des impacts
+
+on:
+  push:
+    branches: [main]
+  # permet de rejouer une propagation manquée sans attendre un merge
+  workflow_dispatch:
+
+# L'action commite sur la branche principale : sans cette permission, le
+# GITHUB_TOKEN est en lecture seule et le push échoue.
+permissions:
+  contents: write
+
+# Deux merges rapprochés ne doivent pas propager en parallèle : le second
+# écraserait le premier. On sérialise, sans annuler ce qui est en cours.
+concurrency:
+  group: propagation
+  cancel-in-progress: false
+
+jobs:
+  propager:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # l'action a besoin de l'historique pour committer par-dessus
+          fetch-depth: 0
+
+      - uses: ssk-it/ssk-canon-action@v1
+        with:
+          referentiel: '.'
+          appliquer: 'true'
+          commiter: 'true'

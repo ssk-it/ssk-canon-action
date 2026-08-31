@@ -1,0 +1,43 @@
+# Vérifie le propagateur et le vérificateur contre le dépôt de référence, copié
+# ici comme fixture. Deux niveaux : les tests unitaires construisent leurs
+# propres dépôts temporaires, la fixture valide le comportement sur un
+# référentiel complet et réaliste.
+name: Vérification
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      - name: Tester le propagateur
+        run: npm test
+
+      - name: Vérifier l'intégrité de la fixture
+        run: npm run check
+
+      # Le référentiel doit être la projection des cadrages livrés : si la
+      # propagation trouve quelque chose à écrire, c'est que la fixture a dérivé.
+      - name: Vérifier que la fixture ne dérive pas
+        run: npm run propagate:dry
+
+  # L'action composite doit être testée telle qu'un dépôt cadré l'utilise, et
+  # pas seulement par ses scripts : c'est le montage `uses:` qui casse en
+  # premier quand la structure du dépôt change.
+  action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          referentiel: test/fixture-repo
+          appliquer: 'false'

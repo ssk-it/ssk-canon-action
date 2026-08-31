@@ -1,0 +1,33 @@
+# Workflow à installer dans un DÉPÔT CADRÉ, sous `.github/workflows/`.
+#
+# Vérifie qu'un cadrage en cours de relecture est cohérent avant de pouvoir
+# être livré. À configurer comme contrôle requis dans les règles de protection
+# de la branche principale, faute de quoi il signale sans bloquer.
+#
+# Ce qu'il attrape, que le format seul ne garantit pas : un impact vers une
+# règle inexistante, un énoncé manquant pour une création ou une modification,
+# un rattachement vers une entité inconnue, une règle abrogée par un cadrage non
+# livré.
+name: Vérification du référentiel
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # `appliquer: false` — la vérification ne modifie jamais le référentiel.
+      # Elle échoue si le cadrage est incohérent, ou si le référentiel a dérivé
+      # de ses cadrages.
+      - uses: ssk-it/ssk-canon-action@v1
+        with:
+          referentiel: '.'
+          appliquer: 'false'

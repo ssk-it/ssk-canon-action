@@ -1,0 +1,109 @@
+# Action composite : vérifie l'intégrité d'un référentiel SSK Canon et y
+# applique les impacts des cadrages livrés.
+#
+# Destinée aux dépôts cadrés, qui la référencent ainsi :
+#
+#   - uses: ssk-it/ssk-canon-action@v1
+#     with:
+#       referentiel: .        # racine du dépôt cadré
+#       appliquer: true
+#
+# Le propagateur étant idempotent, une exécution sur un référentiel conforme
+# n'écrit rien : l'action peut se déclencher à chaque push sans précaution.
+name: Propager les impacts
+description: >
+  Vérifie l'intégrité d'un référentiel SSK Canon et applique les impacts
+  des cadrages livrés aux règles de gestion.
+author: SSK IT
+
+branding:
+  icon: git-merge
+  color: blue
+
+inputs:
+  referentiel:
+    description: Chemin du référentiel, relatif à la racine du dépôt appelant.
+    required: false
+    default: '.'
+  appliquer:
+    description: >
+      Écrire réellement. À false, l'action signale ce qu'elle écrirait sans
+      modifier de fichier.
+    required: false
+    default: 'false'
+  commiter:
+    description: >
+      Commiter et pousser les écritures. Sans effet si `appliquer` est false ou
+      si rien n'a changé.
+    required: false
+    default: 'false'
+  message:
+    description: Première ligne du message de commit.
+    required: false
+    default: Propagation des impacts au référentiel
+
+outputs:
+  ecritures:
+    description: Nombre de règles écrites (ou qui le seraient en simulation).
+    value: ${{ steps.propager.outputs.ecritures }}
+
+runs:
+  using: composite
+  steps:
+    - name: Installer Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+
+    - name: Récupérer le propagateur
+      shell: bash
+      run: |
+        # `github.action_path` désigne la racine de ce dépôt, que GitHub
+        # récupère en entier ; le propagateur y vit sous `src/`.
+        OUTIL="${{ github.action_path }}"
+
+        if [ ! -f "$OUTIL/src/propagate.mjs" ]; then
+          echo "::error::Propagateur introuvable sous $OUTIL — la structure du dépôt outil a changé."
+          exit 1
+        fi
+
+        # Copié hors de l'arbre de travail du dépôt appelant, pour ne rien
+        # laisser derrière soi qui serait ensuite commité.
+        cp -R "$OUTIL" "${RUNNER_TEMP}/ssk-canon-action"
+        cd "${RUNNER_TEMP}/ssk-canon-action"
+        npm ci --omit=dev
+
+    - name: Vérifier et propager
+      id: propager
+      shell: bash
+      run: |
+        cd "${RUNNER_TEMP}/ssk-canon-action"
+        CIBLE="${GITHUB_WORKSPACE}/${{ inputs.referentiel }}"
+
+        if [ "${{ inputs.appliquer }}" = "true" ]; then
+          node src/propagate.mjs "$CIBLE" | tee "${RUNNER_TEMP}/propagation.log"
+        else
+          node src/propagate.mjs "$CIBLE" --dry-run | tee "${RUNNER_TEMP}/propagation.log"
+        fi
+
+        # « N règle(s) écrites » ou « rien à propager »
+        N=$(grep -oE '^[0-9]+ règle' "${RUNNER_TEMP}/propagation.log" | grep -oE '^[0-9]+' || echo 0)
+        echo "ecritures=$N" >> "$GITHUB_OUTPUT"
+
+    - name: Commiter les écritures
+      if: inputs.appliquer == 'true' && inputs.commiter == 'true'
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        if git diff --quiet; then
+          echo "Référentiel déjà à jour — rien à commiter."
+          exit 0
+        fi
+        # Le commit de propagation est distinct de celui de la livraison : le
+        # premier porte l'intention rédigée par un humain, le second l'écriture
+        # faite par la machine.
+        git config user.name  'github-actions[bot]'
+        git config user.email 'github-actions[bot]@users.noreply.github.com'
+        git add -A
+        git commit -m "${{ inputs.message }}" -m "Écritures calculées à partir des cadrages livrés."
+        git push

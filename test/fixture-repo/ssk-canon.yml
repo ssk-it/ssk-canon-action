@@ -1,0 +1,33 @@
+# Configuration du projet — lue par l'application et par les Actions
+schema_version: 1
+
+projet:
+  nom: SSK Canon
+  description: >
+    Le référentiel de SSK Canon, décrit dans son propre format.
+    Ce dépôt sert à la fois de jeu de test au prototype et de spécification
+    vivante du produit : les décisions prises pendant sa conception y sont
+    consignées comme des cadrages.
+
+tags_liens:
+  - carte_trello
+  - issue_github
+  - maquette
+  - document
+
+statuts:
+  - brouillon
+  - en_relecture
+  - validee
+  - livree
+
+operations:
+  - cree
+  - modifie
+  - abroge
+  - touche
+
+attachments:
+  provider: scaleway
+  bucket: ssk-canon-demo
+  region: fr-par
