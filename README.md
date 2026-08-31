@@ -129,6 +129,36 @@ npm run check         # intégrité de la fixture
 npm run propagate:dry # la fixture ne doit pas dériver
 ```
 
+## Publier une version
+
+La publication se fait depuis l'intégration continue, jamais à la main : une
+version publiée depuis un poste ne dit pas de quel commit elle vient, et le
+décalage entre le dépôt et le registre passe inaperçu.
+
+**L'action et le paquet partagent une seule numérotation.** Ils vivent dans le
+même dépôt et évoluent ensemble : deux suites de versions sur les mêmes tags
+n'apporteraient qu'une ambiguïté sur ce que `v1.3.0` désigne.
+
+```bash
+npm version patch          # ou minor, major — met à jour package.json et tague
+git push && git push --tags
+```
+
+Le workflow vérifie que le tag correspond à la version du paquet, rejoue les
+tests et la vérification, puis publie. Un tag posé sans avoir incrémenté la
+version échoue avant toute publication.
+
+L'alias de version majeure, que les dépôts cadrés consomment, se déplace
+séparément :
+
+```bash
+git tag -f -a v1 -m "Alias vers la dernière v1.x" && git push --force origin v1
+```
+
+Le secret `NPM_TOKEN` doit être un jeton **Automation** créé sur npmjs.com :
+c'est le seul type qui contourne la double authentification, laquelle ne peut
+pas être saisie depuis un runner.
+
 ## Licence
 
 Apache-2.0 — voir [LICENSE](LICENSE) et [NOTICE](NOTICE).

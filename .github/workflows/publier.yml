@@ -1,0 +1,61 @@
+# Publication du paquet sur npm, déclenchée par un tag de version.
+#
+# La publication manuelle avait produit exactement le décalage qu'on cherche à
+# éviter : une version en ligne en retard sur le dépôt, sans qu'aucune trace ne
+# le signale. Publier depuis un tag lie chaque version publiée à un commit
+# identifiable.
+name: Publier sur npm
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+# Rien d'autre que la lecture du dépôt n'est nécessaire : le jeton npm vient des
+# secrets, pas du GITHUB_TOKEN.
+permissions:
+  contents: read
+  # exigée par la provenance npm, qui atteste publiquement d'où vient le paquet
+  id-token: write
+
+jobs:
+  publier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm ci
+
+      # Publier un paquet cassé est bien plus coûteux à réparer qu'à éviter :
+      # une version npm ne se retire pas librement une fois en ligne.
+      - name: Vérifier avant de publier
+        run: |
+          npm test
+          npm run check
+          npm run propagate:dry
+
+      # Le tag et la version du paquet doivent désigner la même chose. Sans ce
+      # contrôle, taguer sans avoir incrémenté republierait une version déjà en
+      # ligne — l'erreur qui a motivé ce workflow.
+      - name: Vérifier que le tag correspond à la version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VERSION="$(node -p 'require("./package.json").version')"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "::error::Le tag v$TAG ne correspond pas à la version $VERSION du paquet."
+            exit 1
+          fi
+          echo "Publication de $VERSION."
+
+      - name: Publier
+        run: npm publish --provenance --access public
+        env:
+          # Jeton « Automation » créé sur npmjs.com : c'est le seul type qui
+          # contourne la double authentification, laquelle ne peut pas être
+          # saisie dans un runner.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
