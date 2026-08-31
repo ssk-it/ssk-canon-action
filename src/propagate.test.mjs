@@ -291,6 +291,17 @@ test('n’écrit rien quand un fichier est illisible', (racine) => {
   );
 });
 
+test('un README dans un répertoire de contenu n’est pas une entité', (racine) => {
+  socle(racine);
+  // il explique ce que le répertoire attend, à qui ouvre le dépôt sur la
+  // plateforme — le traiter comme une entité ferait échouer sur de la
+  // documentation
+  writeFileSync(join(racine, 'rules', 'README.md'), '# Règles\n\nCe qu’on dépose ici.\n');
+
+  const { errors } = loadRepo(racine);
+  assert(!errors.length, `README signalé : ${errors.join(' | ')}`);
+});
+
 // --- rapport ---
 
 console.log(`${reussis} test(s) réussi(s)`);
