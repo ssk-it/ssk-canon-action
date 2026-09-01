@@ -49,6 +49,14 @@ inputs:
       ce que `fetch-depth: 0` garantit.
     required: false
     default: origin/main
+  immuabilite:
+    description: >
+      Refuser la modification d'un cadrage déjà livré. À mettre à false le temps
+      d'une reprise de format touchant les cadrages livrés — un tel changement ne
+      peut pas passer un contrôle qu'il institue. À remettre à true ensuite : la
+      laisser à false rendrait la règle inapplicable.
+    required: false
+    default: 'true'
 
 outputs:
   ecritures:
@@ -94,7 +102,12 @@ runs:
           # La vérification compare à la branche principale : c'est le seul mode
           # où l'immuabilité d'un cadrage livré peut se contrôler, l'écart entre
           # une demande de fusion et sa base n'existant pas ailleurs.
-          node src/check.mjs "$CIBLE" --base "${{ inputs.base }}" | tee "${RUNNER_TEMP}/propagation.log"
+          SANS_IMMUABILITE=""
+          if [ "${{ inputs.immuabilite }}" != "true" ]; then
+            SANS_IMMUABILITE="--sans-immuabilite"
+            echo "::warning::Contrôle d'immuabilité suspendu — un cadrage livré peut être modifié."
+          fi
+          node src/check.mjs "$CIBLE" --base "${{ inputs.base }}" $SANS_IMMUABILITE | tee "${RUNNER_TEMP}/propagation.log"
         fi
 
         # « N règle(s) écrites » ou « rien à propager »

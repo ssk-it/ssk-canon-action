@@ -4,7 +4,7 @@
 // système de fichiers et s'exécute aussi dans un navigateur. Ce module ne fait
 // que charger le dépôt et lui passer le relais.
 //
-//   node src/check.mjs [chemin-du-depot] [--base <ref>]
+//   node src/check.mjs [chemin-du-depot] [--base <ref>] [--sans-immuabilite]
 
 import { loadRepo } from './parse.mjs';
 import { checkRepo } from './verifier.mjs';
@@ -18,10 +18,10 @@ export { checkRepo };
 
 /**
  * @param {string} root
- * @param {{ ignorerIndexDerives?: boolean, livres?: Set<string>, base?: string }} [options]
+ * @param {{ ignorerIndexDerives?: boolean, livres?: Set<string>, base?: string, immuabilite?: boolean }} [options]
  */
 export function check(root, options = {}) {
-  const { base, livres: livresFournis, ...reste } = options;
+  const { base, livres: livresFournis, immuabilite = true, ...reste } = options;
 
   // Le statut d'un cadrage n'est pas déclaré : il se déduit du dépôt, et la
   // branche principale est ce qui établit la livraison. Hors dépôt Git — un
@@ -34,9 +34,15 @@ export function check(root, options = {}) {
   // une demande de fusion. La propagation, elle, s'exécute après la fusion : son
   // écart avec la branche principale est le cadrage qu'on vient de livrer, et
   // l'y contrôler refuserait toute livraison.
-  const immuabilite = base ? checkImmuabilite(root, base, livres) : [];
+  //
+  // Un référentiel peut avoir à le suspendre le temps d'une reprise de format :
+  // le cadrage qui institue l'immuabilité doit lui-même toucher les cadrages
+  // livrés, faute de quoi il ne peut pas être livré. La suspension se déclare, se
+  // relit dans le workflow, et n'a pas à être retirée du code puis remise.
+  const erreursImmuabilite =
+    base && immuabilite ? checkImmuabilite(root, base, livres) : [];
 
-  return { ...resultat, errors: [...resultat.errors, ...immuabilite] };
+  return { ...resultat, errors: [...resultat.errors, ...erreursImmuabilite] };
 }
 
 /**
@@ -74,7 +80,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const iValeur = iBase === -1 ? -1 : iBase + 1;
   const root = args.find((a, i) => !a.startsWith('--') && i !== iValeur) ?? '.';
 
-  const { errors, warnings, counts } = check(root, base ? { base } : {});
+  const { errors, warnings, counts } = check(root, {
+    ...(base ? { base } : {}),
+    immuabilite: !args.includes('--sans-immuabilite'),
+  });
 
   console.log(
     `${counts.domaines} domaines · ${counts.fonctionnalites} fonctionnalités · ` +
