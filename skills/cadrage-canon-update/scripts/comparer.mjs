@@ -9,21 +9,40 @@
  * bougé avant qu'on n'écrase quoi que ce soit.
  */
 import { createHash } from 'node:crypto';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 /**
- * Les deux skills, et ce qui compose chacun.
+ * Les skills surveillés.
  *
  * Celui-ci se surveille lui-même : un outil de maintenance exclu de sa propre
  * surveillance diverge sans que rien ne le dise, et c'est précisément ce qu'il
  * existe pour empêcher.
  */
-const SKILLS = [
-  { nom: 'cadrage-canon', fichiers: ['SKILL.md', 'scripts/situer.mjs'] },
-  { nom: 'cadrage-canon-update', fichiers: ['SKILL.md', 'scripts/comparer.mjs'] },
-];
+const SKILLS = ['cadrage-canon', 'cadrage-canon-update'];
+
+/**
+ * Ce qui compose un skill, découvert et non énuméré.
+ *
+ * Une liste écrite à la main oublie le fichier suivant : `preparer.mjs` a été
+ * ajouté et n'était surveillé par rien, alors qu'il pouvait diverger comme les
+ * autres. Ce que la source contient fait foi.
+ */
+function fichiersDuSkill(racine) {
+  const trouves = [];
+  const parcourir = (rel) => {
+    const abs = join(racine, rel);
+    if (!existsSync(abs)) return;
+    for (const e of readdirSync(abs, { withFileTypes: true })) {
+      const suivant = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) parcourir(suivant);
+      else trouves.push(suivant);
+    }
+  };
+  parcourir('');
+  return trouves.sort();
+}
 
 const RACINE_INSTALLE = join(homedir(), '.claude', 'skills');
 const RACINE_SOURCE = join(homedir(), 'dev', 'ssk-it', 'ssk-canon-action', 'skills');
@@ -52,15 +71,27 @@ let divergent = false;
 let sansReseau = false;
 const dire = (v) => (v === null ? 'ABSENT' : v === undefined ? '?' : v);
 
-for (const skill of SKILLS) {
-  console.log(`\n━━ ${skill.nom}`);
-  const installe = join(RACINE_INSTALLE, skill.nom);
-  const source = join(RACINE_SOURCE, skill.nom);
+for (const nom of SKILLS) {
+  console.log(`\n━━ ${nom}`);
+  const installe = join(RACINE_INSTALLE, nom);
+  const source = join(RACINE_SOURCE, nom);
 
-  for (const f of skill.fichiers) {
+  // Les deux côtés réunis : un fichier retiré de la source mais resté installé
+  // est une divergence autant qu'un fichier neuf.
+  const fichiers = [
+    ...new Set([...fichiersDuSkill(source), ...fichiersDuSkill(installe)]),
+  ].sort();
+
+  if (fichiers.length === 0) {
+    console.log('  → SOURCE ABSENTE : le dépôt n’est pas cloné à cet endroit.');
+    divergent = true;
+    continue;
+  }
+
+  for (const f of fichiers) {
     const i = local(installe, f);
     const s = local(source, f);
-    const p = await publie(`${skill.nom}/${f}`);
+    const p = await publie(`${nom}/${f}`);
     if (p === undefined) sansReseau = true;
 
     console.log(`\n  ${f}`);
@@ -69,7 +100,13 @@ for (const skill of SKILLS) {
     console.log(`    publié    ${dire(p)}`);
 
     if (s === null) {
-      console.log('    → SOURCE ABSENTE : le dépôt n’est pas cloné à cet endroit.');
+      // Le répertoire source existe — on y a listé des fichiers — donc c'est ce
+      // fichier-ci qui n'y est pas : un reliquat d'une version précédente, ou
+      // quelque chose qui n'a jamais été publié.
+      console.log(
+        '    → ABSENT DE LA SOURCE : fichier installé qui n’existe pas dans le ' +
+          'dépôt. Reliquat d’une version antérieure, ou travail jamais publié.',
+      );
       divergent = true;
       continue;
     }
