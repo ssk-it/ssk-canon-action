@@ -425,6 +425,35 @@ test('un cadrage non livré se modifie librement', (racine) => {
   );
 });
 
+test('le contrôle d’immuabilité se suspend, sans emporter les autres', (racine) => {
+  socle(racine);
+  ecrireRegle(racine, 'RG-a', 'À propager.');
+  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+
+  // une reprise de format touche un cadrage livré : c'est ce que la suspension
+  // doit laisser passer, le temps de la livrer
+  writeFileSync(
+    join(racine, 'cadrages', '2026-001', 'cadrage.md'),
+    readFileSync(join(racine, 'cadrages', '2026-001', 'cadrage.md'), 'utf8') + '\nReprise.\n',
+  );
+  livrer(racine);
+
+  const avec = check(racine, { base });
+  assert(
+    avec.errors.some((e) => e.includes('livré, donc figé')),
+    'le contrôle ne s’applique pas quand il devrait',
+  );
+
+  const sans = check(racine, { base, immuabilite: false });
+  assert(
+    !sans.errors.some((e) => e.includes('livré, donc figé')),
+    `suspension sans effet : ${sans.errors.join(' | ')}`,
+  );
+});
+
 // --- rapport ---
 
 console.log(`${reussis} test(s) réussi(s)`);
