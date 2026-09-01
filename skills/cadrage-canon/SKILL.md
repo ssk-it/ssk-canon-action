@@ -300,6 +300,10 @@ fusion, une relecture.
 
 Sur le dépôt de cadrage — non sur celui du code :
 
+Le nom de la branche est libre : l'application retrouve un cadrage par sa
+demande de fusion, jamais par le nom de sa branche. `cadrage-<id>` se lit bien,
+sans que rien n'en dépende.
+
 ```bash
 cd <CADRAGE_RETENU>
 git checkout -b cadrage-2026-001
