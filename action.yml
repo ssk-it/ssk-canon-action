@@ -41,6 +41,14 @@ inputs:
     description: Première ligne du message de commit.
     required: false
     default: Propagation des impacts au référentiel
+  base:
+    description: >
+      Référence à laquelle comparer, pour refuser la modification d'un cadrage
+      déjà livré. Sans effet quand `appliquer` est true. Le contrôle se tait si
+      la référence est hors d'atteinte : l'historique doit avoir été récupéré,
+      ce que `fetch-depth: 0` garantit.
+    required: false
+    default: origin/main
 
 outputs:
   ecritures:
@@ -83,7 +91,10 @@ runs:
         if [ "${{ inputs.appliquer }}" = "true" ]; then
           node src/propagate.mjs "$CIBLE" | tee "${RUNNER_TEMP}/propagation.log"
         else
-          node src/propagate.mjs "$CIBLE" --dry-run | tee "${RUNNER_TEMP}/propagation.log"
+          # La vérification compare à la branche principale : c'est le seul mode
+          # où l'immuabilité d'un cadrage livré peut se contrôler, l'écart entre
+          # une demande de fusion et sa base n'existant pas ailleurs.
+          node src/check.mjs "$CIBLE" --base "${{ inputs.base }}" | tee "${RUNNER_TEMP}/propagation.log"
         fi
 
         # « N règle(s) écrites » ou « rien à propager »
