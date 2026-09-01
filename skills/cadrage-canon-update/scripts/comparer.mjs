@@ -58,7 +58,15 @@ function local(racine, fichier) {
 
 async function publie(chemin) {
   try {
-    const r = await fetch(`${RACINE_PUBLIE}/${chemin}`);
+    // Sans compression, délibérément : le CDN garde une entrée de cache par
+    // encodage, et la variante compressée — celle que `fetch` demande d'office —
+    // peut servir l'ancien contenu quand la variante brute est déjà à jour.
+    // Mesuré : `curl` et `fetch` rendaient deux versions de la même URL, et le
+    // script annonçait « un changement attend d'être fusionné » alors que tout
+    // l'était.
+    const r = await fetch(`${RACINE_PUBLIE}/${chemin}`, {
+      headers: { 'Accept-Encoding': 'identity' },
+    });
     return r.ok ? empreinte(await r.text()) : null;
   } catch {
     // Sans réseau, la comparaison locale reste utile : la dire partielle plutôt
@@ -111,11 +119,18 @@ for (const nom of SKILLS) {
       continue;
     }
     if (i !== s) {
+      // Le publié départage : si l'installé lui est identique, c'est la source
+      // qui a bougé — un travail en cours, non une copie modifiée sur place. Les
+      // confondre enverrait chercher une modification locale qui n'existe pas.
+      const enCours = p !== undefined && i === p;
       console.log(
         i === null
           ? '    → pas installé chez vous.'
-          : '    → INSTALLÉ ≠ SOURCE : une copie a été modifiée sur place. Récupérer ' +
-            'ce qu’elle porte avant de la remplacer.',
+          : enCours
+            ? '    → SOURCE MODIFIÉE : travail en cours dans le dépôt, pas encore ' +
+              'publié ni réinstallé. Rien à récupérer.'
+            : '    → INSTALLÉ ≠ SOURCE : une copie a été modifiée sur place. Récupérer ' +
+              'ce qu’elle porte avant de la remplacer.',
       );
       divergent = true;
     }
