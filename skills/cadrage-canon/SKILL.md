@@ -94,17 +94,52 @@ ne sait pas encore quoi — c'est un cadrage en **brouillon** qui convient, avec
 son objectif et ses questions ouvertes. Le statut dit où en est le travail, il ne
 prétend pas qu'il est fini.
 
-## 2. Choisir l'identifiant
+## 2. Préparer un espace de travail
 
-Format `<année>-<séquence sur 3 chiffres>`, en suivant la plus haute séquence
-déjà employée dans l'année :
+**Ne jamais rédiger dans le clone lui-même.** Plusieurs cadrages se préparent
+souvent en même temps — deux sessions ouvertes sur le même projet, ou deux
+demandes traitées en parallèle. Changer de branche dans le clone la change pour
+tout le monde, et un `git add` y ramasse ce qu'une autre session écrivait.
 
 ```bash
-ls <CADRAGE_RETENU>/cadrages/
+node ${CLAUDE_SKILL_DIR}/scripts/preparer.mjs <CADRAGE_RETENU>
 ```
+
+Ce que la sortie donne :
+
+| Ligne | Ce qu'elle dit |
+|---|---|
+| `CADRAGE <id>` | l'identifiant retenu, libre au moment de la préparation |
+| `ESPACE <chemin>` | **le répertoire où travailler** — tout ce qui suit s'y passe |
+| `BRANCHE <nom>` | la branche déjà créée, propre à ce cadrage |
+| `FICHIER <chemin>` | où écrire le cadrage |
+
+Le script crée une **copie liée** du dépôt : un répertoire et une branche à soi,
+sur le même dépôt Git. Deux sessions n'entrent donc jamais en conflit, et le
+clone d'origine reste sur sa branche principale.
+
+Pour reprendre un cadrage commencé, ou en imposer l'identifiant :
+
+```bash
+node ${CLAUDE_SKILL_DIR}/scripts/preparer.mjs <CADRAGE_RETENU> 2026-014
+```
+
+Un espace déjà préparé est rendu tel quel — c'est le cas normal d'une session
+qu'on reprend.
+
+### Ce que le script garantit, et ce qu'il ne garantit pas
+
+L'identifiant est choisi en regardant **le dépôt, les branches distantes et les
+espaces préparés localement** : un cadrage en cours ailleurs est donc vu, ce que
+la seule lecture du dépôt ne montrerait pas.
 
 La séquence ne comble jamais un trou : un identifiant abandonné reste brûlé. Le
 réutiliser ferait pointer d'anciennes références vers un cadrage sans rapport.
+
+**Il reste une course possible** : deux préparations lancées à la même seconde,
+avant que l'une n'ait poussé sa branche, peuvent choisir le même numéro. La
+plateforme refusera la seconde poussée — renommer la branche et le répertoire du
+cadrage suffit alors, le contenu n'ayant pas à changer.
 
 ## 3. Écrire le cadrage
 
@@ -298,19 +333,28 @@ fonctionnalités, et une règle rattachée à rien serait introuvable.
 Le dépôt de cadrage suit le même chemin que le code : une branche, une demande de
 fusion, une relecture.
 
-Sur le dépôt de cadrage — non sur celui du code :
+Depuis l'espace préparé à l'étape 2 — non depuis le clone, et non depuis le
+dépôt du code. La branche existe déjà : il n'y a pas à en créer une.
+
+```bash
+cd <ESPACE>
+git add cadrages/<id> rules/
+git commit -m "Cadrage <id> : <titre>"
+git push -u origin <BRANCHE>
+gh pr create --fill
+```
+
+`git add` ne ramasse ici que ce qui a été écrit dans cet espace : le travail
+d'une autre session, même sur le même dépôt, lui est invisible.
 
 Le nom de la branche est libre : l'application retrouve un cadrage par sa
 demande de fusion, jamais par le nom de sa branche. `cadrage-<id>` se lit bien,
 sans que rien n'en dépende.
 
+Une fois la demande fusionnée, l'espace ne sert plus :
+
 ```bash
-cd <CADRAGE_RETENU>
-git checkout -b cadrage-2026-001
-git add cadrages/2026-001 rules/
-git commit -m "Cadrage 2026-001 : <titre>"
-git push -u origin cadrage-2026-001
-gh pr create --fill
+git -C <CADRAGE_RETENU> worktree remove <ESPACE>
 ```
 
 Le statut passe à `livree` **au moment de la livraison**, pas avant : c'est la
