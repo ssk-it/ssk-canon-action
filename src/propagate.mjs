@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import { dump } from 'js-yaml';
 import { loadRepo, splitFrontmatter, extractEnonces } from './parse.mjs';
 import { check } from './check.mjs';
+import { listCadragesLivres } from './livraison.mjs';
 
 /** Ordre des clés dans le frontmatter d'une règle, pour un diff lisible. */
 const ORDRE_CLES = ['id', 'fonctionnalites', 'statut', 'cree_par', 'modifie_par'];
@@ -31,14 +32,14 @@ const ORDRE_CLES = ['id', 'fonctionnalites', 'statut', 'cree_par', 'modifie_par'
  * l'année et la séquence : c'est l'ordre de livraison, et il détermine quel
  * énoncé fait foi quand deux cadrages touchent la même règle.
  */
-export function etatAttendu(repo) {
+export function etatAttendu(repo, livres) {
   const attendu = new Map();
 
-  const livres = [...repo.cadrages.values()]
-    .filter((c) => c.statut === 'livree')
+  const cadragesLivres = [...repo.cadrages.values()]
+    .filter((c) => livres.has(c.id))
     .sort((a, b) => String(a.id).localeCompare(String(b.id)));
 
-  for (const cadrage of livres) {
+  for (const cadrage of cadragesLivres) {
     const enonces = extractEnonces(cadrage.body);
 
     for (const impact of cadrage.impacts ?? []) {
@@ -95,12 +96,33 @@ function ecrireRegle(regle, fonctionnalites, enonce) {
 }
 
 /**
+ * Les cadrages livrés, tels que le dépôt les établit.
+ *
+ * La propagation s'exécute après la fusion, sur la branche principale : ce qui
+ * est livré est donc ce que `HEAD` porte, et non ce qu'en dit une référence
+ * distante — celle-ci peut être en retard du merge qui vient de déclencher
+ * l'exécution.
+ *
+ * Un dépôt hors d'atteinte fait échouer plutôt que rendre un ensemble vide :
+ * sans cadrage livré, la propagation conclurait que le référentiel entier est
+ * de trop.
+ */
+function livresDuDepot(root) {
+  const livres = listCadragesLivres(root, 'HEAD');
+  if (livres === null)
+    throw new Error(
+      "impossible de lire les cadrages livrés depuis Git — la propagation a besoin d'un dépôt",
+    );
+  return livres;
+}
+
+/**
  * Compare l'attendu au réel et retourne les écritures nécessaires.
  * Ne modifie rien : c'est la phase de calcul du « tout ou rien ».
  */
-export function calculerEcritures(root) {
+export function calculerEcritures(root, livres) {
   const repo = loadRepo(root);
-  const attendu = etatAttendu(repo);
+  const attendu = etatAttendu(repo, livres ?? livresDuDepot(root));
   const ecritures = [];
   const problemes = [];
 
@@ -149,7 +171,12 @@ export function propager(root, { dryRun = false } = {}) {
   // Mais on omet les contrôles sur les index dérivés, que la propagation écrit
   // justement : les exiger corrects ici rendrait toute désynchronisation
   // impossible à corriger, la propagation étant bloquée par ce qu'elle répare.
-  const integrite = check(root, { ignorerIndexDerives: true });
+  // Lu une seule fois et passé aux deux étapes : deux lectures pourraient
+  // différer, et la vérification porterait alors sur un autre référentiel que
+  // celui qu'on propage.
+  const livres = livresDuDepot(root);
+
+  const integrite = check(root, { ignorerIndexDerives: true, livres });
   if (integrite.errors.length) {
     return {
       ok: false,
@@ -158,7 +185,7 @@ export function propager(root, { dryRun = false } = {}) {
     };
   }
 
-  const { ecritures, problemes } = calculerEcritures(root);
+  const { ecritures, problemes } = calculerEcritures(root, livres);
   if (problemes.length) {
     return { ok: false, ecritures: [], problemes };
   }

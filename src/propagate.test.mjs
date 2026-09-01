@@ -4,12 +4,19 @@
 // régression y est coûteuse. On vérifie surtout ce qui n'est pas évident —
 // l'idempotence, le tout-ou-rien, et le fait qu'un cadrage non livré n'écrit rien.
 //
+// Chaque référentiel jetable est un vrai dépôt Git : la livraison ne se déclare
+// plus dans un fichier, elle se lit de l'état du dépôt. Un cadrage est livré
+// quand `HEAD` le porte — le simuler autrement testerait autre chose que ce qui
+// s'exécute.
+//
 //   node src/propagate.test.mjs
 
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { propager, etatAttendu } from './propagate.mjs';
+import { check } from './check.mjs';
 import { loadRepo } from './parse.mjs';
 
 let reussis = 0;
@@ -22,6 +29,9 @@ function test(nom, fn) {
       mkdirSync(join(racine, d), { recursive: true });
     }
     writeFileSync(join(racine, 'ssk-canon.yml'), 'schema_version: 1\n');
+    git(racine, ['init', '-q', '-b', 'main']);
+    git(racine, ['config', 'user.email', 'test@exemple.fr']);
+    git(racine, ['config', 'user.name', 'Test']);
     fn(racine);
     reussis++;
   } catch (e) {
@@ -35,6 +45,16 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function git(racine, args) {
+  execFileSync('git', ['-C', racine, ...args], { stdio: ['ignore', 'ignore', 'ignore'] });
+}
+
+/** Livre ce qui est écrit : un cadrage n'est livré que si `HEAD` le porte. */
+function livrer(racine) {
+  git(racine, ['add', '-A']);
+  git(racine, ['commit', '-q', '-m', 'livraison']);
+}
+
 /** Écrit un référentiel minimal : un domaine, une fonctionnalité. */
 function socle(racine) {
   writeFileSync(join(racine, 'domains/d.md'), '---\nid: d\nnom: D\n---\n\nUn domaine.\n');
@@ -44,7 +64,7 @@ function socle(racine) {
   );
 }
 
-function ecrireCadrage(racine, id, statut, impacts, enonces = {}) {
+function ecrireCadrage(racine, id, livre, impacts, enonces = {}) {
   mkdirSync(join(racine, 'cadrages', id), { recursive: true });
   const lignesImpacts = impacts
     .map((i) => `  - { regle: ${i.regle}, operation: ${i.operation} }`)
@@ -54,8 +74,10 @@ function ecrireCadrage(racine, id, statut, impacts, enonces = {}) {
     .join('\n');
   writeFileSync(
     join(racine, 'cadrages', id, 'cadrage.md'),
-    `---\nid: ${id}\ntitre: Cadrage ${id}\nstatut: ${statut}\ndomaines: [d]\nimpacts:\n${lignesImpacts}\n---\n\n## Objectif\n\nUn objectif.\n\n## Énoncés\n\n${sections}`,
+    `---\nid: ${id}\ntitre: Cadrage ${id}\ndomaines: [d]\nimpacts:\n${lignesImpacts}\n---\n\n## Objectif\n\nUn objectif.\n\n## Énoncés\n\n${sections}`,
   );
+  // La livraison est un fait du dépôt : seul un cadrage commité est livré.
+  if (livre === 'livree' || livre === true) livrer(racine);
 }
 
 function ecrireRegle(racine, id, corps, frontmatter = {}) {
@@ -228,7 +250,8 @@ test('l’état attendu ignore les cadrages non livrés', (racine) => {
   ecrireCadrage(racine, '2026-001', 'brouillon', [{ regle: 'RG-z', operation: 'cree' }], {
     'RG-z': 'Texte.',
   });
-  const attendu = etatAttendu(loadRepo(racine));
+  // rien n'est commité : aucun cadrage n'est livré
+  const attendu = etatAttendu(loadRepo(racine), new Set());
   assert(attendu.size === 0, `${attendu.size} règle(s) attendue(s) pour un seul brouillon`);
 });
 
@@ -300,6 +323,106 @@ test('un README dans un répertoire de contenu n’est pas une entité', (racine
 
   const { errors } = loadRepo(racine);
   assert(!errors.length, `README signalé : ${errors.join(' | ')}`);
+});
+
+// --- statut déduit, et immuabilité d'un cadrage livré ---
+//
+// Le statut n'est plus déclaré : ces cas vérifient que le dépôt seul l'établit,
+// et qu'un cadrage livré ne se reprend plus. C'est ce qui a manqué quand un
+// cadrage a été fusionné en portant « brouillon » sans que rien ne le signale.
+
+test('un statut déclaré dans le fichier est refusé', (racine) => {
+  socle(racine);
+  mkdirSync(join(racine, 'cadrages', '2026-001'), { recursive: true });
+  writeFileSync(
+    join(racine, 'cadrages', '2026-001', 'cadrage.md'),
+    '---\nid: 2026-001\ntitre: T\nstatut: livree\ndomaines: [d]\nimpacts: []\n---\n\n## Objectif\n\nUn objectif.\n',
+  );
+  livrer(racine);
+
+  const { errors } = check(racine, { base: 'HEAD' });
+  assert(
+    errors.some((e) => e.includes('le statut ne se déclare pas')),
+    `statut déclaré accepté : ${errors.join(' | ')}`,
+  );
+});
+
+test('un cadrage est livré du seul fait que le dépôt le porte', (racine) => {
+  socle(racine);
+  ecrireRegle(racine, 'RG-a', 'À propager.');
+  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+
+  const r = propager(racine);
+  assert(r.ok, `propagation refusée : ${r.problemes.join(' | ')}`);
+  assert(
+    readFileSync(join(racine, 'rules/RG-a.md'), 'utf8').includes('Un énoncé.'),
+    'un cadrage commité n’a pas été tenu pour livré',
+  );
+});
+
+test('modifier un cadrage livré est refusé', (racine) => {
+  socle(racine);
+  ecrireRegle(racine, 'RG-a', 'À propager.');
+  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+
+  // on reprend le cadrage après sa livraison, ce que RG-cadrage-livre-immuable interdit
+  writeFileSync(
+    join(racine, 'cadrages', '2026-001', 'cadrage.md'),
+    readFileSync(join(racine, 'cadrages', '2026-001', 'cadrage.md'), 'utf8') + '\nAjout tardif.\n',
+  );
+  livrer(racine);
+
+  const { errors } = check(racine, { base });
+  assert(
+    errors.some((e) => e.includes('livré, donc figé')),
+    `modification d’un cadrage livré acceptée : ${errors.join(' | ')}`,
+  );
+});
+
+test('ajouter une décision à un cadrage livré est refusé', (racine) => {
+  socle(racine);
+  ecrireRegle(racine, 'RG-a', 'À propager.');
+  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+
+  // l'ajout n'a été relu par personne, alors que la validation portait sur ce
+  // qui était présent au moment où elle a été donnée
+  mkdirSync(join(racine, 'cadrages', '2026-001', 'decisions'), { recursive: true });
+  writeFileSync(
+    join(racine, 'cadrages', '2026-001', 'decisions', '01-tardive.md'),
+    '---\nid: 01-tardive\ntitre: Tardive\nstatut: retenue\n---\n\nAprès coup.\n',
+  );
+  livrer(racine);
+
+  const { errors } = check(racine, { base });
+  assert(
+    errors.some((e) => e.includes('livré, donc figé')),
+    `décision ajoutée après livraison acceptée : ${errors.join(' | ')}`,
+  );
+});
+
+test('un cadrage non livré se modifie librement', (racine) => {
+  socle(racine);
+  ecrireRegle(racine, 'RG-a', 'À propager.');
+  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+
+  ecrireCadrage(racine, '2026-002', true, [{ regle: 'RG-a', operation: 'touche' }], {});
+
+  const { errors } = check(racine, { base });
+  assert(
+    !errors.some((e) => e.includes('livré, donc figé')),
+    `un cadrage neuf a été pris pour un cadrage livré : ${errors.join(' | ')}`,
+  );
 });
 
 // --- rapport ---

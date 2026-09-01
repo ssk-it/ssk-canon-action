@@ -1,7 +1,6 @@
 ---
 id: 2026-007
 titre: Navigation dans une fiche de cadrage
-statut: livree
 domaines: [cadrage]
 liens:
   - { tag: issue_github, url: 'https://github.com/ssk-it/ssk-canon' }

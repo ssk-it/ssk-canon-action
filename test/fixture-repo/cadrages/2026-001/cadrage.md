@@ -1,7 +1,6 @@
 ---
 id: 2026-001
 titre: Socle du produit — référentiel, cadrages et persistance dans Git
-statut: livree
 domaines: [referentiel, cadrage, persistance, acces]
 liens:
   - { tag: document, url: 'https://claude.ai/code/artifact/9fddf7eb-bf4c-4a07-8330-6eeb79026be6' }

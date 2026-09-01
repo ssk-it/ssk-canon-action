@@ -12,7 +12,6 @@
 import { extractEnonces } from './format.mjs';
 
 const OPERATIONS = new Set(['cree', 'modifie', 'abroge', 'touche']);
-const STATUTS = new Set(['brouillon', 'en_relecture', 'validee', 'livree']);
 const STATUTS_REGLE = new Set(['actif', 'abroge']);
 
 /**
@@ -24,12 +23,22 @@ const STATUTS_REGLE = new Set(['actif', 'abroge']);
  * dupliquer garantirait qu'elles divergent, et le produit sait déjà ce que coûte
  * une seconde implémentation du format.
  *
+ * `livres` porte les identifiants des cadrages livrés. Un cadrage ne déclare pas
+ * son statut — il se déduit de l'état du dépôt, et seul l'appelant sait le lire :
+ * la branche principale pour l'Action, la plateforme pour le navigateur. Sans cet
+ * ensemble, aucun cadrage n'est tenu pour livré, ce qui est le cas d'un
+ * référentiel qu'on vérifie hors de tout dépôt.
+ *
  * @param {{domains: Map, features: Map, rules: Map, cadrages: Map, errors: string[]}} repo
+ * @param {{ignorerIndexDerives?: boolean, livres?: Set<string>}} [options]
  */
-export function checkRepo(repo, { ignorerIndexDerives = false } = {}) {
+export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set() } = {}) {
   const { domains, features, rules, cadrages, errors: problems } = repo;
   const errors = [...problems];
   const warnings = [];
+
+  /** Un cadrage est livré si la branche principale le porte, et rien d'autre. */
+  const estLivre = (id) => livres.has(id);
 
   // --- identifiants et cohérence de forme ---
   for (const [id, d] of domains)
@@ -65,7 +74,10 @@ export function checkRepo(repo, { ignorerIndexDerives = false } = {}) {
 
   // --- cadrages ---
   for (const [id, c] of cadrages) {
-    if (!STATUTS.has(c.statut)) errors.push(`cadrage ${id} : statut invalide « ${c.statut} »`);
+    // Un statut déclaré dans le fichier serait une seconde source pour un fait
+    // que le dépôt établit déjà, et c'est cette duplication qui a divergé.
+    if (c.statut !== undefined)
+      errors.push(`cadrage ${id} : le statut ne se déclare pas, il se déduit de l'état du dépôt`);
     for (const d of c.domaines ?? [])
       if (!domains.has(d)) errors.push(`cadrage ${id} → domaine inconnu : ${d}`);
 
@@ -85,7 +97,7 @@ export function checkRepo(repo, { ignorerIndexDerives = false } = {}) {
 
       // une règle créée par ce cadrage n'existe pas encore si le cadrage n'est
       // pas livré : on ne l'exige dans rules/ qu'après livraison
-      const doitExister = operation !== 'cree' || c.statut === 'livree';
+      const doitExister = operation !== 'cree' || estLivre(id);
       if (doitExister && !rules.has(regle))
         errors.push(`cadrage ${id} → règle inconnue : ${regle}`);
 
@@ -109,11 +121,11 @@ export function checkRepo(repo, { ignorerIndexDerives = false } = {}) {
   // cree_par / modifie_par sont écrits par la propagation, jamais à la main :
   // une divergence signale soit une édition manuelle, soit une propagation ratée.
   const attendu = new Map();
-  const livres = [...cadrages.values()]
-    .filter((c) => c.statut === 'livree')
+  const cadragesLivres = [...cadrages.values()]
+    .filter((c) => estLivre(c.id))
     .sort((a, b) => String(a.id).localeCompare(String(b.id)));
 
-  for (const c of livres)
+  for (const c of cadragesLivres)
     for (const impact of c.impacts ?? []) {
       if (!attendu.has(impact.regle))
         attendu.set(impact.regle, { cree_par: null, modifie_par: [] });
@@ -149,13 +161,13 @@ export function checkRepo(repo, { ignorerIndexDerives = false } = {}) {
       warnings.push(`règle ${id} : abrogée sans cadrage responsable`);
       continue;
     }
-    if (cadrages.get(dernier)?.statut !== 'livree')
+    if (!estLivre(dernier))
       errors.push(`règle ${id} : abrogée par ${dernier}, qui n'est pas livré`);
   }
 
   // une règle abrogée ne devrait plus être impactée par un cadrage en cours
   for (const [id, c] of cadrages) {
-    if (c.statut === 'livree') continue;
+    if (estLivre(id)) continue;
     for (const impact of c.impacts ?? []) {
       const r = rules.get(impact.regle);
       if (r?.statut === 'abroge' && impact.operation !== 'touche')

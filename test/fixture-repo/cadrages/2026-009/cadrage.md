@@ -1,7 +1,6 @@
 ---
 id: 2026-009
 titre: Repères temporels et ordre de la liste des cadrages
-statut: livree
 domaines: [cadrage, persistance]
 liens:
   - { tag: issue_github, url: 'https://github.com/ssk-it/ssk-canon' }

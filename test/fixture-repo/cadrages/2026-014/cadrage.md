@@ -1,7 +1,6 @@
 ---
 id: 2026-014
 titre: Ouvrir un cadrage depuis l'application
-statut: livree
 domaines: [cadrage, acces, persistance]
 liens:
   - { tag: issue_github, url: 'https://github.com/ssk-it/ssk-canon' }

@@ -1,7 +1,6 @@
 ---
 id: 2026-006
 titre: Lecture du référentiel depuis un dépôt public
-statut: livree
 domaines: [persistance, referentiel, cadrage]
 liens:
   - { tag: issue_github, url: 'https://github.com/ssk-it/ssk-canon' }
