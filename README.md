@@ -205,6 +205,17 @@ Puis dire où les référentiels sont clonés sur cette machine, dans
 { "projets": ["~/chemin/vers/le-depot-de-cadrage"] }
 ```
 
+Un champ `arret` facultatif dit jusqu'où le skill va une fois le cadrage écrit :
+`ecriture` (le défaut, il n'enregistre rien), `commit`, `push` ou `pr`. Il se
+règle globalement ou par projet, celui du projet primant :
+
+```json
+{
+  "arret": "commit",
+  "projets": [{ "chemin": "~/chemin/vers/un-autre", "arret": "pr" }]
+}
+```
+
 Rien n'est à configurer dans les dépôts de code : le skill reconnaît le dépôt
 courant à son `origin`, et cherche le projet dont le `ssk-canon.yml` déclare ce
 dépôt. Le lien est ainsi déclaré une seule fois, du côté qui a autorité :
