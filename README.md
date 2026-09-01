@@ -217,6 +217,23 @@ depots_code:
 
 L'application de cadrage propose ce skill au téléchargement depuis ses réglages.
 
+### Le mettre à jour
+
+`skills/cadrage-canon-update/` dit par où passer. Le skill existe en trois
+exemplaires — la source ici, la copie installée chez le développeur, et ce que
+la branche principale sert — et modifier la copie installée est le piège : le
+changement fonctionne chez soi, disparaît à la réinstallation suivante, et
+n'atteint personne.
+
+```bash
+node ~/.claude/skills/cadrage-canon-update/scripts/comparer.mjs
+```
+
+Le script dit lequel des trois a bougé avant qu'on n'écrase quoi que ce soit.
+
+Rien en intégration continue ne vérifie ces skills : ce que `cadrage-canon-update`
+décrit est la seule vérification qui existe.
+
 ## Licence
 
 Apache-2.0 — voir [LICENSE](LICENSE) et [NOTICE](NOTICE).
