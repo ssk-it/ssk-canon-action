@@ -184,6 +184,39 @@ Le nom du fichier doit correspondre **exactement**, casse comprise : c'est lui
 que npm vérifie dans l'attestation. Renommer ce workflow sans mettre à jour ce
 réglage ferait échouer la publication.
 
+## Le skill de cadrage
+
+`skills/cadrage-canon/` porte un skill Claude Code qui rédige un cadrage dans le
+format décrit ici. Il vit auprès du vérificateur plutôt que dans un projet
+client : quand le format change, le skill suit, et une seule description du
+format existe au monde.
+
+L'installer chez soi :
+
+```bash
+git clone -q --depth 1 https://github.com/ssk-it/ssk-canon-action /tmp/canon
+cp -R /tmp/canon/skills/cadrage-canon ~/.claude/skills/
+```
+
+Puis dire où les référentiels sont clonés sur cette machine, dans
+`~/.claude/cadrage-canon.json` :
+
+```json
+{ "projets": ["~/chemin/vers/le-depot-de-cadrage"] }
+```
+
+Rien n'est à configurer dans les dépôts de code : le skill reconnaît le dépôt
+courant à son `origin`, et cherche le projet dont le `ssk-canon.yml` déclare ce
+dépôt. Le lien est ainsi déclaré une seule fois, du côté qui a autorité :
+
+```yaml
+depots_code:
+  - { repo: organisation/depot-front, role: Application web }
+  - { repo: organisation/depot-back, role: API }
+```
+
+L'application de cadrage propose ce skill au téléchargement depuis ses réglages.
+
 ## Licence
 
 Apache-2.0 — voir [LICENSE](LICENSE) et [NOTICE](NOTICE).
