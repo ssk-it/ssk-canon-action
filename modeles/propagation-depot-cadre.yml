@@ -18,6 +18,9 @@ on:
 # GITHUB_TOKEN est en lecture seule et le push échoue.
 permissions:
   contents: write
+  # Une branche protégée refuse le push direct de la propagation : elle ouvre
+  # alors une demande de fusion, qui déclenche les contrôles requis.
+  pull-requests: write
 
 # Deux merges rapprochés ne doivent pas propager en parallèle : le second
 # écraserait le premier. On sérialise, sans annuler ce qui est en cours.

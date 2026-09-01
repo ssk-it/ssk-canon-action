@@ -38,10 +38,19 @@ curl -o .github/workflows/propagation.yml \
 Puis, dans les réglages du dépôt :
 
 1. **Actions → General → Workflow permissions** : choisir *Read and write
-   permissions*. Sans cela, la propagation ne peut pas pousser son commit.
+   permissions*, et cocher *Allow GitHub Actions to create and approve pull
+   requests*. Sans la première, la propagation ne peut rien écrire ; sans la
+   seconde, elle ne peut pas ouvrir sa demande de fusion sur une branche
+   protégée.
 2. **Branches → règle de protection sur la branche principale** : ajouter la
    vérification comme contrôle requis. Sans cela, elle signale sans bloquer, et
    un cadrage incohérent peut être livré.
+
+Une branche protégée refuse le push direct de la propagation, puisque ce push ne
+porte aucun des contrôles qu'elle exige. La propagation ouvre alors une demande
+de fusion, que les contrôles vérifient comme n'importe quelle autre — il reste à
+la merger pour que le référentiel soit à jour. Le workflow doit pour cela
+déclarer `pull-requests: write` à côté de `contents: write`.
 
 Ce dépôt étant public, aucun réglage d'accès n'est nécessaire, y compris depuis
 un dépôt cadré privé ou appartenant à une autre organisation.
