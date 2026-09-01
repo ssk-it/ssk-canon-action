@@ -29,6 +29,8 @@ Ce que sa sortie signifie :
 | `PROJET <nom> \| <chemin>` | un projet déclaré, avec ses dépôts de code |
 | `DEPOT_CODE <repo>` | un dépôt que ce projet réalise — utile pour explorer le code au-delà du dépôt courant |
 | `ARRET <niveau>` | **jusqu'où aller à l'étape 7** — voir « Jusqu'où livrer » |
+| `PLUSIEURS_PROJETS_DECLARENT_CE_DEPOT <n>` | **demander lequel** — voir « Quand la situation échoue » |
+| `CANDIDAT <nom> \| <chemin>` | l'un des référentiels possibles, à soumettre au choix |
 | `AUCUN_PROJET_NE_DECLARE_CE_DEPOT` | voir « Quand la situation échoue » |
 | `CONFIG_ABSENTE <chemin>` | voir « Quand la situation échoue » |
 
@@ -63,6 +65,21 @@ côté application web, sa validation côté API.
   ```
   Le déclarer là plutôt que dans chaque dépôt de code évite d'écrire *n* fois ce
   qui est un fait unique, et que les copies divergent.
+
+- **`PLUSIEURS_PROJETS_DECLARENT_CE_DEPOT`** — plusieurs référentiels déclarent
+  le dépôt courant, et il n'y a pas de `CADRAGE_RETENU`. C'est le cas normal
+  quand deux produits partagent un dépôt de code : un back qui porte deux
+  applications, un front qui en assemble deux.
+
+  **Demander lequel, en listant les `CANDIDAT`. Ne jamais en choisir un.** Le
+  dépôt courant ne porte pas l'information — s'il la portait, il n'y aurait pas
+  d'ambiguïté — et deviner écrirait le cadrage dans un référentiel que personne
+  n'a désigné. Une erreur pareille ne se voit qu'une fois le cadrage relu par
+  quelqu'un d'autre, dans le mauvais produit.
+
+  Le rédacteur, lui, sait de quel produit relève ce qu'il cadre. La réponse
+  vaut pour ce cadrage seulement : ne l'inscrire nulle part, et redemander la
+  fois suivante — un même dépôt sert les deux tour à tour.
 
 - **`PROJET_INTROUVABLE`** — le chemin de la config ne mène à aucun
   `ssk-canon.yml`. Le dépôt n'est peut-être pas cloné :
