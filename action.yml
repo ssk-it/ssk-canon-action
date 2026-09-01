@@ -118,6 +118,8 @@ runs:
       if: inputs.appliquer == 'true' && inputs.commiter == 'true'
       shell: bash
       working-directory: ${{ github.workspace }}
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: |
         if git diff --quiet; then
           echo "Référentiel déjà à jour — rien à commiter."
@@ -130,4 +132,29 @@ runs:
         git config user.email 'github-actions[bot]@users.noreply.github.com'
         git add -A
         git commit -m "${{ inputs.message }}" -m "Écritures calculées à partir des cadrages livrés."
-        git push
+
+        # Une branche protégée exige des contrôles qu'un push direct ne porte
+        # jamais : la propagation passe donc par une demande de fusion, qui les
+        # déclenche. Le push direct reste tenté d'abord — sur une branche non
+        # protégée il aboutit, et n'impose alors aucune relecture inutile.
+        if git push 2>/dev/null; then
+          echo "Écritures poussées sur la branche principale."
+          exit 0
+        fi
+
+        BRANCHE="propagation/$(git rev-parse --short HEAD)"
+        echo "::notice::Push direct refusé — la propagation passe par « $BRANCHE »."
+        git switch -c "$BRANCHE"
+        git push -u origin "$BRANCHE"
+
+        # `--fill` reprendrait le message du commit ; on nomme explicitement ce
+        # que la demande porte, pour qu'elle se relise sans l'ouvrir.
+        gh pr create \
+          --base "${GITHUB_REF_NAME}" \
+          --head "$BRANCHE" \
+          --title "${{ inputs.message }}" \
+          --body "Écritures calculées à partir des cadrages livrés, par la propagation.
+
+        La branche principale refuse un push direct : ces écritures passent par
+        une demande de fusion pour que les contrôles requis s'exécutent."
+
