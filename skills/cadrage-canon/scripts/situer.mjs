@@ -105,8 +105,17 @@ try {
   process.exit(0);
 }
 
-let retenu = null;
-let arretRetenu = arretGlobal;
+/**
+ * Tous les projets qui déclarent le dépôt courant, non le dernier vu.
+ *
+ * Deux applications peuvent partager un dépôt de code sans partager leur
+ * cadrage — un back qui porte deux produits, un front qui en assemble deux. Ne
+ * garder que le dernier ferait décider l'ordre du fichier de configuration,
+ * qui n'a aucune autorité pour cela : le cadrage atterrirait dans un
+ * référentiel ou dans l'autre selon une ligne écrite une fois et jamais relue,
+ * sans que rien ne le signale.
+ */
+const candidats = [];
 for (const brut of racines) {
   const enObjet = typeof brut === 'object' && brut !== null;
   const racine = developper(enObjet ? (brut.chemin ?? '') : brut);
@@ -118,16 +127,29 @@ for (const brut of racines) {
   dire(`PROJET ${projet.nom} | ${racine}`);
   for (const d of projet.depots) dire(`  DEPOT_CODE ${d}`);
   if (courant && projet.depots.includes(courant)) {
-    retenu = projet;
     // Le réglage du projet prime sur le réglage général : on peut vouloir
     // pousser d'office sur un projet et rien du tout sur un autre.
+    let arret = arretGlobal;
     if (enObjet && brut.arret !== undefined) {
-      if (ARRETS.includes(brut.arret)) arretRetenu = brut.arret;
+      if (ARRETS.includes(brut.arret)) arret = brut.arret;
       else dire(`  ARRET_INCONNU ${brut.arret} — le réglage général s'applique`);
     }
+    candidats.push({ projet, arret });
     dire('  ↑ déclare le dépôt courant');
   }
 }
 
-dire(retenu ? `CADRAGE_RETENU ${retenu.racine}` : 'AUCUN_PROJET_NE_DECLARE_CE_DEPOT');
-dire(`ARRET ${arretRetenu}`);
+if (candidats.length === 0) {
+  dire('AUCUN_PROJET_NE_DECLARE_CE_DEPOT');
+  dire(`ARRET ${arretGlobal}`);
+} else if (candidats.length === 1) {
+  dire(`CADRAGE_RETENU ${candidats[0].projet.racine}`);
+  dire(`ARRET ${candidats[0].arret}`);
+} else {
+  // Pas de CADRAGE_RETENU : l'ambiguïté se demande, elle ne se tranche pas
+  // ici. Choisir à la place du rédacteur écrirait dans un référentiel qu'il
+  // n'a pas désigné, et une erreur muette de ce genre ne se voit qu'après
+  // coup. Aucun ARRET non plus : il dépend du projet, encore inconnu.
+  dire(`PLUSIEURS_PROJETS_DECLARENT_CE_DEPOT ${candidats.length}`);
+  for (const c of candidats) dire(`  CANDIDAT ${c.projet.nom} | ${c.projet.racine}`);
+}
