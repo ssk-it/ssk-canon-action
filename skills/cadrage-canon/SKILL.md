@@ -28,6 +28,7 @@ Ce que sa sortie signifie :
 | `CADRAGE_RETENU <chemin>` | le dépôt de cadrage à employer — **tous les chemins de ce skill s'y rapportent** |
 | `PROJET <nom> \| <chemin>` | un projet déclaré, avec ses dépôts de code |
 | `DEPOT_CODE <repo>` | un dépôt que ce projet réalise — utile pour explorer le code au-delà du dépôt courant |
+| `ARRET <niveau>` | **jusqu'où aller à l'étape 7** — voir « Jusqu'où livrer » |
 | `AUCUN_PROJET_NE_DECLARE_CE_DEPOT` | voir « Quand la situation échoue » |
 | `CONFIG_ABSENTE <chemin>` | voir « Quand la situation échoue » |
 
@@ -336,16 +337,46 @@ fusion, une relecture.
 Depuis l'espace préparé à l'étape 2 — non depuis le clone, et non depuis le
 dépôt du code. La branche existe déjà : il n'y a pas à en créer une.
 
+### Jusqu'où livrer
+
+**L'étape 0 a rendu une ligne `ARRET <niveau>`. Ne rien faire au-delà.** Chacun
+de ces gestes porte plus loin que le précédent : enregistrer touche le dépôt,
+pousser rend le travail visible à d'autres, ouvrir une demande sollicite une
+relecture. Aucun ne doit se produire sans qu'on l'ait voulu.
+
+| `ARRET` | Ce qu'on fait | Ce qu'on dit ensuite |
+|---|---|---|
+| `ecriture` | rien de plus — **le défaut** | les fichiers écrits, et les commandes à lancer |
+| `commit` | `git add` + `git commit` | la branche où c'est enregistré, et comment pousser |
+| `push` | et `git push` | la branche poussée, et comment ouvrir la demande |
+| `pr` | et `gh pr create` | le numéro de la demande |
+
 ```bash
 cd <ESPACE>
-git add cadrages/<id> rules/
-git commit -m "Cadrage <id> : <titre>"
-git push -u origin <BRANCHE>
-gh pr create --fill
+git add cadrages/<id> rules/            # à partir de « commit »
+git commit -m "Cadrage <id> : <titre>"  # à partir de « commit »
+git push -u origin <BRANCHE>            # à partir de « push »
+gh pr create --fill                     # seulement pour « pr »
 ```
 
 `git add` ne ramasse ici que ce qui a été écrit dans cet espace : le travail
 d'une autre session, même sur le même dépôt, lui est invisible.
+
+**S'arrêter n'est pas abandonner** : dire ce qui a été écrit, où, et la commande
+exacte pour aller plus loin. Un arrêt silencieux laisse croire à un échec.
+
+Le niveau se règle dans `~/.claude/cadrage-canon.json`, globalement ou par
+projet — celui du projet primant :
+
+```json
+{
+  "arret": "commit",
+  "projets": [
+    "~/chemin/vers/un-referentiel",
+    { "chemin": "~/chemin/vers/un-autre", "arret": "pr" }
+  ]
+}
+```
 
 Le nom de la branche est libre : l'application retrouve un cadrage par sa
 demande de fusion, jamais par le nom de sa branche. `cadrage-<id>` se lit bien,

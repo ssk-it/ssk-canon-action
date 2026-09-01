@@ -75,19 +75,41 @@ if (!existsSync(CONFIG)) {
   process.exit(0);
 }
 
+/**
+ * Jusqu'où le skill va de lui-même, une fois le cadrage écrit.
+ *
+ * Le défaut ne fait rien : écrire dans le dépôt de quelqu'un, pousser une
+ * branche que d'autres verront, ouvrir une demande qui sollicite une relecture
+ * sont trois gestes de portée croissante, et aucun ne doit se produire sans
+ * qu'on l'ait voulu.
+ */
+const ARRETS = ['ecriture', 'commit', 'push', 'pr'];
+const ARRET_PAR_DEFAUT = 'ecriture';
+
 let racines;
+let arretGlobal = ARRET_PAR_DEFAUT;
 try {
   const brut = JSON.parse(readFileSync(CONFIG, 'utf8'));
   racines = Array.isArray(brut) ? brut : (brut.projets ?? []);
   if (!Array.isArray(racines)) throw new Error('« projets » doit être une liste');
+
+  if (!Array.isArray(brut) && brut.arret !== undefined) {
+    if (!ARRETS.includes(brut.arret)) {
+      dire(`ARRET_INCONNU ${brut.arret} — attendu : ${ARRETS.join(', ')}`);
+    } else {
+      arretGlobal = brut.arret;
+    }
+  }
 } catch (e) {
   dire(`CONFIG_ILLISIBLE ${CONFIG} — ${e.message}`);
   process.exit(0);
 }
 
 let retenu = null;
+let arretRetenu = arretGlobal;
 for (const brut of racines) {
-  const racine = developper(typeof brut === 'string' ? brut : brut?.chemin ?? '');
+  const enObjet = typeof brut === 'object' && brut !== null;
+  const racine = developper(enObjet ? (brut.chemin ?? '') : brut);
   const projet = lireProjet(racine);
   if (!projet) {
     dire(`PROJET_INTROUVABLE ${racine} (pas de ssk-canon.yml)`);
@@ -97,8 +119,15 @@ for (const brut of racines) {
   for (const d of projet.depots) dire(`  DEPOT_CODE ${d}`);
   if (courant && projet.depots.includes(courant)) {
     retenu = projet;
+    // Le réglage du projet prime sur le réglage général : on peut vouloir
+    // pousser d'office sur un projet et rien du tout sur un autre.
+    if (enObjet && brut.arret !== undefined) {
+      if (ARRETS.includes(brut.arret)) arretRetenu = brut.arret;
+      else dire(`  ARRET_INCONNU ${brut.arret} — le réglage général s'applique`);
+    }
     dire('  ↑ déclare le dépôt courant');
   }
 }
 
 dire(retenu ? `CADRAGE_RETENU ${retenu.racine}` : 'AUCUN_PROJET_NE_DECLARE_CE_DEPOT');
+dire(`ARRET ${arretRetenu}`);
