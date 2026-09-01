@@ -1,7 +1,6 @@
 ---
 id: 2026-012
 titre: Chronologie d'une règle, adossée à l'histoire Git
-statut: livree
 domaines: [referentiel, persistance, acces]
 liens:
   - { tag: issue_github, url: 'https://github.com/ssk-it/ssk-canon' }

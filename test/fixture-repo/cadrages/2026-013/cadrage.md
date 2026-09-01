@@ -1,7 +1,6 @@
 ---
 id: 2026-013
 titre: Ce qui a changé entre deux instants
-statut: livree
 domaines: [referentiel, persistance]
 liens:
   - { tag: issue_github, url: 'https://github.com/ssk-it/ssk-canon' }

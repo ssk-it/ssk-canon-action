@@ -1,7 +1,6 @@
 ---
 id: 2026-008
 titre: Connexion facultative pour relever les limites d'appels
-statut: livree
 domaines: [acces, persistance]
 liens:
   - { tag: issue_github, url: 'https://github.com/ssk-it/ssk-canon' }

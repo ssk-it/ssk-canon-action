@@ -1,7 +1,6 @@
 ---
 id: 2026-011
 titre: Distribution de l'automatisation aux dépôts cadrés
-statut: livree
 domaines: [cadrage, referentiel, acces]
 liens:
   - { tag: issue_github, url: 'https://github.com/ssk-it/ssk-canon-action' }

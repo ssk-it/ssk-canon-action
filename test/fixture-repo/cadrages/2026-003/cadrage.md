@@ -1,7 +1,6 @@
 ---
 id: 2026-003
 titre: Choix du fournisseur de stockage objet
-statut: livree
 domaines: [persistance]
 liens:
   - { tag: document, url: 'https://www.scaleway.com/en/docs/object-storage/' }

@@ -1,7 +1,6 @@
 ---
 id: 2026-005
 titre: Commentaires du client sur un cadrage
-statut: brouillon
 domaines: [cadrage, acces]
 liens:
   - { tag: carte_trello, url: 'https://trello.com/c/exemple-commentaires' }

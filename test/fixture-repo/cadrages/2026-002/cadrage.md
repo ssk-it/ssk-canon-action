@@ -1,7 +1,6 @@
 ---
 id: 2026-002
 titre: Révision sur faits vérifiés — historique, chemins immuables et pièces jointes
-statut: livree
 domaines: [referentiel, persistance, acces, cadrage]
 liens:
   - { tag: document, url: 'https://claude.ai/code/artifact/9fddf7eb-bf4c-4a07-8330-6eeb79026be6' }

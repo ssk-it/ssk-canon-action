@@ -1,7 +1,6 @@
 ---
 id: 2026-010
 titre: Mécanique de la propagation des impacts
-statut: livree
 domaines: [cadrage, referentiel]
 liens:
   - { tag: issue_github, url: 'https://github.com/ssk-it/ssk-canon' }

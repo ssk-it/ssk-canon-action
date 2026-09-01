@@ -1,7 +1,6 @@
 ---
 id: 2026-004
 titre: Initialisation du prototype
-statut: en_relecture
 domaines: [persistance, cadrage]
 liens:
   - { tag: issue_github, url: 'https://github.com/ssk-it/ssk-canon-pwa/issues/1' }

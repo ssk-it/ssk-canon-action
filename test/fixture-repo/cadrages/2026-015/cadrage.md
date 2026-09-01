@@ -1,7 +1,6 @@
 ---
 id: 2026-015
 titre: Reprendre un cadrage ouvert
-statut: livree
 domaines: [cadrage, persistance]
 liens:
   - { tag: issue_github, url: 'https://github.com/ssk-it/ssk-canon' }
