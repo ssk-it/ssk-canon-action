@@ -23,6 +23,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Sans l'historique, `origin/main` est hors d'atteinte : la comparaison
+          # échoue, et le contrôle d'immuabilité se tait au lieu de refuser — un
+          # cadrage livré redevient modifiable sans que rien ne le signale. Le
+          # statut se déduit de la même comparaison, si bien qu'aucun cadrage
+          # n'est alors tenu pour livré.
+          fetch-depth: 0
 
       # `appliquer: false` — la vérification ne modifie jamais le référentiel.
       # Elle échoue si le cadrage est incohérent, ou si le référentiel a dérivé

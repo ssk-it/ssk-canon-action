@@ -53,12 +53,24 @@ export function check(root, options = {}) {
  *
  * Le contrôle porte sur un écart entre deux états, là où les autres se
  * contentent du dernier : il n'a de sens que sur une demande de fusion, et se
- * tait partout où la comparaison n'est pas possible — un dépôt sans historique,
- * ou la branche principale elle-même, où l'écart est vide par construction.
+ * tait sur la branche principale elle-même, où l'écart est vide par
+ * construction. Une base hors d'atteinte, en revanche, se signale : le contrôle
+ * n'a pas eu lieu, ce qui ne se confond pas avec un référentiel conforme.
  */
 function checkImmuabilite(root, base, livres) {
   const fichiers = listFichiersModifies(root, base);
-  if (fichiers === null || !fichiers.length) return [];
+
+  // Une base hors d'atteinte n'est pas un référentiel conforme : c'est un
+  // contrôle qui n'a pas eu lieu. Se taire ici rendait la règle silencieusement
+  // inapplicable — un dépôt dont le workflow omet `fetch-depth: 0` croyait
+  // protéger ses cadrages livrés alors que rien ne les vérifiait.
+  if (fichiers === null)
+    return [
+      `immuabilité : « ${base} » est hors d'atteinte, le contrôle n'a pas pu ` +
+        `avoir lieu — récupérer l'historique avec « fetch-depth: 0 »`,
+    ];
+
+  if (!fichiers.length) return [];
 
   const errors = [];
   for (const [id, chemins] of findCadragesLivresModifies(fichiers, livres)) {

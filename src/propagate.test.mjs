@@ -384,6 +384,23 @@ test('modifier un cadrage livré est refusé', (racine) => {
   );
 });
 
+test('une base hors d’atteinte est signalée, non ignorée', (racine) => {
+  socle(racine);
+  ecrireRegle(racine, 'RG-a', 'À propager.');
+  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+
+  // un workflow qui omet `fetch-depth: 0` laisse la base hors d'atteinte : le
+  // contrôle n'a alors pas lieu, ce qui ne se confond pas avec un référentiel
+  // conforme — se taire rendrait la règle silencieusement inapplicable
+  const { errors } = check(racine, { base: 'origin/inexistante' });
+  assert(
+    errors.some((e) => e.includes("hors d'atteinte")),
+    `base hors d’atteinte passée sous silence : ${errors.join(' | ')}`,
+  );
+});
+
 test('ajouter une décision à un cadrage livré est refusé', (racine) => {
   socle(racine);
   ecrireRegle(racine, 'RG-a', 'À propager.');
