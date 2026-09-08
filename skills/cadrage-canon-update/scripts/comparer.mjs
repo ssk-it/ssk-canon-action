@@ -20,7 +20,7 @@ import { join } from 'node:path';
  * surveillance diverge sans que rien ne le dise, et c'est précisément ce qu'il
  * existe pour empêcher.
  */
-const SKILLS = ['cadrage-canon', 'cadrage-canon-update'];
+const SKILLS = ['cadrage-canon', 'cadrage-canon-update', 'cadrage-depuis-trello'];
 
 /**
  * Ce qui compose un skill, découvert et non énuméré.
