@@ -37,7 +37,7 @@ jobs:
           # l'action a besoin de l'historique pour committer par-dessus
           fetch-depth: 0
 
-      - uses: ssk-it/ssk-canon-action@v1
+      - uses: ssk-it/ssk-canon-action@main
         with:
           referentiel: '.'
           appliquer: 'true'
