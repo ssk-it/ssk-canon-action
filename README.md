@@ -95,6 +95,10 @@ cadrage est incohérent, ou si le référentiel a dérivé de ses cadrages :
 
 ```yaml
 - uses: actions/checkout@v4
+  with:
+    # le contrôle d'immuabilité compare deux états : sans l'historique, il
+    # échoue au lieu de laisser croire qu'il a eu lieu
+    fetch-depth: 0
 - uses: ssk-it/ssk-canon-action@main
   with:
     referentiel: '.'

@@ -44,9 +44,10 @@ inputs:
   base:
     description: >
       Référence à laquelle comparer, pour refuser la modification d'un cadrage
-      déjà livré. Sans effet quand `appliquer` est true. Le contrôle se tait si
-      la référence est hors d'atteinte : l'historique doit avoir été récupéré,
-      ce que `fetch-depth: 0` garantit.
+      déjà livré. Sans effet quand `appliquer` est true. Le contrôle échoue si la
+      référence est hors d'atteinte, plutôt que de laisser croire qu'il a eu
+      lieu : l'historique doit avoir été récupéré, ce que `fetch-depth: 0`
+      garantit.
     required: false
     default: origin/main
   immuabilite:
