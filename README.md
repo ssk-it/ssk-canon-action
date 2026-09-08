@@ -254,6 +254,33 @@ Le script dit lequel des trois a bougé avant qu'on n'écrase quoi que ce soit.
 Rien en intégration continue ne vérifie ces skills : ce que `cadrage-canon-update`
 décrit est la seule vérification qui existe.
 
+## Cadrer depuis une carte Trello
+
+`skills/cadrage-depuis-trello/` part d'une carte plutôt que d'une page blanche :
+il en lit le titre, la description, les checklists, les commentaires et les
+pièces jointes, puis passe la matière à `cadrage-canon`. Une carte exprime un
+besoin succinctement ; le cadrage l'instruit.
+
+```bash
+git clone -q --depth 1 https://github.com/ssk-it/ssk-canon-action /tmp/canon
+cp -R /tmp/canon/skills/cadrage-depuis-trello ~/.claude/skills/
+```
+
+Il lui faut des identifiants Trello, dans `~/.claude/trello.json` :
+
+```json
+{ "cle": "<clé API>", "jeton": "<jeton>" }
+```
+
+Le jeton s'émet en `scope=read,write`. L'écriture ne sert qu'à une chose :
+reposer sur la carte, en commentaire, le lien du cadrage qui en est né. Sans ce
+geste le rattachement n'existe que dans le cadrage, du côté que le client ne
+consulte pas — il regarde Trello, où rien ne dit que son besoin a été instruit.
+Le skill ne déplace aucune carte et n'en change ni le statut ni les étiquettes.
+
+Le commentaire ne se poste qu'une fois par lien : reprendre un cadrage ou
+relancer le skill n'empile pas de doublons sur une carte que le client lit.
+
 ## Licence
 
 Apache-2.0 — voir [LICENSE](LICENSE) et [NOTICE](NOTICE).
