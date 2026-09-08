@@ -37,6 +37,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # même besoin que dans un dépôt cadré : sans l'historique, la base est
+          # hors d'atteinte et le contrôle d'immuabilité ne peut pas avoir lieu
+          fetch-depth: 0
       - uses: ./
         with:
           referentiel: test/fixture-repo
