@@ -27,7 +27,7 @@ jobs:
       # `appliquer: false` — la vérification ne modifie jamais le référentiel.
       # Elle échoue si le cadrage est incohérent, ou si le référentiel a dérivé
       # de ses cadrages.
-      - uses: ssk-it/ssk-canon-action@v1
+      - uses: ssk-it/ssk-canon-action@main
         with:
           referentiel: '.'
           appliquer: 'false'

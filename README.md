@@ -46,6 +46,24 @@ Puis, dans les réglages du dépôt :
    vérification comme contrôle requis. Sans cela, elle signale sans bloquer, et
    un cadrage incohérent peut être livré.
 
+### Pourquoi `@main` et non un tag de version
+
+Les workflows référencent `ssk-it/ssk-canon-action@main`. Un tag mobile `v1` a
+existé, et il a fait la démonstration de ce qu'on lui reproche : il est resté sur
+la version 1.4.0 pendant que la branche principale prenait vingt-six commits
+d'avance, si bien que les dépôts cadrés consommaient un vérificateur qui ignorait
+le statut déduit. Rien ne signalait ce retard, puisqu'un tag qu'on oublie de
+déplacer ne se plaint pas.
+
+La contrepartie est réelle : ce qui arrive sur la branche principale part aussitôt
+chez tous les dépôts cadrés, sans palier. Elle est assumée tant que l'outil sert
+à une seule main. Le jour où d'autres équipes en dépendront, il faudra revenir à
+un tag déplacé par le workflow de release, plutôt que par la mémoire de qui
+publie.
+
+Le paquet npm, lui, reste versionné : c'est une dépendance qu'on résout, non une
+action qu'on exécute.
+
 Une branche protégée refuse le push direct de la propagation, puisque ce push ne
 porte aucun des contrôles qu'elle exige. La propagation ouvre alors une demande
 de fusion, que les contrôles vérifient comme n'importe quelle autre — il reste à
@@ -77,7 +95,7 @@ cadrage est incohérent, ou si le référentiel a dérivé de ses cadrages :
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: ssk-it/ssk-canon-action@v1
+- uses: ssk-it/ssk-canon-action@main
   with:
     referentiel: '.'
     appliquer: 'false'

@@ -3,7 +3,7 @@
 #
 # Destinée aux dépôts cadrés, qui la référencent ainsi :
 #
-#   - uses: ssk-it/ssk-canon-action@v1
+#   - uses: ssk-it/ssk-canon-action@main
 #     with:
 #       referentiel: .        # racine du dépôt cadré
 #       appliquer: true
