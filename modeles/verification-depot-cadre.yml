@@ -7,13 +7,22 @@
 # Ce qu'il attrape, que le format seul ne garantit pas : un impact vers une
 # règle inexistante, un énoncé manquant pour une création ou une modification,
 # un rattachement vers une entité inconnue, une règle abrogée par un cadrage non
-# livré.
+# livré. Dès que la demande est proposée à la relecture, il contrôle en outre
+# l'état qu'aura le référentiel une fois fusionné — ce que la livraison exigera
+# est ainsi réclamé tant qu'il est encore temps de l'écrire.
 name: Vérification du référentiel
 
 on:
+  # `ready_for_review` ne fait pas partie des types par défaut : sans lui, un
+  # brouillon proposé à la relecture ne serait recontrôlé qu'à sa poussée
+  # suivante, et le contrôle de livraison manquerait le moment qui le déclenche.
   pull_request:
-  push:
-    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# Rien sur la branche principale : la propagation s'y déclenche déjà et vérifie
+# ce qu'elle vient d'écrire. Deux contrôles sur la même poussée se liraient à
+# contretemps — celui qui n'écrit pas rapporterait l'état d'avant l'autre, et
+# échouerait à chaque livraison d'un cadrage créant une règle.
 
 permissions:
   contents: read

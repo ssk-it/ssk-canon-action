@@ -110,6 +110,24 @@ règle inexistante, un énoncé manquant pour une création ou une modification,
 rattachement vers une entité inconnue, une règle abrogée par un cadrage non
 livré.
 
+Dès que la demande de fusion est **proposée à la relecture**, elle contrôle en
+outre l'état qu'aura le référentiel **une fois cette demande fusionnée** : les
+cadrages qu'elle porte y sont tenus pour livrés. Ce que la livraison exigera —
+le fichier de chaque règle créée, son rattachement à une fonctionnalité — est
+ainsi réclamé tant qu'il est encore temps de l'écrire, et non découvert après la
+fusion, quand la propagation s'arrête et qu'il n'y a plus de demande à corriger.
+Un brouillon en est dispensé : il n'annonce pas de livraison, et le rendre rouge
+en permanence ferait cesser de le lire.
+
+Les index dérivés — `cree_par`, `modifie_par` — sont exclus de ce contrôle :
+c'est la propagation qui les écrit, après la fusion.
+
+Sur la branche principale, **la vérification n'a pas à être déclenchée** : la
+propagation s'y exécute déjà, et vérifie le référentiel qu'elle vient d'écrire.
+Deux contrôles sur la même poussée se lisent à contretemps — celui qui n'écrit
+pas rapporte l'état d'avant l'autre, et échoue à chaque livraison d'un cadrage
+créant une règle.
+
 ## Comme bibliothèque
 
 Le vérificateur est aussi publié comme paquet, pour être exécuté ailleurs que
@@ -143,9 +161,16 @@ Le propagateur et le vérificateur s'utilisent hors CI :
 ```bash
 npm ci
 node src/check.mjs     /chemin/du/depot
+node src/check.mjs     /chemin/du/depot --base origin/main --livraison
 node src/propagate.mjs /chemin/du/depot --dry-run
 node src/propagate.mjs /chemin/du/depot
 ```
+
+`--livraison` demande le contrôle de l'état post-fusion, celui que
+l'intégration continue applique aux demandes prêtes à relire. Il tient compte du
+travail non encore enregistré : le cadrage qu'on vient d'écrire y compte comme
+porté par la demande, ce qui est précisément le moment où l'on veut savoir ce
+qui manque.
 
 ## Développement
 
