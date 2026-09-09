@@ -1,6 +1,6 @@
 ---
 name: cadrage-canon
-description: Rédige un cadrage dans le référentiel SSK Canon du projet courant — l'unité de changement datée qui décrit ce qu'on veut faire, pourquoi, et quelles règles de gestion en découlent. Le référentiel vit dans un dépôt à part, que ce skill trouve seul. À utiliser quand l'utilisateur dit "cadre cette évolution", "rédige le cadrage", "consigne cette décision", ou avant d'ouvrir un chantier dont les règles métier ne sont pas encore posées.
+description: Rédige un cadrage dans le référentiel SSK Canon du projet courant — l'unité de changement datée qui décrit ce qu'on veut faire, pourquoi, et quelles règles de gestion en découlent —, puis propose d'ouvrir le chantier sur les dépôts de code : une issue portant le besoin par dépôt impacté, et le lien retour dans le cadrage. Le référentiel vit dans un dépôt à part, que ce skill trouve seul. À utiliser quand l'utilisateur dit "cadre cette évolution", "rédige le cadrage", "consigne cette décision", ou avant d'ouvrir un chantier dont les règles métier ne sont pas encore posées.
 ---
 
 # Rédiger un cadrage
@@ -87,8 +87,10 @@ côté application web, sa validation côté API.
   git clone git@github.com:<organisation>/<depot-de-cadrage>.git <chemin>
   ```
 
-Ce skill **rédige un cadrage**. Il n'écrit aucun code applicatif, et n'ouvre ni
-issue ni branche sur un dépôt de code.
+Ce skill **rédige un cadrage**. Il n'écrit aucun code applicatif. Une fois le
+cadrage en relecture, il propose d'ouvrir le chantier sur les dépôts de code —
+une issue par dépôt impacté, à l'étape 8 — sans jamais rien y créer sans
+validation explicite.
 
 ## Le principe, en trois phrases
 
@@ -408,6 +410,92 @@ git -C <CADRAGE_RETENU> worktree remove <ESPACE>
 Le statut passe à `livree` **au moment de la livraison**, pas avant : c'est la
 fusion qui l'établit, et l'automatisation qui projette alors les énoncés dans
 `rules/`.
+
+## 8. Ouvrir le chantier sur les dépôts de code
+
+Un cadrage instruit un besoin ; il ne le réalise pas. Le travail se fait dans les
+dépôts de code, et c'est là qu'il doit devenir visible — sans quoi il se
+développe sur une branche que rien ne relie au cadrage, avec des commits que rien
+ne rattache à une demande, et une demande de fusion qui ne ferme rien.
+
+**Une issue par dépôt de code impacté**, ouverte au moment où la demande de fusion
+du cadrage l'est.
+
+- **Pas plus tôt** : l'issue cite le cadrage, et une URL qui ne mène nulle part
+  vaut moins qu'un lien absent.
+- **Pas plus tard** : c'est le numéro de l'issue qui nomme la branche et préfixe
+  les commits. Une branche déjà commencée ne se renomme plus sans casser ce qui la
+  référence — et personne ne rouvre le sujet une fois le code écrit.
+
+Les dépôts impactés se prennent parmi les `DEPOT_CODE` de l'étape 0 : ceux qui
+portent réellement du travail, non ceux qu'on a seulement lus pour comprendre.
+
+### Ce qu'une issue porte
+
+**Le besoin. Ni la solution, ni les règles.** Une issue qui recopie le cadrage
+crée un second texte sur le même sujet : il divergera, et rien ne dira lequel fait
+foi. C'est précisément ce que le référentiel existe pour éviter.
+
+| Élément | Contenu |
+|---|---|
+| titre | ce que ce dépôt doit permettre, en une ligne |
+| rattachements | le lien de la carte, et celui de la demande de fusion du cadrage |
+| le besoin | ce qui n'est pas possible aujourd'hui, ce qu'on veut, **restreint au périmètre de ce dépôt** |
+| ce qu'il doit fournir | le contrat que les autres dépôts attendent de lui — le quoi, jamais le comment |
+| hors périmètre | ce qui se traite ailleurs, avec le renvoi vers le dépôt ou l'issue qui s'en charge |
+
+Un chantier découpé en lots le dit, avec l'ordre de dépendance : qui prend le
+lot 2 doit savoir qu'il attend le lot 1.
+
+### Laisser le dépôt de code décider de ses conventions
+
+Un dépôt a ses usages — nommage de branche, gabarit d'issue, étiquettes, façon de
+préparer le répertoire de travail. **S'il porte un skill d'ouverture de chantier**
+— typiquement `.claude/skills/issue/` —, l'invoquer et le suivre : il les connaît,
+ce skill-ci ne les connaît pas.
+
+À défaut, créer l'issue directement, puis la branche selon la convention que les
+branches existantes du dépôt donnent à lire :
+
+```bash
+gh issue create --repo <organisation>/<depot> --title "<titre>" --body-file <fichier>
+```
+
+Passer le corps par `--body-file` : un `--body` en ligne casse sur les accents
+graves et les caractères accentués.
+
+### Reposer le lien dans le cadrage
+
+Les issues créées, le cadrage doit les porter — sans quoi le rattachement n'existe
+que du côté qu'on ne consulte pas :
+
+```yaml
+liens:
+  - { tag: carte_trello, url: 'https://trello.com/c/xY2kAbCd' }
+  - { tag: issue_github, nom: depot-back#131, url: 'https://github.com/<organisation>/depot-back/issues/131' }
+```
+
+Cela s'écrit dans l'espace de l'étape 2, sur la branche du cadrage, et se pousse
+sur la demande de fusion déjà ouverte — **tant qu'elle n'est pas fusionnée**. Un
+cadrage livré ne se réécrit pas : un chantier ouvert après la livraison garde son
+lien du seul côté des issues, et c'est le comportement attendu, non un manque à
+combler.
+
+Le tag doit être déclaré dans les `tags_liens` du `ssk-canon.yml`. S'il ne l'est
+pas, le proposer plutôt que d'en inventer un autre : la vérification refuse un tag
+inconnu, et ce refus n'apparaît qu'au moment de livrer.
+
+### Rien sans validation
+
+Ce geste porte plus loin que tous ceux de l'étape 7 : il écrit dans un dépôt qui
+n'est pas celui du cadrage, et une issue est visible par toute l'équipe. **Il ne
+se fait jamais d'office**, quel que soit le niveau d'`ARRET` — qui ne règle que le
+dépôt de cadrage. Proposer, en nommant les dépôts retenus et les titres exacts, et
+attendre.
+
+Si la demande de fusion du cadrage n'a pas été ouverte — `ARRET` inférieur à `pr`,
+ou arrêt voulu —, il n'y a rien à citer : le dire, et donner la commande qui
+l'ouvrirait.
 
 ## Ce qu'un bon cadrage a, et qu'un mauvais n'a pas
 
