@@ -6,6 +6,10 @@
 # Deux propriétés du propagateur rendent ce déclenchement systématique sûr :
 # il est idempotent, donc une exécution sans changement n'écrit rien ; et il est
 # tout-ou-rien, donc une incohérence l'arrête avant la première écriture.
+#
+# C'est aussi lui qui répond de la branche principale : il vérifie le référentiel
+# qu'il vient d'écrire, seul moment où l'état final peut l'être — l'enregistrement
+# qu'il pousse, fait par le jeton de l'automatisation, ne déclenche aucun workflow.
 name: Propagation des impacts
 
 on:

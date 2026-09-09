@@ -99,6 +99,16 @@ runs:
 
         if [ "${{ inputs.appliquer }}" = "true" ]; then
           node src/propagate.mjs "$CIBLE" | tee "${RUNNER_TEMP}/propagation.log"
+
+          # Ce que la propagation vient d'écrire n'est vérifié nulle part
+          # ailleurs : son enregistrement est poussé par le jeton de
+          # l'automatisation, et une poussée faite par ce jeton ne déclenche
+          # aucun workflow. Ici, dans la même exécution, est le seul moment où
+          # l'état final peut être lu — RG-propagation-verifiee.
+          # « HEAD » et non la valeur par défaut : c'est la référence que le
+          # propagateur lui-même tient pour la livraison, et deux notions
+          # différentes de « livré » se contrediraient à une poussée près.
+          node src/check.mjs "$CIBLE" --base HEAD
         else
           # La vérification compare à la branche principale : c'est le seul mode
           # où l'immuabilité d'un cadrage livré peut se contrôler, l'écart entre
@@ -108,7 +118,16 @@ runs:
             SANS_IMMUABILITE="--sans-immuabilite"
             echo "::warning::Contrôle d'immuabilité suspendu — un cadrage livré peut être modifié."
           fi
-          node src/check.mjs "$CIBLE" --base "${{ inputs.base }}" $SANS_IMMUABILITE | tee "${RUNNER_TEMP}/propagation.log"
+          # Une demande proposée à la relecture annonce sa livraison : on lui
+          # réclame dès lors ce que la fusion exigera, tant qu'il est encore
+          # temps de l'écrire. Un brouillon en est dispensé — RG-controle-de-livraison.
+          LIVRAISON=""
+          if [ "${{ github.event_name }}" = "pull_request" ] \
+             && [ "${{ github.event.pull_request.draft }}" != "true" ]; then
+            LIVRAISON="--livraison"
+          fi
+          node src/check.mjs "$CIBLE" --base "${{ inputs.base }}" $SANS_IMMUABILITE $LIVRAISON \
+            | tee "${RUNNER_TEMP}/propagation.log"
         fi
 
         # « N règle(s) écrites » ou « rien à propager »

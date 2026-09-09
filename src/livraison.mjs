@@ -65,6 +65,53 @@ export function listFichiersModifies(root, ref = 'origin/main') {
 }
 
 /**
+ * Cadrages qu'une demande de fusion porte — ceux que sa fusion livrerait.
+ *
+ * Rend `null` quand la comparaison échoue, comme `listFichiersModifies` : ne pas
+ * savoir ce que la demande porte ne se confond pas avec une demande qui ne porte
+ * aucun cadrage, où le contrôle de livraison n'aurait rien à dire.
+ *
+ * @param {string} root racine du dépôt
+ * @param {string} ref référence de comparaison, typiquement `origin/main`
+ * @returns {Set<string> | null}
+ */
+export function listCadragesPortes(root, ref = 'origin/main') {
+  const fichiers = listFichiersModifies(root, ref);
+  if (fichiers === null) return null;
+
+  const ids = new Set();
+  for (const chemin of [...fichiers, ...listFichiersEnCours(root)]) {
+    const parts = chemin.split('/');
+    if (parts[0] === 'cadrages' && parts.length > 1) ids.add(parts[1]);
+  }
+  return ids;
+}
+
+/**
+ * Fichiers de l'arbre de travail que le dernier enregistrement ne porte pas
+ * encore — modifiés ou pas même suivis.
+ *
+ * Sur une exécution d'intégration continue, l'arbre est propre et cette liste
+ * est vide : elle n'existe que pour la vérification lancée à la main, où le
+ * cadrage qu'on vient d'écrire n'est souvent pas encore enregistré. Sans elle,
+ * le contrôle de livraison se tairait au moment précis où il servirait le plus.
+ */
+function listFichiersEnCours(root) {
+  // `-uall` : sans lui, un répertoire entièrement non suivi est rapporté comme
+  // répertoire — « cadrages/ » plutôt que les cadrages qu'il contient — et le
+  // premier cadrage d'un référentiel neuf échapperait au contrôle.
+  const sortie = git(root, ['status', '--porcelain', '-uall']);
+  if (sortie === null) return [];
+
+  return sortie
+    .split('\n')
+    .map((l) => l.slice(3).trim())
+    // un renommage s'écrit « ancien -> nouveau » : c'est le nouveau qui compte
+    .map((l) => l.split(' -> ').pop())
+    .filter(Boolean);
+}
+
+/**
  * Cadrages livrés qu'une demande de fusion modifie — ce que RG-cadrage-livre-immuable
  * interdit.
  *

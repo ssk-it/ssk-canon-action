@@ -471,6 +471,106 @@ test('le contrôle d’immuabilité se suspend, sans emporter les autres', (raci
   );
 });
 
+// --- contrôle de livraison ---
+//
+// Le défaut qu'ils protègent s'est produit deux fois : un cadrage créant une
+// règle dont le fichier manquait a été fusionné, la propagation s'est arrêtée
+// tout-ou-rien, et personne ne l'a su avant que la demande de fusion suivante,
+// sans rapport, n'hérite des erreurs.
+
+test('le contrôle de livraison refuse une règle créée sans son fichier', (racine) => {
+  socle(racine);
+  livrer(racine);
+  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+
+  // le cadrage de la demande de fusion : pas encore livré, et sa règle n'a pas
+  // de fichier dans rules/
+  ecrireCadrage(racine, '2026-001', false, [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+  livrer(racine);
+
+  const ordinaire = check(racine, { base });
+  assert(
+    ordinaire.errors.length === 0,
+    `la vérification ordinaire n’a rien à dire ici : ${ordinaire.errors.join(' | ')}`,
+  );
+
+  const { errors } = check(racine, { base, livraison: true });
+  assert(
+    errors.some((e) => e.includes('à la livraison') && e.includes('RG-a')),
+    `la règle sans fichier n’est pas signalée : ${errors.join(' | ')}`,
+  );
+});
+
+test('le contrôle de livraison se tait quand le fichier est là', (racine) => {
+  socle(racine);
+  livrer(racine);
+  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+
+  // `cree_par: null` et « À propager. » : ce que le rédacteur écrit, la
+  // propagation faisant le reste après la fusion
+  ecrireRegle(racine, 'RG-a', 'À propager.');
+  ecrireCadrage(racine, '2026-001', false, [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+  livrer(racine);
+
+  const { errors } = check(racine, { base, livraison: true });
+  assert(errors.length === 0, `erreurs inattendues : ${errors.join(' | ')}`);
+});
+
+test('le contrôle de livraison n’exige pas ce que la propagation produira', (racine) => {
+  socle(racine);
+  ecrireRegle(racine, 'RG-a', 'Un énoncé déjà propagé.', { cree_par: '2026-001' });
+  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé déjà propagé.',
+  });
+  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+
+  // un second cadrage modifie la règle : `modifie_par` ne le porte pas encore,
+  // et n'a pas à le porter avant la propagation
+  ecrireCadrage(racine, '2026-002', false, [{ regle: 'RG-a', operation: 'modifie' }], {
+    'RG-a': 'Un énoncé repris.',
+  });
+  livrer(racine);
+
+  const { errors } = check(racine, { base, livraison: true });
+  assert(
+    !errors.some((e) => e.includes('modifie_par')),
+    `les index dérivés sont réclamés trop tôt : ${errors.join(' | ')}`,
+  );
+});
+
+test('le contrôle de livraison voit un cadrage pas encore enregistré', (racine) => {
+  socle(racine);
+  livrer(racine);
+  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+
+  // écrit, non enregistré : le cas de la vérification lancée à la main, où le
+  // contrôle servirait le plus
+  ecrireCadrage(racine, '2026-001', false, [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+
+  const { errors } = check(racine, { base, livraison: true });
+  assert(
+    errors.some((e) => e.includes('à la livraison') && e.includes('RG-a')),
+    `un cadrage non enregistré échappe au contrôle : ${errors.join(' | ')}`,
+  );
+});
+
+test('une base hors d’atteinte se signale, plutôt que de se taire', (racine) => {
+  socle(racine);
+  livrer(racine);
+
+  const { errors } = check(racine, { base: 'origine/inconnue', livraison: true });
+  assert(
+    errors.some((e) => e.includes('livraison') && e.includes("hors d'atteinte")),
+    `le contrôle manquant n’est pas signalé : ${errors.join(' | ')}`,
+  );
+});
+
 // --- rapport ---
 
 console.log(`${reussis} test(s) réussi(s)`);

@@ -4,12 +4,13 @@
 // système de fichiers et s'exécute aussi dans un navigateur. Ce module ne fait
 // que charger le dépôt et lui passer le relais.
 //
-//   node src/check.mjs [chemin-du-depot] [--base <ref>] [--sans-immuabilite]
+//   node src/check.mjs [chemin-du-depot] [--base <ref>] [--sans-immuabilite] [--livraison]
 
 import { loadRepo } from './parse.mjs';
 import { checkRepo } from './verifier.mjs';
 import {
   listCadragesLivres,
+  listCadragesPortes,
   listFichiersModifies,
   findCadragesLivresModifies,
 } from './livraison.mjs';
@@ -18,10 +19,10 @@ export { checkRepo };
 
 /**
  * @param {string} root
- * @param {{ ignorerIndexDerives?: boolean, livres?: Set<string>, base?: string, immuabilite?: boolean }} [options]
+ * @param {{ ignorerIndexDerives?: boolean, livres?: Set<string>, base?: string, immuabilite?: boolean, livraison?: boolean }} [options]
  */
 export function check(root, options = {}) {
-  const { base, livres: livresFournis, immuabilite = true, ...reste } = options;
+  const { base, livres: livresFournis, immuabilite = true, livraison = false, ...reste } = options;
 
   // Le statut d'un cadrage n'est pas déclaré : il se déduit du dépôt, et la
   // branche principale est ce qui établit la livraison. Hors dépôt Git — un
@@ -42,7 +43,53 @@ export function check(root, options = {}) {
   const erreursImmuabilite =
     base && immuabilite ? checkImmuabilite(root, base, livres) : [];
 
-  return { ...resultat, errors: [...resultat.errors, ...erreursImmuabilite] };
+  // Ce que la fusion exigera, réclamé tant qu'il est encore temps de l'écrire —
+  // RG-controle-de-livraison.
+  const erreursLivraison = livraison && base ? checkLivraison(root, base, livres, resultat) : [];
+
+  return {
+    ...resultat,
+    errors: [...resultat.errors, ...erreursImmuabilite, ...erreursLivraison],
+  };
+}
+
+/**
+ * Contrôle l'état qu'aura le référentiel une fois la demande de fusion fusionnée
+ * — RG-controle-de-livraison.
+ *
+ * Le référentiel est relu en tenant pour livrés les cadrages que la demande
+ * porte, et seules les erreurs que cette hypothèse fait apparaître sont
+ * rapportées : les autres ont déjà été dites par la vérification ordinaire, et
+ * les répéter ferait douter de leur nombre.
+ *
+ * Les index dérivés sont exclus : `cree_par` et `modifie_par` sont écrits par la
+ * propagation, après la fusion. Les exiger avant reviendrait à réclamer au
+ * rédacteur ce que la machine doit produire.
+ */
+function checkLivraison(root, base, livres, dejaVu) {
+  const portes = listCadragesPortes(root, base);
+
+  // Ne pas savoir ce que la demande porte n'est pas une demande sans cadrage :
+  // le contrôle n'a pas eu lieu, et se taire le rendrait silencieusement
+  // inapplicable — le même piège que l'immuabilité sans historique.
+  if (portes === null)
+    return [
+      `livraison : « ${base} » est hors d'atteinte, le contrôle n'a pas pu ` +
+        `avoir lieu — récupérer l'historique avec « fetch-depth: 0 »`,
+    ];
+
+  const nouveaux = [...portes].filter((id) => !livres.has(id));
+  if (!nouveaux.length) return [];
+
+  const apresFusion = checkRepo(loadRepo(root), {
+    livres: new Set([...livres, ...nouveaux]),
+    ignorerIndexDerives: true,
+  });
+
+  const connues = new Set(dejaVu.errors);
+  return apresFusion.errors
+    .filter((e) => !connues.has(e))
+    .map((e) => `à la livraison : ${e}`);
 }
 
 /**
@@ -95,6 +142,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const { errors, warnings, counts } = check(root, {
     ...(base ? { base } : {}),
     immuabilite: !args.includes('--sans-immuabilite'),
+    livraison: args.includes('--livraison'),
   });
 
   console.log(
