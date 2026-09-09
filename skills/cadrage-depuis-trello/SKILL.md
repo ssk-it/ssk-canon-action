@@ -1,6 +1,6 @@
 ---
 name: cadrage-depuis-trello
-description: Part d'une carte Trello pour rédiger un cadrage dans le référentiel SSK Canon — lit le titre, la description, les checklists, les commentaires et les pièces jointes de la carte, puis enchaîne sur le skill cadrage-canon et repose en commentaire sur la carte le lien du cadrage obtenu. À utiliser quand l'utilisateur donne une URL de carte Trello et demande de la cadrer, dit "cadre cette carte", "cadre ce ticket", ou colle un lien trello.com/c/.
+description: Part d'une carte Trello pour rédiger un cadrage dans le référentiel SSK Canon — lit le titre, la description, les checklists, les commentaires et les pièces jointes de la carte, puis enchaîne sur le skill cadrage-canon, repose en commentaire sur la carte le lien du cadrage obtenu, et fait suivre l'URL de la carte jusqu'aux issues des dépôts de code. À utiliser quand l'utilisateur donne une URL de carte Trello et demande de la cadrer, dit "cadre cette carte", "cadre ce ticket", ou colle un lien trello.com/c/.
 ---
 
 # Cadrer depuis une carte Trello
@@ -254,6 +254,22 @@ bruit, et le bruit fait finir par ignorer la colonne entière.
 
 Un cadrage repris à l'étape 3 garde donc son commentaire d'origine, puisque
 l'URL de sa demande de fusion n'a pas changé. Rien à refaire.
+
+## 7. La carte suit jusqu'aux issues
+
+Le lien de la carte ne s'arrête pas au cadrage. Les issues ouvertes sur les
+dépôts de code le portent aussi, en tête de leur corps : c'est par là qu'un
+développeur remonte au besoin d'origine sans avoir à traverser le référentiel, et
+c'est le seul rattachement qu'un dépôt de code conserve une fois le cadrage
+livré.
+
+Le passer donc à l'étape 8 de `cadrage-canon`, avec l'URL de la demande de fusion
+du cadrage. Les deux ouvrent l'issue :
+
+```markdown
+Carte : https://trello.com/c/xY2kAbCd
+Cadrage : <url de la demande de fusion>
+```
 
 ## Ce qu'une carte donne, et ce qu'elle ne donne pas
 

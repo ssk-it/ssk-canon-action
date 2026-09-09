@@ -247,6 +247,11 @@ règle globalement ou par projet, celui du projet primant :
 }
 ```
 
+L'ouverture du chantier — une issue par dépôt de code impacté, une fois la
+demande de fusion du cadrage ouverte — ne relève pas de ce réglage : elle écrit
+dans un autre dépôt que le référentiel, et ne se fait donc jamais sans validation
+explicite, quel que soit l'`arret`.
+
 Rien n'est à configurer dans les dépôts de code : le skill reconnaît le dépôt
 courant à son `origin`, et cherche le projet dont le `ssk-canon.yml` déclare ce
 dépôt. Le lien est ainsi déclaré une seule fois, du côté qui a autorité :
