@@ -110,9 +110,9 @@ attendu, ni pour du travail de pure forme.
 S'il n'y a rien à décider, le dire plutôt que d'inventer un cadrage creux.
 
 Si la demande n'est pas encore instruite — on sait qu'on veut quelque chose, on
-ne sait pas encore quoi — c'est un cadrage en **brouillon** qui convient, avec
-son objectif et ses questions ouvertes. Le statut dit où en est le travail, il ne
-prétend pas qu'il est fini.
+ne sait pas encore quoi — un cadrage réduit à son objectif et à ses questions
+ouvertes convient : tant qu'il vit sur sa branche, il est en brouillon, et ne
+prétend pas être fini.
 
 ## 2. Préparer un espace de travail
 
@@ -173,7 +173,6 @@ fichier.
 ---
 id: 2026-001
 titre: Ce que ce cadrage change, en une ligne
-statut: brouillon
 domaines: [contrats, salaries]
 liens:
   - { tag: issue_github, url: 'https://github.com/<organisation>/<depot-de-code>/issues/131' }
@@ -212,7 +211,6 @@ qu'on relira dans six mois quand quelqu'un voudra changer la règle.
 |---|---|
 | `id` | l'identifiant, identique au nom du répertoire |
 | `titre` | ce que le cadrage change, en une ligne |
-| `statut` | `brouillon`, `en_relecture`, `validee` ou `livree` |
 | `domaines` | les domaines touchés, par leur identifiant |
 | `liens` | l'issue, la carte, la maquette — tags dans `ssk-canon.yml` |
 | `impacts` | les règles touchées, et comment |
@@ -220,6 +218,16 @@ qu'on relira dans six mois quand quelqu'un voudra changer la règle.
 **Un titre contenant `:` doit être entre apostrophes.** YAML lit sinon les
 deux-points comme un séparateur, et le fichier devient illisible — la faute la
 plus fréquente du format.
+
+**Le statut ne se déclare pas.** Il se déduit de l'état du dépôt — une branche
+ouverte dit un brouillon, une demande de fusion prête à relire dit une relecture,
+la fusion dit la livraison. L'écrire dans le fichier en ferait une seconde source
+pour un fait que le dépôt porte déjà, et les deux finiraient par se contredire :
+un cadrage fusionné mais resté `brouillon` dans son texte ne dit plus lequel des
+deux croire. La vérification refuse donc un cadrage qui déclare son statut.
+
+Les **règles** et les **décisions**, elles, portent bien un statut : il ne se
+déduit d'aucun état du dépôt.
 
 ### Les opérations d'impact
 
@@ -407,9 +415,9 @@ Une fois la demande fusionnée, l'espace ne sert plus :
 git -C <CADRAGE_RETENU> worktree remove <ESPACE>
 ```
 
-Le statut passe à `livree` **au moment de la livraison**, pas avant : c'est la
-fusion qui l'établit, et l'automatisation qui projette alors les énoncés dans
-`rules/`.
+Le cadrage devient `livree` **par la fusion elle-même**, sans que rien n'ait à
+être écrit : c'est elle qui l'établit, et l'automatisation qui projette alors les
+énoncés dans `rules/`.
 
 ## 8. Ouvrir le chantier sur les dépôts de code
 
