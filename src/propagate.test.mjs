@@ -708,6 +708,82 @@ test('un cadrage mixte touche règle et architecture d’un même mouvement', (r
   );
 });
 
+// --- préfixe de projet ---
+//
+// Le préfixe est une voie d'accès supplémentaire, pas un identifiant : il ne
+// change rien à ce qui est stocké. Ce qui est éprouvé ici est donc surtout ce
+// qu'il ne fait pas — et qu'un préfixe mal formé est refusé tôt, plutôt que de
+// se découvrir à l'affichage, là où plus rien ne peut le corriger.
+
+/** Écrit la configuration du projet, avec ou sans préfixe. */
+function ecrireConfig(racine, prefixe) {
+  const lignes = ['schema_version: 1', 'projet:', '  nom: Essai'];
+  if (prefixe !== undefined) lignes.push(`  prefixe: ${prefixe}`);
+  writeFileSync(join(racine, 'ssk-canon.yml'), `${lignes.join('\n')}\n`);
+}
+
+test('accepte un projet sans préfixe', (racine) => {
+  socle(racine);
+  ecrireConfig(racine);
+  livrer(racine);
+
+  const { errors } = check(racine);
+  assert(errors.length === 0, `un projet sans préfixe est refusé : ${errors.join(' | ')}`);
+});
+
+test('accepte un préfixe bien formé', (racine) => {
+  socle(racine);
+  ecrireConfig(racine, 'PRMCO');
+  livrer(racine);
+
+  const { errors } = check(racine);
+  assert(errors.length === 0, `un préfixe valide est refusé : ${errors.join(' | ')}`);
+});
+
+test('refuse un préfixe qui rendrait un identifiant ambigu', (racine) => {
+  socle(racine);
+  // Un préfixe contenant un tiret ne se distingue plus de la séparation qu'il
+  // introduit : « A-B-2026-001 » ne dit plus où finit le préfixe.
+  ecrireConfig(racine, 'PRM-CO');
+  livrer(racine);
+
+  const { errors } = check(racine);
+  assert(
+    errors.some((e) => e.includes('prefixe')),
+    `un préfixe ambigu passe la vérification : ${errors.join(' | ')}`,
+  );
+});
+
+test('refuse un préfixe qui se lirait comme une année', (racine) => {
+  socle(racine);
+  // « 2026-2026-001 » : rien ne dirait lequel des deux est l'identifiant.
+  ecrireConfig(racine, '2026');
+  livrer(racine);
+
+  const { errors } = check(racine);
+  assert(
+    errors.some((e) => e.includes('prefixe')),
+    `un préfixe numérique passe la vérification : ${errors.join(' | ')}`,
+  );
+});
+
+test('le préfixe ne change rien à ce qui est stocké', (racine) => {
+  socle(racine);
+  ecrireConfig(racine, 'PRMCO');
+  ecrireRegle(racine, 'RG-a', 'À propager.');
+  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+
+  propager(racine);
+
+  // L'identifiant reste nu partout : le préfixe s'ajoute à l'affichage, et
+  // l'écrire ici romprait les références déjà posées hors du dépôt.
+  const ecrit = readFileSync(join(racine, 'rules/RG-a.md'), 'utf8');
+  assert(ecrit.includes('cree_par: 2026-001'), `index préfixé à tort : ${ecrit}`);
+  assert(!ecrit.includes('PRMCO'), 'le préfixe a fui dans le référentiel');
+});
+
 // --- rapport ---
 
 console.log(`${reussis} test(s) réussi(s)`);

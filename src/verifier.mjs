@@ -33,6 +33,17 @@ export const CIBLES = [
 ];
 
 /**
+ * Un préfixe de projet, tel qu'il peut précéder un identifiant.
+ *
+ * Ni tiret ni chiffre en tête, pour une même raison : le préfixe est séparé de
+ * l'identifiant par un tiret, et l'identifiant commence par une année. Un
+ * préfixe « PRM-CO » ou « 2026 » rendrait « PRM-CO-2026-001 » et
+ * « 2026-2026-001 » impossibles à découper sans deviner — et deviner, ici,
+ * mènerait au mauvais cadrage.
+ */
+const FORME_PREFIXE = /^[A-Za-z][A-Za-z0-9_]*$/;
+
+/**
  * Ce qu'un impact vise, quelle que soit la nature.
  *
  * Un impact qui n'en désigne aucune est une erreur de saisie, distinguée d'une
@@ -66,6 +77,14 @@ export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set(
   const { domains, features, rules, cadrages, errors: problems } = repo;
   const errors = [...problems];
   const warnings = [];
+
+  // --- configuration du projet ---
+  const prefixe = repo.config?.projet?.prefixe;
+  if (prefixe !== undefined && !FORME_PREFIXE.test(String(prefixe)))
+    errors.push(
+      `ssk-canon.yml → prefixe « ${prefixe} » : attendu des lettres, chiffres ou « _ », ` +
+        `commençant par une lettre`,
+    );
 
   /** Un cadrage est livré si la branche principale le porte, et rien d'autre. */
   const estLivre = (id) => livres.has(id);
