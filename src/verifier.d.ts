@@ -6,6 +6,13 @@
 
 /** Un référentiel chargé, quelle qu'en soit la provenance. */
 export interface RepoVerifiable {
+  /**
+   * La configuration du projet, telle que `ssk-canon.yml` la porte.
+   *
+   * Absente, rien de ce qui en dépend n'est contrôlé : un référentiel vérifié
+   * hors de son dépôt reste vérifiable.
+   */
+  readonly config?: { readonly projet?: { readonly prefixe?: string } } | null;
   readonly domains: ReadonlyMap<string, unknown>;
   readonly features: ReadonlyMap<string, unknown>;
   readonly rules: ReadonlyMap<string, unknown>;
