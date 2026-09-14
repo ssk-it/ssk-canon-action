@@ -571,6 +571,143 @@ test('une base hors d’atteinte se signale, plutôt que de se taire', (racine) 
   );
 });
 
+// --- cibles d'architecture ---
+//
+// Un impact peut viser une décision d'architecture ou un document
+// d'architecture, et non plus seulement une règle de gestion. Ce qui est
+// éprouvé ici n'est pas que le champ est lu, mais que les nouvelles cibles
+// traversent la chaîne entière — chargement, vérification, propagation —
+// exactement comme une règle. Une cible acceptée à la saisie mais ignorée par
+// la propagation serait le pire des deux mondes : un cadrage livré sans effet.
+
+/** Écrit un cadrage dont les impacts visent des cibles quelconques. */
+function ecrireCadrageCible(racine, id, livre, impacts, enonces = {}) {
+  mkdirSync(join(racine, 'cadrages', id), { recursive: true });
+  const lignesImpacts = impacts
+    .map((i) => {
+      const [cle, valeur] = Object.entries(i).find(([k]) => k !== 'operation');
+      return `  - { ${cle}: ${valeur}, operation: ${i.operation} }`;
+    })
+    .join('\n');
+  const sections = Object.entries(enonces)
+    .map(([r, t]) => `### ${r}\n\n${t}\n`)
+    .join('\n');
+  writeFileSync(
+    join(racine, 'cadrages', id, 'cadrage.md'),
+    `---\nid: ${id}\ntitre: Cadrage ${id}\ndomaines: [d]\nimpacts:\n${lignesImpacts}\n---\n\n## Objectif\n\nUn objectif.\n\n## Énoncés\n\n${sections}`,
+  );
+  if (livre === 'livree' || livre === true) livrer(racine);
+}
+
+/** Écrit une cible d'architecture — décision ou document. */
+function ecrireCible(racine, repertoire, id, corps, frontmatter = {}) {
+  mkdirSync(join(racine, repertoire), { recursive: true });
+  const fm = {
+    id,
+    ...(repertoire === 'architecture' ? { nature: 'composant' } : {}),
+    statut: 'actif',
+    cree_par: 'null',
+    modifie_par: '[]',
+    ...frontmatter,
+  };
+  const lignes = Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join('\n');
+  writeFileSync(join(racine, repertoire, `${id}.md`), `---\n${lignes}\n---\n\n${corps}\n`);
+}
+
+test('propage un énoncé vers une décision d’architecture', (racine) => {
+  socle(racine);
+  ecrireCible(racine, 'decisions', 'ADR-stockage', 'À propager.');
+  ecrireCadrageCible(
+    racine,
+    '2026-001',
+    'livree',
+    [{ adr: 'ADR-stockage', operation: 'cree' }],
+    { 'ADR-stockage': 'Le stockage est objet.' },
+  );
+
+  propager(racine);
+
+  const ecrit = readFileSync(join(racine, 'decisions/ADR-stockage.md'), 'utf8');
+  assert(ecrit.includes('Le stockage est objet.'), 'énoncé non propagé vers la décision');
+  assert(ecrit.includes('cree_par: 2026-001'), 'index cree_par non renseigné sur la décision');
+});
+
+test('propage un énoncé vers un document d’architecture', (racine) => {
+  socle(racine);
+  ecrireCible(racine, 'architecture', 'FLX-export', 'À propager.', { nature: 'flux' });
+  ecrireCadrageCible(
+    racine,
+    '2026-001',
+    'livree',
+    [{ architecture: 'FLX-export', operation: 'cree' }],
+    { 'FLX-export': 'Un export nocturne.' },
+  );
+
+  propager(racine);
+
+  const ecrit = readFileSync(join(racine, 'architecture/FLX-export.md'), 'utf8');
+  assert(ecrit.includes('Un export nocturne.'), 'énoncé non propagé vers le document');
+  assert(ecrit.includes('cree_par: 2026-001'), 'index cree_par non renseigné sur le document');
+});
+
+test('un impact « cree » sur une cible d’architecture exige son énoncé', (racine) => {
+  socle(racine);
+  ecrireCible(racine, 'decisions', 'ADR-sans-enonce', 'À propager.');
+  ecrireCadrageCible(racine, '2026-001', false, [
+    { adr: 'ADR-sans-enonce', operation: 'cree' },
+  ]);
+
+  const { errors } = check(racine);
+  assert(
+    errors.some((e) => e.includes('ADR-sans-enonce') && e.includes('énoncé')),
+    `l’énoncé manquant n’est pas exigé : ${errors.join(' | ')}`,
+  );
+});
+
+test('une cible d’architecture inconnue est signalée', (racine) => {
+  socle(racine);
+  ecrireCadrageCible(
+    racine,
+    '2026-001',
+    false,
+    [{ adr: 'ADR-fantome', operation: 'modifie' }],
+    { 'ADR-fantome': 'Un texte.' },
+  );
+
+  const { errors } = check(racine);
+  assert(
+    errors.some((e) => e.includes('ADR-fantome')),
+    `une cible inexistante passe la vérification : ${errors.join(' | ')}`,
+  );
+});
+
+test('un cadrage mixte touche règle et architecture d’un même mouvement', (racine) => {
+  socle(racine);
+  ecrireRegle(racine, 'RG-a', 'À propager.');
+  ecrireCible(racine, 'decisions', 'ADR-b', 'À propager.');
+  ecrireCadrageCible(
+    racine,
+    '2026-001',
+    'livree',
+    [
+      { regle: 'RG-a', operation: 'cree' },
+      { adr: 'ADR-b', operation: 'cree' },
+    ],
+    { 'RG-a': 'Une règle.', 'ADR-b': 'Une décision.' },
+  );
+
+  propager(racine);
+
+  assert(
+    readFileSync(join(racine, 'rules/RG-a.md'), 'utf8').includes('Une règle.'),
+    'la règle du cadrage mixte n’a pas été propagée',
+  );
+  assert(
+    readFileSync(join(racine, 'decisions/ADR-b.md'), 'utf8').includes('Une décision.'),
+    'la décision du cadrage mixte n’a pas été propagée',
+  );
+});
+
 // --- rapport ---
 
 console.log(`${reussis} test(s) réussi(s)`);
