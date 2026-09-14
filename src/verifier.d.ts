@@ -9,6 +9,14 @@ export interface RepoVerifiable {
   readonly domains: ReadonlyMap<string, unknown>;
   readonly features: ReadonlyMap<string, unknown>;
   readonly rules: ReadonlyMap<string, unknown>;
+  /**
+   * Les cibles d'architecture, quand le référentiel en porte.
+   *
+   * Absentes, elles se lisent comme vides : tout impact les visant serait alors
+   * signalé comme inconnu, alors que c'est la collection qui manque.
+   */
+  readonly decisions?: ReadonlyMap<string, unknown>;
+  readonly architecture?: ReadonlyMap<string, unknown>;
   readonly cadrages: ReadonlyMap<string, unknown>;
   /** Erreurs déjà rencontrées au chargement, reprises telles quelles. */
   readonly errors?: readonly string[];
@@ -33,6 +41,14 @@ export interface OptionsVerification {
    * rendrait toute désynchronisation impossible à corriger.
    */
   readonly ignorerIndexDerives?: boolean;
+  /**
+   * Les cadrages tenus pour livrés.
+   *
+   * Un cadrage ne déclare pas son statut : il se déduit de l'état du dépôt, que
+   * seul l'appelant sait lire — la branche principale pour l'Action, la
+   * plateforme pour le navigateur.
+   */
+  readonly livres?: ReadonlySet<string>;
 }
 
 export function checkRepo(
