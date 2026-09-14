@@ -1,0 +1,27 @@
+# Surveillance des dépendances.
+#
+# Un seul manifeste, à la racine : ce dépôt publie un paquet, il n'assemble pas
+# une application.
+#
+# Regroupement des correctifs mineurs : une demande de fusion par dépendance
+# noierait les mises à jour qui comptent — celles qui corrigent une faille —
+# sous celles qui ne changent rien.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      mineures:
+        update-types: [minor, patch]
+
+  # Les actions employées par les workflows : une version épinglée qui se périme
+  # est une chaîne de construction qui cesse d'être reproductible. Ce dépôt est
+  # lui-même une action, consommée par les dépôts cadrés : ce qu'il emploie
+  # devient leur dépendance.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
