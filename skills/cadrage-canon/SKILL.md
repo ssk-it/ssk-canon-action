@@ -179,6 +179,7 @@ liens:
 impacts:
   - { regle: RG-avenant-motif-obligatoire, operation: cree }
   - { regle: RG-duree-periode-essai, operation: modifie }
+  - { adr: ADR-stockage-pieces-jointes, operation: cree }
 ---
 
 ## Objectif
@@ -213,7 +214,7 @@ qu'on relira dans six mois quand quelqu'un voudra changer la règle.
 | `titre` | ce que le cadrage change, en une ligne |
 | `domaines` | les domaines touchés, par leur identifiant |
 | `liens` | l'issue, la carte, la maquette — tags dans `ssk-canon.yml` |
-| `impacts` | les règles touchées, et comment |
+| `impacts` | les cibles touchées, et comment |
 
 **Un titre contenant `:` doit être entre apostrophes.** YAML lit sinon les
 deux-points comme un séparateur, et le fichier devient illisible — la faute la
@@ -229,11 +230,32 @@ deux croire. La vérification refuse donc un cadrage qui déclare son statut.
 Les **règles** et les **décisions**, elles, portent bien un statut : il ne se
 déduit d'aucun état du dépôt.
 
+### Ce qu'un impact peut viser
+
+Un impact désigne ce qu'il change, par le champ qui en dit la nature :
+
+| Champ | Ce qu'il vise | Où la cible vit |
+|---|---|---|
+| `regle` | une règle de gestion — ce que le produit fait | `rules/<id>.md` |
+| `adr` | une décision d'architecture — pourquoi il est construit ainsi | `decisions/<id>.md` |
+| `architecture` | un document d'architecture — composant, flux, contexte | `architecture/<id>.md` |
+
+**Un cadrage peut viser plusieurs natures à la fois.** C'est le cas courant
+d'une évolution qui change ce que l'utilisateur peut faire *et* la manière dont
+le système le réalise : les deux sont alors livrés d'un seul mouvement, ce qui
+est précisément ce qu'un référentiel séparé aurait empêché.
+
+Un document d'architecture déclare sa `nature` — `composant`, `flux` ou
+`contexte` — et, pour un flux, les `composants` qu'il relie. La relation inverse
+se calcule de ces références : rien n'est à tenir sur le composant.
+
 ### Les opérations d'impact
+
+Les quatre opérations valent pour les trois natures, sans différence :
 
 | Opération | Quand | Énoncé |
 |---|---|---|
-| `cree` | la règle naît de ce cadrage | **obligatoire** |
+| `cree` | la cible naît de ce cadrage | **obligatoire** |
 | `modifie` | son texte change | **obligatoire** |
 | `abroge` | elle ne s'applique plus | facultatif, mais dire pourquoi aide |
 | `touche` | le cadrage la concerne sans la changer | aucun |
@@ -312,10 +334,11 @@ relire à la main.
 
 À défaut, contrôler soi-même :
 
-- chaque règle en `cree` ou `modifie` a-t-elle son énoncé sous un titre de
+- chaque cible en `cree` ou `modifie` a-t-elle son énoncé sous un titre de
   niveau 3 dans `## Énoncés` ?
 - chaque domaine cité existe-t-il dans `domains/` ?
-- chaque règle citée existe-t-elle dans `rules/`, sauf en `cree` ?
+- chaque cible citée existe-t-elle dans le répertoire de sa nature — `rules/`,
+  `decisions/` ou `architecture/` —, sauf en `cree` ?
 - le titre contient-il un `:` non échappé ?
 
 ## 6. Les règles de gestion
@@ -355,6 +378,33 @@ la propagation l'y recopie. `À propager.` suffit jusqu'à la livraison.
 **Une règle doit être rattachée à au moins une fonctionnalité**, sinon la
 livraison est refusée : le référentiel se parcourt par domaines puis
 fonctionnalités, et une règle rattachée à rien serait introuvable.
+
+### Les cibles d'architecture
+
+Même régime, mêmes fichiers à créer avant de livrer — dans `decisions/<id>.md`
+ou `architecture/<id>.md`, à plat comme les règles :
+
+```markdown
+---
+id: FLX-export-nocturne
+nature: flux
+composants: [CMP-api, CMP-stockage]
+statut: actif
+cree_par: null
+modifie_par: []
+---
+
+À propager.
+```
+
+Une seule différence, et elle tient à la navigation : **aucun rattachement à une
+fonctionnalité n'est exigé**. Le référentiel fonctionnel se parcourt par domaines
+et fonctionnalités ; l'architecture se parcourt par son propre répertoire, et une
+cible y est atteignable sans rattachement.
+
+`nature` vaut `composant`, `flux` ou `contexte`. `composants` n'a de sens que
+pour un flux : il nomme ce que le flux relie, et c'est de là que se calcule la
+liste des flux touchant un composant donné.
 
 ## 7. Livrer
 
