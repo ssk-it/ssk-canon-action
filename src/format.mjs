@@ -7,7 +7,7 @@
 //
 // Tout ce qui touche au disque vit dans `parse.mjs`, qui s'appuie sur celui-ci.
 
-import yaml from 'js-yaml';
+import { load } from 'js-yaml';
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
 
@@ -26,7 +26,7 @@ export function splitFrontmatter(text) {
   const m = FRONTMATTER.exec(text);
   if (!m) return null;
   try {
-    return { data: yaml.load(m[1]) ?? {}, body: m[2] };
+    return { data: load(m[1]) ?? {}, body: m[2] };
   } catch (e) {
     return { erreur: formatErreurYaml(e), body: m[2] };
   }
