@@ -7,7 +7,7 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
-import yaml from 'js-yaml';
+import { load } from 'js-yaml';
 import { splitFrontmatter, extractEnonces } from './format.mjs';
 
 // Réexportés pour ne pas casser les appelants : le découpage entre ce qui
@@ -42,7 +42,7 @@ export function loadRepo(root) {
 
   let config = null;
   try {
-    config = yaml.load(readFileSync(join(root, 'ssk-canon.yml'), 'utf8'));
+    config = load(readFileSync(join(root, 'ssk-canon.yml'), 'utf8'));
   } catch (e) {
     errors.push(`ssk-canon.yml : ${e.message}`);
   }
