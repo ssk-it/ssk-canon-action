@@ -34,6 +34,11 @@ export function loadRepo(root) {
   const features = new Map();
   const rules = new Map();
   const cadrages = new Map();
+  // Les cibles d'architecture sont indexées à part des règles : elles suivent
+  // le même régime de projection, mais se consultent séparément — on ne lit pas
+  // un dossier d'architecture pour y chercher le comportement du produit.
+  const decisions = new Map();
+  const architecture = new Map();
 
   let config = null;
   try {
@@ -42,7 +47,14 @@ export function loadRepo(root) {
     errors.push(`ssk-canon.yml : ${e.message}`);
   }
 
-  const CONTENT_DIRS = new Set(['domains', 'features', 'rules', 'cadrages']);
+  const CONTENT_DIRS = new Set([
+    'domains',
+    'features',
+    'rules',
+    'cadrages',
+    'decisions',
+    'architecture',
+  ]);
 
   for (const file of listMarkdown(root).sort()) {
     const rel = relative(root, file);
@@ -82,8 +94,10 @@ export function loadRepo(root) {
     if (top === 'domains') domains.set(data.id, entry);
     else if (top === 'features') features.set(data.id, entry);
     else if (top === 'rules') rules.set(data.id, entry);
+    else if (top === 'decisions') decisions.set(data.id, entry);
+    else if (top === 'architecture') architecture.set(data.id, entry);
     else if (top === 'cadrages' && rel.endsWith('cadrage.md')) cadrages.set(data.id, entry);
-    // les décisions et attachments sont rattachés à leur cadrage plus bas
+    // les décisions de cadrage et attachments sont rattachés à leur cadrage plus bas
   }
 
   // rattachement des décisions et pièces jointes
@@ -109,5 +123,5 @@ export function loadRepo(root) {
     }
   }
 
-  return { config, domains, features, rules, cadrages, errors };
+  return { config, domains, features, rules, cadrages, decisions, architecture, errors };
 }

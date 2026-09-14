@@ -20,10 +20,19 @@ import { join } from 'node:path';
 import { dump } from 'js-yaml';
 import { loadRepo, splitFrontmatter, extractEnonces } from './parse.mjs';
 import { check } from './check.mjs';
+import { cibleDe as natureDe } from './verifier.mjs';
 import { listCadragesLivres } from './livraison.mjs';
 
 /** Ordre des clés dans le frontmatter d'une règle, pour un diff lisible. */
-const ORDRE_CLES = ['id', 'fonctionnalites', 'statut', 'cree_par', 'modifie_par'];
+const ORDRE_CLES = [
+  'id',
+  'fonctionnalites',
+  'nature',
+  'composants',
+  'statut',
+  'cree_par',
+  'modifie_par',
+];
 
 /**
  * Calcule l'état que le référentiel devrait avoir, d'après les cadrages livrés.
@@ -43,34 +52,42 @@ export function etatAttendu(repo, livres) {
     const enonces = extractEnonces(cadrage.body);
 
     for (const impact of cadrage.impacts ?? []) {
-      const { regle, operation } = impact;
+      const { operation } = impact;
       if (operation === 'touche') continue; // ne produit aucune écriture
 
-      if (!attendu.has(regle)) {
-        attendu.set(regle, {
-          id: regle,
+      // La nature est retenue avec la cible : c'est elle qui dira dans quel
+      // répertoire écrire. La déduire plus tard obligerait à deviner d'après
+      // l'identifiant, or rien n'impose qu'un préfixe le trahisse.
+      const nature = natureDe(impact);
+      if (!nature) continue; // impact sans cible : la vérification l'a déjà dit
+      const { id: nom, collection } = nature;
+
+      if (!attendu.has(nom)) {
+        attendu.set(nom, {
+          id: nom,
+          collection,
           statut: 'actif',
           cree_par: null,
           modifie_par: [],
           enonce: null,
         });
       }
-      const cible = attendu.get(regle);
+      const cible = attendu.get(nom);
 
       switch (operation) {
         case 'cree':
           cible.cree_par = cadrage.id;
-          cible.enonce = enonces.get(regle) ?? cible.enonce;
+          cible.enonce = enonces.get(nom) ?? cible.enonce;
           break;
         case 'modifie':
           cible.modifie_par.push(cadrage.id);
-          cible.enonce = enonces.get(regle) ?? cible.enonce;
+          cible.enonce = enonces.get(nom) ?? cible.enonce;
           break;
         case 'abroge':
           cible.modifie_par.push(cadrage.id);
           cible.statut = 'abroge';
           // une abrogation peut réécrire l'énoncé pour expliquer pourquoi
-          if (enonces.has(regle)) cible.enonce = enonces.get(regle);
+          if (enonces.has(nom)) cible.enonce = enonces.get(nom);
           break;
       }
     }
@@ -78,11 +95,18 @@ export function etatAttendu(repo, livres) {
   return attendu;
 }
 
-/** Sérialise une règle dans le format du référentiel. */
-function ecrireRegle(regle, fonctionnalites, enonce) {
+/**
+ * Sérialise une cible dans le format du référentiel.
+ *
+ * `propres` porte ce que le référentiel décide et que le cadrage ne dicte pas :
+ * le rattachement aux fonctionnalités pour une règle, la nature et les
+ * composants reliés pour un document d'architecture. La propagation les
+ * préserve sans jamais les choisir — c'est la même raison dans les deux cas.
+ */
+function ecrireRegle(regle, propres, enonce) {
   const donnees = {
     id: regle.id,
-    fonctionnalites,
+    ...propres,
     statut: regle.statut,
     cree_par: regle.cree_par,
     modifie_par: regle.modifie_par,
@@ -129,16 +153,30 @@ export function calculerEcritures(root, livres) {
   for (const [id, cible] of attendu) {
     if (cible.enonce === null) {
       problemes.push(
-        `règle ${id} : aucun énoncé fourni par les cadrages qui la créent ou la modifient`,
+        `${id} : aucun énoncé fourni par les cadrages qui le créent ou le modifient`,
       );
       continue;
     }
 
-    const existante = repo.rules.get(id);
-    // le rattachement aux fonctionnalités est une donnée du référentiel, pas
-    // du cadrage : la propagation ne le décide pas, elle le préserve
-    const fonctionnalites = existante?.fonctionnalites ?? [];
-    if (!existante && !fonctionnalites.length) {
+    const collection = cible.collection ?? 'rules';
+    const existante = repo[collection]?.get(id);
+
+    // Ce que le référentiel décide et que le cadrage ne dicte pas. Pour une
+    // règle, le rattachement aux fonctionnalités ; pour un document
+    // d'architecture, sa nature et les composants qu'il relie. La propagation
+    // les préserve, elle ne les choisit jamais.
+    const propres =
+      collection === 'rules'
+        ? { fonctionnalites: existante?.fonctionnalites ?? [] }
+        : {
+            ...(existante?.nature !== undefined ? { nature: existante.nature } : {}),
+            ...(existante?.composants !== undefined ? { composants: existante.composants } : {}),
+          };
+
+    // Une règle doit être trouvable par la navigation du référentiel, qui passe
+    // par les fonctionnalités. Les cibles d'architecture se consultent par leur
+    // répertoire : rien à exiger de ce côté.
+    if (collection === 'rules' && !existante && !propres.fonctionnalites.length) {
       problemes.push(
         `règle ${id} : créée par un cadrage mais rattachée à aucune fonctionnalité — ` +
           `créer le fichier avec son rattachement avant de livrer`,
@@ -146,8 +184,8 @@ export function calculerEcritures(root, livres) {
       continue;
     }
 
-    const contenu = ecrireRegle(cible, fonctionnalites, cible.enonce);
-    const chemin = join(root, 'rules', `${id}.md`);
+    const contenu = ecrireRegle(cible, propres, cible.enonce);
+    const chemin = join(root, collection, `${id}.md`);
     const actuel = existante ? readFileSync(chemin, 'utf8') : null;
 
     if (actuel !== contenu) {
