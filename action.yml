@@ -162,6 +162,17 @@ runs:
           exit 0
         fi
 
+        # Une demande de propagation déjà ouverte porte ces écritures, ou une
+        # partie : en ouvrir une seconde les doublerait, et la propagation
+        # planifiée en ouvrirait une par heure. On attend sa fusion ; l'exécution
+        # suivante propagera ce qui resterait.
+        EN_ATTENTE=$(gh pr list --base "${GITHUB_REF_NAME}" --state open --json headRefName \
+          | node "${RUNNER_TEMP}/ssk-canon-action/src/propagation-en-attente.mjs")
+        if [ "$EN_ATTENTE" = "oui" ]; then
+          echo "::notice::Une demande de propagation attend déjà sa fusion — pas de seconde demande."
+          exit 0
+        fi
+
         BRANCHE="propagation/$(git rev-parse --short HEAD)"
         echo "::notice::Push direct refusé — la propagation passe par « $BRANCHE »."
         git switch -c "$BRANCHE"

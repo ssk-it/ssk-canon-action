@@ -34,7 +34,7 @@
   "scripts": {
     "check": "node src/check.mjs test/fixture-repo",
     "propagate:dry": "node src/propagate.mjs test/fixture-repo --dry-run",
-    "test": "node src/propagate.test.mjs"
+    "test": "node src/propagate.test.mjs && node src/propagation-en-attente.test.mjs"
   },
   "dependencies": {
     "js-yaml": "^5.4.1"
