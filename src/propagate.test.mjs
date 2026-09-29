@@ -120,6 +120,11 @@ test('l’énoncé livré en dernier fait foi, même d’un identifiant plus pet
   const ecrit = readFileSync(join(racine, 'rules/RG-a.md'), 'utf8');
   assert(ecrit.includes('Texte du 002'), `l'énoncé livré en dernier est perdu : ${ecrit}`);
   assert(!ecrit.includes('Texte du 003'), 'l’énoncé remplacé est resté');
+  // Ce que l'Action vérifie après avoir écrit : les index restent ceux que la
+  // vérification recalcule, triés par identifiant.
+  livrer(racine);
+  const { errors } = check(racine, { base: 'HEAD' });
+  assert(errors.length === 0, `référentiel écrit refusé : ${errors.join(' ; ')}`);
 });
 
 test('la livraison est la fusion sur la branche principale, non le commit du cadrage', (racine) => {
@@ -144,6 +149,11 @@ test('la livraison est la fusion sur la branche principale, non le commit du cad
   assert(r.ok, `échec inattendu : ${r.problemes.join(', ')}`);
   const ecrit = readFileSync(join(racine, 'rules/RG-a.md'), 'utf8');
   assert(ecrit.includes('Texte du 002'), `la fusion la plus récente n'a pas fait foi : ${ecrit}`);
+  // Ce que l'Action vérifie après avoir écrit : les index restent ceux que la
+  // vérification recalcule, triés par identifiant.
+  livrer(racine);
+  const { errors } = check(racine, { base: 'HEAD' });
+  assert(errors.length === 0, `référentiel écrit refusé : ${errors.join(' ; ')}`);
 });
 
 
