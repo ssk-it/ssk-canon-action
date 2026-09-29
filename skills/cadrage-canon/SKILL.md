@@ -329,18 +329,43 @@ son motif d'annulation. L'effacer ferait reposer la question.
 La vérification contrôle ce que le format seul ne garantit pas : un impact vers
 une règle inexistante, un énoncé manquant, un rattachement inconnu.
 
-Si `ssk-canon-action` est cloné localement :
+**Lancer la même vérification que la demande de fusion subira**, sur l'espace de
+l'étape 2 — non sur le clone, qui ne contient pas le cadrage en cours.
+
+Si `ssk-canon-action` est cloné localement, avec ses dépendances installées
+(`npm ci` dans le clone) :
 
 ```bash
-node <chemin>/ssk-canon-action/src/check.mjs <CADRAGE_RETENU>
+git -C <ESPACE> fetch -q origin
+node <chemin>/ssk-canon-action/src/check.mjs <ESPACE> --base origin/main --livraison
 ```
 
 Sinon, en clonant le temps de la vérification :
 
 ```bash
-cd /tmp && git clone -q --depth 1 https://github.com/ssk-it/ssk-canon-action
-node /tmp/ssk-canon-action/src/check.mjs <CADRAGE_RETENU>
+rm -rf /tmp/ssk-canon-action
+git clone -q --depth 1 https://github.com/ssk-it/ssk-canon-action /tmp/ssk-canon-action
+npm ci --omit=dev --silent --prefix /tmp/ssk-canon-action
+git -C <ESPACE> fetch -q origin
+node /tmp/ssk-canon-action/src/check.mjs <ESPACE> --base origin/main --livraison
 ```
+
+Le `npm ci` n'est pas un détail : la vérification lit le YAML avec `js-yaml`, et
+un clone sans ses dépendances échoue sur `ERR_MODULE_NOT_FOUND` avant d'avoir
+rien vérifié.
+
+**Les deux options ne sont pas facultatives.** Sans elles, la vérification juge
+le cadrage tel qu'il est — en cours —, et admet qu'une cible `cree` n'ait pas
+encore son fichier. La demande de fusion, elle, est vérifiée telle qu'elle sera
+une fois fusionnée, donc livrée, et chaque cible absente y est refusée :
+« ✗ à la livraison : cadrage … → décision d'architecture inconnue ». Sans
+`--livraison`, le rapport local dit « Intégrité vérifiée », et la demande de
+fusion échoue juste après son ouverture.
+
+Une erreur « à la livraison » se corrige en créant le fichier de la cible, avec
+`À propager.` pour tout corps — voir l'étape 6. Les avertissements « aucun
+cadrage livré ne la crée » qui l'accompagnent alors sont attendus jusqu'à la
+fusion.
 
 **Si le dépôt n'a pas son automatisation**, rien ne bloque une livraison
 incohérente. L'application de cadrage sait l'installer : ses réglages proposent
@@ -373,10 +398,12 @@ modifie_par: []
 À propager.
 ```
 
-**Quand créer le fichier.** Tant que le cadrage n'est pas livré, une règle qu'il
-crée n'a pas à exister : la vérification l'admet, et c'est le cas normal d'un
-travail en cours. Au passage à `livree`, en revanche, elle doit être là — sinon
-la vérification refuse la livraison, avec « règle inconnue ».
+**Quand créer le fichier.** Tant que le cadrage s'écrit sur sa branche, une
+règle qu'il crée n'a pas à exister : la vérification ordinaire l'admet, et c'est
+le cas normal d'un travail en cours. **Au plus tard avant d'ouvrir la demande de
+fusion**, en revanche, elle doit être là : la demande est vérifiée telle qu'elle
+sera une fois fusionnée, et refuse alors chaque cible absente, avec « règle
+inconnue ». C'est ce que l'étape 5 fait voir en local, par `--livraison`.
 
 C'est l'erreur la plus fréquente au moment de livrer, et elle est délibérée : le
 rattachement d'une règle à ses fonctionnalités est une donnée du référentiel, non
@@ -443,13 +470,22 @@ relecture. Aucun ne doit se produire sans qu'on l'ait voulu.
 | `push` | et `git push` | la branche poussée, et comment ouvrir la demande |
 | `pr` | et `gh pr create` | le numéro de la demande |
 
+**Ne rien enregistrer tant que l'étape 5 signale une erreur.** Au niveau `pr`,
+la demande de fusion s'ouvre dans la foulée : une erreur que l'étape 5 aurait
+montrée n'apparaît qu'ensuite, en rouge, sous les yeux des relecteurs.
+
 ```bash
 cd <ESPACE>
-git add cadrages/<id> rules/            # à partir de « commit »
-git commit -m "Cadrage <id> : <titre>"  # à partir de « commit »
-git push -u origin <BRANCHE>            # à partir de « push »
-gh pr create --fill                     # seulement pour « pr »
+git add cadrages/<id> rules/ decisions/ architecture/   # à partir de « commit »
+git commit -m "Cadrage <id> : <titre>"                  # à partir de « commit »
+git push -u origin <BRANCHE>                            # à partir de « push »
+gh pr create --fill                                     # seulement pour « pr »
 ```
+
+Les trois répertoires de cibles sont à ajouter, et non `rules/` seul : un
+cadrage qui crée une décision ou un document d'architecture en dépose le fichier
+dans `decisions/` ou `architecture/`, et l'oublier fait échouer la demande de
+fusion comme si le fichier n'avait jamais été écrit.
 
 `git add` ne ramasse ici que ce qui a été écrit dans cet espace : le travail
 d'une autre session, même sur le même dépôt, lui est invisible.
