@@ -17,6 +17,12 @@ on:
     branches: [main]
   # permet de rejouer une propagation manquée sans attendre un merge
   workflow_dispatch:
+  # GitHub ne transmet pas toujours la poussée d'un merge : aucune exécution
+  # n'est alors créée, et le cadrage livré reste sans propagation jusqu'au
+  # suivant. À heure fixe, une propagation perdue se rattrape seule ; sans rien
+  # à propager, l'exécution n'écrit rien.
+  schedule:
+    - cron: '17 * * * *'
 
 # L'action commite sur la branche principale : sans cette permission, le
 # GITHUB_TOKEN est en lecture seule et le push échoue.
