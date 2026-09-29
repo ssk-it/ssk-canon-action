@@ -99,6 +99,12 @@ export function etatAttendu(repo, livres, ordre = new Map()) {
       }
     }
   }
+  // L'ordre de livraison décide de l'énoncé qui fait foi, non de l'index :
+  // `modifie_par` est la liste des cadrages qui ont touché la cible, triée par
+  // identifiant, comme la vérification la recalcule.
+  for (const cible of attendu.values()) {
+    cible.modifie_par.sort((a, b) => String(a).localeCompare(String(b)));
+  }
   return attendu;
 }
 
