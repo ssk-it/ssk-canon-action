@@ -21,7 +21,7 @@ import { dump } from 'js-yaml';
 import { loadRepo, splitFrontmatter, extractEnonces } from './parse.mjs';
 import { check } from './check.mjs';
 import { cibleDe as natureDe } from './verifier.mjs';
-import { listCadragesLivres } from './livraison.mjs';
+import { listCadragesLivres, ordreDeLivraison } from './livraison.mjs';
 
 /** Ordre des clés dans le frontmatter d'une règle, pour un diff lisible. */
 const ORDRE_CLES = [
@@ -37,16 +37,23 @@ const ORDRE_CLES = [
 /**
  * Calcule l'état que le référentiel devrait avoir, d'après les cadrages livrés.
  *
- * Les cadrages sont parcourus dans l'ordre de leur identifiant, qui porte
- * l'année et la séquence : c'est l'ordre de livraison, et il détermine quel
- * énoncé fait foi quand deux cadrages touchent la même règle.
+ * Les cadrages sont parcourus dans l'ordre de leur livraison : c'est lui qui
+ * détermine quel énoncé fait foi quand deux cadrages touchent la même règle —
+ * le dernier livré, écrit en connaissant l'autre. L'identifiant ne le dit pas :
+ * attribué à la préparation, il suit l'ordre des préparations, et deux cadrages
+ * menés en parallèle se livrent souvent dans l'autre sens. Il ne départage que
+ * deux cadrages livrés ensemble, ou dont la livraison n'a pas pu être lue.
+ *
+ * @param {Map<string, number>} [ordre] rang de livraison par cadrage — voir
+ *   `ordreDeLivraison`
  */
-export function etatAttendu(repo, livres) {
+export function etatAttendu(repo, livres, ordre = new Map()) {
   const attendu = new Map();
 
+  const rang = (id) => ordre.get(String(id)) ?? Number.POSITIVE_INFINITY;
   const cadragesLivres = [...repo.cadrages.values()]
     .filter((c) => livres.has(c.id))
-    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    .sort((a, b) => rang(a.id) - rang(b.id) || String(a.id).localeCompare(String(b.id)));
 
   for (const cadrage of cadragesLivres) {
     const enonces = extractEnonces(cadrage.body);
@@ -146,7 +153,11 @@ function livresDuDepot(root) {
  */
 export function calculerEcritures(root, livres) {
   const repo = loadRepo(root);
-  const attendu = etatAttendu(repo, livres ?? livresDuDepot(root));
+  const attendu = etatAttendu(
+    repo,
+    livres ?? livresDuDepot(root),
+    ordreDeLivraison(root, 'HEAD') ?? new Map(),
+  );
   const ecritures = [];
   const problemes = [];
 
