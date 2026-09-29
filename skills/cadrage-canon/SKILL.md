@@ -47,6 +47,21 @@ dans **tous** ceux qui sont clonés à côté, pas seulement celui d'où l'on pa
 Une règle de gestion se réalise souvent dans plusieurs à la fois — une saisie
 côté application web, sa validation côté API.
 
+### Consulter le référentiel avant d'écrire
+
+Le code dit ce que le produit fait ; le référentiel dit pourquoi, et ce qui est en
+train de changer. **Appliquer le skill `consulter-referentiel`** avant l'étape 1,
+en lui passant en argument le texte de la demande et son issue ou sa carte — il
+s'exécute dans un sous-agent qui ne voit pas la conversation, et ne rend que sa
+synthèse. Une règle active peut déjà y
+répondre, une décision peut avoir écarté l'option qu'on s'apprête à proposer, un
+cadrage en cours sur sa branche peut couvrir le même besoin.
+
+Sa section « Ce que le référentiel dit » entre dans l'objectif ou les décisions
+du cadrage : une règle existante qu'on fait évoluer y est un impact `modifie`,
+non une règle `cree` qui la doublerait. Un recouvrement avec un cadrage en cours
+se signale à l'utilisateur **avant** d'en écrire un second.
+
 ### Quand la situation échoue
 
 - **`CONFIG_ABSENTE`** — créer `~/.claude/cadrage-canon.json` :
@@ -560,6 +575,10 @@ l'ouvrirait.
 **Un objectif qui dit le problème, pas la solution.** « Permettre de saisir un
 motif d'avenant » décrit un champ de formulaire ; « savoir pourquoi un contrat a
 été modifié, six mois après » décrit ce qu'on cherche.
+
+**Ce que le référentiel disait déjà.** Les règles qu'il fait évoluer, les
+décisions qu'il ne rouvre pas, les cadrages en cours qu'il côtoie — ou la mention
+qu'il n'y en avait aucun, et où l'on a cherché.
 
 **Des options écartées avec leur motif.** Un cadrage qui ne présente qu'une
 option ne cadre rien — il enregistre.

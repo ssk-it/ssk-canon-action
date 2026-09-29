@@ -333,6 +333,39 @@ Le skill ne déplace aucune carte et n'en change ni le statut ni les étiquettes
 Le commentaire ne se poste qu'une fois par lien : reprendre un cadrage ou
 relancer le skill n'empile pas de doublons sur une carte que le client lit.
 
+## Consulter le référentiel avant de cadrer ou de développer
+
+`skills/consulter-referentiel/` dit ce que le référentiel sait déjà d'un sujet :
+les règles en vigueur d'un domaine, les décisions prises, les cadrages livrés, et
+ceux encore en cours sur leur branche — les seuls qu'on ne voit nulle part
+ailleurs, et donc ceux qu'on risque de refaire ou de contredire.
+
+```bash
+git clone -q --depth 1 https://github.com/ssk-it/ssk-canon-action /tmp/canon
+cp -R /tmp/canon/skills/consulter-referentiel ~/.claude/skills/
+```
+
+Il s'installe à côté de `cadrage-canon`, dont il emprunte la situation : une seule
+manière de trouver le référentiel du dépôt courant. `cadrage-canon` l'applique
+avant d'écrire ; les skills de cadrage et d'évolution des dépôts de code y
+renvoient d'une ligne, plutôt que d'en recopier chacun la méthode.
+
+Il lit `origin/main` et les branches distantes, jamais la copie de travail : un
+clone de référentiel ouvert une fois et jamais tiré a vite des dizaines de
+livraisons de retard.
+
+Il s'exécute dans un sous-agent (`context: fork`) : une consultation lit une
+quinzaine de milliers de tokens de cadrages et de règles, dont l'appelant ne
+reçoit que la synthèse. Il faut donc lui passer en argument le texte de la
+demande — le sous-agent ne voit pas la conversation.
+
+```bash
+node ~/.claude/skills/consulter-referentiel/scripts/consulter.mjs                      # index
+node ~/.claude/skills/consulter-referentiel/scripts/consulter.mjs --domaine commande   # un domaine
+node ~/.claude/skills/consulter-referentiel/scripts/consulter.mjs --issue depot#123    # le cadrage d'une issue
+node ~/.claude/skills/consulter-referentiel/scripts/consulter.mjs --motif "QR code"    # un terme métier
+```
+
 ## Licence
 
 Apache-2.0 — voir [LICENSE](LICENSE) et [NOTICE](NOTICE).
