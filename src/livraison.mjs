@@ -50,6 +50,47 @@ export function listCadragesLivres(root, ref = 'origin/main') {
 }
 
 /**
+ * L'ordre dans lequel les cadrages ont été livrés sur une référence.
+ *
+ * L'identifiant ne le dit pas : il est attribué à la préparation, et deux
+ * cadrages préparés en parallèle se livrent dans l'ordre de leurs fusions, non
+ * de leurs numéros. La livraison se lit donc dans l'historique de la branche
+ * principale, en première parenté : pour un cadrage livré par une demande de
+ * fusion, c'est le commit de fusion qui l'introduit, quelle que soit la date à
+ * laquelle il a été commité sur sa branche.
+ *
+ * @returns {Map<string, number> | null} le rang de livraison de chaque cadrage,
+ *   ou null si l'historique n'a pas pu être lu
+ */
+export function ordreDeLivraison(root, ref = 'HEAD') {
+  const sortie = git(root, [
+    'log',
+    '--first-parent',
+    '--diff-merges=first-parent',
+    '--diff-filter=A',
+    '--reverse',
+    '--format=@%H',
+    '--name-only',
+    ref,
+    '--',
+    'cadrages',
+  ]);
+  if (sortie === null) return null;
+
+  const rangs = new Map();
+  let rang = 0;
+  for (const ligne of sortie.split('\n')) {
+    if (ligne.startsWith('@')) {
+      rang += 1;
+      continue;
+    }
+    const trouve = /^cadrages\/([^/]+)\/cadrage\.md$/.exec(ligne.trim());
+    if (trouve && !rangs.has(trouve[1])) rangs.set(trouve[1], rang);
+  }
+  return rangs;
+}
+
+/**
  * Fichiers modifiés entre une référence et l'état courant.
  *
  * La comparaison part de leur ancêtre commun (`...`), non de la pointe de la

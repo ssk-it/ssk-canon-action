@@ -95,6 +95,58 @@ function ecrireRegle(racine, id, corps, frontmatter = {}) {
 
 // --- l'écriture elle-même ---
 
+// --- l'ordre de livraison ---
+//
+// Deux cadrages préparés en parallèle reçoivent leur identifiant à la
+// préparation : celui au plus petit numéro peut être livré après l'autre.
+// C'est alors son énoncé qui fait foi, puisqu'il a été écrit en connaissant
+// l'autre. Arrivé sur ssk-recon-cadrage avec 2026-020 et 2026-021.
+
+test('l’énoncé livré en dernier fait foi, même d’un identifiant plus petit', (racine) => {
+  socle(racine);
+  ecrireRegle(racine, 'RG-a', 'Initial.');
+  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Création.',
+  });
+  ecrireCadrage(racine, '2026-003', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
+    'RG-a': 'Texte du 003, livré d’abord.',
+  });
+  ecrireCadrage(racine, '2026-002', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
+    'RG-a': 'Texte du 002, livré ensuite.',
+  });
+
+  const r = propager(racine);
+  assert(r.ok, `échec inattendu : ${r.problemes.join(', ')}`);
+  const ecrit = readFileSync(join(racine, 'rules/RG-a.md'), 'utf8');
+  assert(ecrit.includes('Texte du 002'), `l'énoncé livré en dernier est perdu : ${ecrit}`);
+  assert(!ecrit.includes('Texte du 003'), 'l’énoncé remplacé est resté');
+});
+
+test('la livraison est la fusion sur la branche principale, non le commit du cadrage', (racine) => {
+  // Le 002 est commité sur sa branche avant que le 003 ne soit livré, puis
+  // fusionné après lui : c'est la fusion qui le livre.
+  socle(racine);
+  ecrireRegle(racine, 'RG-a', 'Initial.');
+  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Création.',
+  });
+  git(racine, ['checkout', '-q', '-b', 'cadrage-2026-002']);
+  ecrireCadrage(racine, '2026-002', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
+    'RG-a': 'Texte du 002, fusionné ensuite.',
+  });
+  git(racine, ['checkout', '-q', 'main']);
+  ecrireCadrage(racine, '2026-003', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
+    'RG-a': 'Texte du 003, livré d’abord.',
+  });
+  git(racine, ['merge', '-q', '--no-ff', '-m', 'Fusion du 002', 'cadrage-2026-002']);
+
+  const r = propager(racine);
+  assert(r.ok, `échec inattendu : ${r.problemes.join(', ')}`);
+  const ecrit = readFileSync(join(racine, 'rules/RG-a.md'), 'utf8');
+  assert(ecrit.includes('Texte du 002'), `la fusion la plus récente n'a pas fait foi : ${ecrit}`);
+});
+
+
 test('applique un énoncé au référentiel', (racine) => {
   socle(racine);
   ecrireRegle(racine, 'RG-a', 'Texte périmé.');
