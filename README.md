@@ -14,7 +14,9 @@ référentiel, et n'écrit que l'écart. Deux propriétés en découlent :
 
 - **idempotente** : sur un référentiel conforme, elle n'écrit rien. Elle peut
   donc se déclencher à chaque arrivée sur la branche principale, et être rejouée
-  après un échec ;
+  après un échec — ou à heure fixe : GitHub ne transmet pas toujours la poussée
+  d'un merge, et le modèle de workflow rattrape ainsi seul une propagation
+  perdue ;
 - **tout ou rien** : une incohérence l'arrête avant la première écriture, ce qui
   laisse le référentiel dans son état précédent, cohérent.
 
@@ -69,6 +71,7 @@ porte aucun des contrôles qu'elle exige. La propagation ouvre alors une demande
 de fusion, que les contrôles vérifient comme n'importe quelle autre — il reste à
 la merger pour que le référentiel soit à jour. Le workflow doit pour cela
 déclarer `pull-requests: write` à côté de `contents: write`.
+Tant que cette demande attend, aucune exécution n'en ouvre une seconde.
 
 Ce dépôt étant public, aucun réglage d'accès n'est nécessaire, y compris depuis
 un dépôt cadré privé ou appartenant à une autre organisation.
