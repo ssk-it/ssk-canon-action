@@ -116,6 +116,11 @@ transforment. Le référentiel est la projection des cadrages livrés.
 Un cadrage ne se réécrit donc pas après coup : il porte ce qui a été décidé au
 moment où on l'a décidé. C'est ce qui rend l'histoire du produit lisible.
 
+**Livré veut dire réalisé.** La demande de fusion d'un cadrage s'ouvre dès qu'il
+est prêt à relire, mais ne se fusionne qu'une fois son chantier réalisé dans les
+dépôts de code : la fusion projette ses énoncés dans le référentiel, qui ne doit
+décrire que ce que le produit fait déjà (étape 7, « Quand fusionner »).
+
 ## 1. Vérifier qu'il y a matière
 
 Un cadrage se justifie quand une **décision** est en jeu — un choix entre options,
@@ -510,6 +515,32 @@ Le nom de la branche est libre : l'application retrouve un cadrage par sa
 demande de fusion, jamais par le nom de sa branche. `cadrage-<id>` se lit bien,
 sans que rien n'en dépende.
 
+### Quand fusionner
+
+**Ouvrir la demande n'est pas livrer.** Aucun niveau d'`ARRET` ne va jusqu'à la
+fusion, et ce skill ne la fait jamais : elle attend que le chantier de l'étape 8
+soit réalisé — les demandes de fusion des dépôts de code fusionnées, et, pour
+une infrastructure, le changement en place.
+
+La raison tient au référentiel : il décrit l'état courant du produit, et la
+fusion d'un cadrage y projette ses énoncés. Fusionner avant la réalisation lui
+ferait décrire ce que le produit ne fait pas encore — une règle « en vigueur »
+que le code ignore, et qu'un lecteur prendra pour acquise. Si le chantier est
+abandonné, le référentiel aurait en outre à défaire ce qu'il n'aurait jamais dû
+porter.
+
+Entre l'ouverture et la fusion, la demande reste ouverte, relue et approuvée le
+cas échéant. Le dire dans sa description, pour qu'un relecteur ne la fusionne
+pas en la voyant approuvée :
+
+> Ne pas fusionner avant la réalisation du chantier.
+
+**Ce que la réalisation apprend se corrige sur la branche**, avant la fusion :
+un énoncé que le code a dû faire évoluer, une décision révisée, un fait mesuré
+en éprouvant. Le cadrage fusionné décrit ainsi ce qui a été livré, non ce qu'on
+croyait livrer en l'ouvrant ; et c'est encore la seule fenêtre où il peut
+changer, puisqu'il ne se réécrit plus une fois livré.
+
 Une fois la demande fusionnée, l'espace ne sert plus :
 
 ```bash
@@ -585,10 +616,14 @@ liens:
 ```
 
 Cela s'écrit dans l'espace de l'étape 2, sur la branche du cadrage, et se pousse
-sur la demande de fusion déjà ouverte — **tant qu'elle n'est pas fusionnée**. Un
-cadrage livré ne se réécrit pas : un chantier ouvert après la livraison garde son
-lien du seul côté des issues, et c'est le comportement attendu, non un manque à
-combler.
+sur la demande de fusion déjà ouverte. Elle l'est encore à coup sûr : elle ne se
+fusionne qu'une fois le chantier réalisé (étape 7, « Quand fusionner »).
+
+Un cadrage déjà livré ne se réécrit pas. S'il l'a été avant que son chantier ne
+s'ouvre, c'est un écart à la règle, non un cas normal : le lien n'existe alors
+que du côté des issues, et le référentiel décrit, le temps du chantier, un
+produit qui n'existe pas encore. Le signaler à l'utilisateur plutôt que de le
+corriger dans le cadrage.
 
 Le tag doit être déclaré dans les `tags_liens` du `ssk-canon.yml`. S'il ne l'est
 pas, le proposer plutôt que d'en inventer un autre : la vérification refuse un tag
