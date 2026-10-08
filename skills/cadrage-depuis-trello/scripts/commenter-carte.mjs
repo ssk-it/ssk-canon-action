@@ -7,8 +7,8 @@
  * ignorait tout de son instruction. Sans ce commentaire, le lien n'existe que
  * du côté qui n'est pas consulté.
  *
- * Le script est volontairement le seul point d'écriture du skill, et il n'écrit
- * qu'une chose : un commentaire. Ni statut, ni étiquette, ni déplacement de
+ * Avec `attacher-carte.mjs`, l'un des deux seuls points d'écriture du skill, et
+ * il n'écrit qu'une chose : un commentaire. Ni statut, ni étiquette, ni déplacement de
  * liste. Une carte est la propriété du client ; l'instruire n'autorise pas à la
  * réorganiser.
  */

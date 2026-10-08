@@ -327,14 +327,16 @@ Il lui faut des identifiants Trello, dans `~/.claude/trello.json` :
 { "cle": "<clé API>", "jeton": "<jeton>" }
 ```
 
-Le jeton s'émet en `scope=read,write`. L'écriture ne sert qu'à une chose :
-reposer sur la carte, en commentaire, le lien du cadrage qui en est né. Sans ce
-geste le rattachement n'existe que dans le cadrage, du côté que le client ne
+Le jeton s'émet en `scope=read,write`. L'écriture ne sert qu'à deux choses :
+reposer sur la carte, en commentaire, le lien du cadrage qui en est né, et y
+attacher en pièce jointe chaque demande de fusion que la carte fait ouvrir. Sans
+ce geste le rattachement n'existe que dans le cadrage, du côté que le client ne
 consulte pas — il regarde Trello, où rien ne dit que son besoin a été instruit.
 Le skill ne déplace aucune carte et n'en change ni le statut ni les étiquettes.
 
-Le commentaire ne se poste qu'une fois par lien : reprendre un cadrage ou
-relancer le skill n'empile pas de doublons sur une carte que le client lit.
+Le commentaire ne se poste qu'une fois par lien, la pièce jointe ne s'attache
+qu'une fois par URL : reprendre un cadrage ou relancer le skill n'empile pas de
+doublons sur une carte que le client lit.
 
 ## Consulter le référentiel avant de cadrer ou de développer
 
