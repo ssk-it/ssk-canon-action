@@ -1,6 +1,6 @@
 ---
 name: cadrage-depuis-trello
-description: Part d'une carte Trello pour rédiger un cadrage dans le référentiel SSK Canon — lit le titre, la description, les checklists, les commentaires et les pièces jointes de la carte, puis enchaîne sur le skill cadrage-canon, repose en commentaire sur la carte le lien du cadrage obtenu, et fait suivre l'URL de la carte jusqu'aux issues des dépôts de code. À utiliser quand l'utilisateur donne une URL de carte Trello et demande de la cadrer, dit "cadre cette carte", "cadre ce ticket", ou colle un lien trello.com/c/.
+description: Part d'une carte Trello pour rédiger un cadrage dans le référentiel SSK Canon — lit le titre, la description, les checklists, les commentaires et les pièces jointes de la carte, puis enchaîne sur le skill cadrage-canon, repose en commentaire sur la carte le lien du cadrage obtenu et attache à la carte chaque demande de fusion ouverte, et fait suivre l'URL de la carte jusqu'aux issues des dépôts de code. À utiliser quand l'utilisateur donne une URL de carte Trello et demande de la cadrer, dit "cadre cette carte", "cadre ce ticket", ou colle un lien trello.com/c/.
 ---
 
 # Cadrer depuis une carte Trello
@@ -61,7 +61,8 @@ au nom d'un utilisateur. Pour un usage personnel ce flux est court-circuité : o
 s'autorise soi-même, et Trello délivre le jeton directement.
 
 Le jeton s'obtient en `scope=read,write` — l'écriture sert à reposer le lien du
-cadrage sur la carte, à l'étape 6, et **à rien d'autre**. Le skill ne déplace
+cadrage sur la carte et à y attacher les demandes de fusion, à l'étape 6, et
+**à rien d'autre**. Le skill ne déplace
 aucune carte, n'en change ni le statut ni les étiquettes : une carte appartient
 au client, et l'instruire n'autorise pas à la réorganiser.
 
@@ -254,6 +255,28 @@ bruit, et le bruit fait finir par ignorer la colonne entière.
 
 Un cadrage repris à l'étape 3 garde donc son commentaire d'origine, puisque
 l'URL de sa demande de fusion n'a pas changé. Rien à refaire.
+
+### Et l'attacher
+
+**La demande de fusion du cadrage s'attache aussi à la carte, en pièce jointe.**
+Le commentaire raconte ; la pièce jointe recense. C'est dans le cadre « Pièces
+jointes » que le client retrouve, sans relire la discussion, tout ce que sa carte
+a fait ouvrir — et la règle vaut pour chaque demande de fusion qui suivra, sur
+les dépôts de code comme d'infrastructure.
+
+```bash
+node ${CLAUDE_SKILL_DIR}/scripts/attacher-carte.mjs <url-de-la-carte> <url-de-la-pr> [nom]
+```
+
+Sans nom, une PR GitHub s'affiche `<dépôt> #<numéro>`. Le second argument peut
+aussi être un fichier local — une capture d'écran, par exemple.
+
+| Sortie | Ce qu'elle dit |
+|---|---|
+| `ATTACHE <url-ou-nom>` | la pièce jointe est posée |
+| `DEJA_ATTACHE <url-ou-nom>` | cette URL (ou ce nom de fichier) est déjà sur la carte — rien n'a été écrit |
+| `ECRITURE_REFUSEE` | le jeton ne peut pas écrire, comme pour le commentaire |
+| `CIBLE_INVALIDE` | le second argument n'est ni une URL absolue ni un fichier existant |
 
 ## 7. La carte suit jusqu'aux issues
 
