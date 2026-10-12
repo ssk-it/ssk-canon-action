@@ -3,12 +3,11 @@ name: consulter-referentiel
 description: Dit ce que le référentiel SSK Canon du projet courant sait déjà d'un sujet — règles de gestion en vigueur, décisions prises, cadrages livrés, et surtout cadrages encore en cours sur leur branche — avant de cadrer ou de développer. Lecture seule, sur origin/main et les branches distantes, jamais sur une copie locale en retard. À utiliser avant tout cadrage ou toute implémentation d'une évolution fonctionnelle, quand un skill de dépôt y renvoie, ou quand l'utilisateur demande "qu'a-t-on déjà décidé sur…", "y a-t-il une règle pour…", "quelqu'un travaille-t-il déjà sur…". Passer en argument le texte de la demande, et son issue ou sa carte s'il y en a une : le skill s'exécute dans un sous-agent qui ne voit pas la conversation.
 context: fork
 agent: Explore
-model: inherit
+model: sonnet
 background: false
 allowed-tools:
   - Bash(node ${CLAUDE_SKILL_DIR}/scripts/consulter.mjs)
   - Bash(node ${CLAUDE_SKILL_DIR}/scripts/consulter.mjs *)
-  - Bash(git -C * show *)
   - Bash(git -C * ls-tree *)
 ---
 
@@ -46,15 +45,34 @@ d'autre** : c'est tout ce que l'appelant reçoit.
 ## Les commandes
 
 **Une commande par appel, sans variable, boucle, `;`, `&&` ni `|`.** Seules deux
-formes sont pré-autorisées — le script de ce skill, et `git -C <chemin absolu>`
-suivi de `show` ou de `ls-tree`. Une commande composée ne correspond à aucune
-autorisation : en session interactive elle interrompt l'utilisateur pour une
-approbation, en mode non interactif elle est refusée. Plusieurs fichiers d'une
-même référence se lisent en un seul appel :
+formes sont pré-autorisées — le script de ce skill, et `git -C <chemin absolu>
+ls-tree`. Une commande composée ne correspond à aucune autorisation : en session
+interactive elle interrompt l'utilisateur pour une approbation, en mode non
+interactif elle est refusée.
 
-```bash
-git -C <REFERENTIEL> show <ref>:<fichier-1> <ref>:<fichier-2> <ref>:<fichier-3>
+**Ce qui coûte, ce sont les tours, non la lecture.** Le script répond en une ou
+deux secondes ; chaque appel, lui, coûte un tour entier de l'agent. D'où deux
+habitudes, qui ne retirent rien à ce qu'on lit :
+
+- **réunir dans un appel** ce qui peut l'être — toutes les options du script se
+  combinent, et `--lire` se répète autant qu'il y a de fichiers à lire ;
+- **lancer dans un même message** les appels qui ne dépendent pas l'un de
+  l'autre, plutôt que l'un après l'autre.
+
+**Le script ne rend jamais plus de 25 000 caractères.** Au-delà de 30 000, Claude
+Code ne montrerait de la sortie qu'un aperçu de deux kilo-octets, et le reste
+coûterait plusieurs tours à relire. Quand il doit couper, il le fait entre deux
+lignes, sans séparer un fichier ou un cadrage qui tiendrait entier sur la page
+suivante, et finit par :
+
 ```
+SUITE lignes <n> à <total> sur <total> non rendues — lire la suite : node … --depuis <n>
+```
+
+**Une sortie qui finit par `SUITE` n'est pas lue en entier** : relancer la commande
+donnée, telle quelle, jusqu'à ce qu'aucune ligne `SUITE` ne termine la sortie. La
+page suivante commence par `REPRISE à la ligne <n> sur <total>, dans : …`, qui dit
+de quel domaine, de quel cadrage ou de quel fichier elle poursuit la lecture.
 
 ## 1. L'index
 
@@ -103,12 +121,26 @@ node ${CLAUDE_SKILL_DIR}/scripts/consulter.mjs --domaine <id> [--domaine <id>] [
 ```
 
 - `--domaine` rend, pour chaque domaine, ses fonctionnalités, les règles
-  rattachées à chacune avec leur statut et leur énoncé, les décisions créées par
-  ses cadrages, les cadrages livrés et ceux en cours.
+  rattachées à chacune avec leur statut et leur énoncé, les décisions du dossier
+  `decisions/` créées par ses cadrages, puis ses cadrages livrés et ceux en cours —
+  chacun suivi de ses propres décisions.
 - `--issue` accepte `depot#n`, `organisation/depot#n` ou l'URL : il rend le cadrage
-  qui porte cette issue, livré ou en cours, et la commande pour le lire. **Quand la
-  demande part d'une issue, commencer par là** : son cadrage contient les règles
-  qu'elle doit réaliser, et l'issue, elle, ne porte que le besoin.
+  qui porte cette issue, livré ou en cours, ses décisions, et l'argument `--lire`
+  qui le lit. **Quand la demande part d'une issue, commencer par là** : son cadrage
+  contient les règles qu'elle doit réaliser, et l'issue, elle, ne porte que le
+  besoin.
+
+Les décisions d'un cadrage, **livré comme en cours**, viennent chacune sur une
+ligne :
+
+```
+DECISION_DE_CADRAGE <ref>:cadrages/<id>/decisions/<fichier>.md [<statut> → <option retenue>] | <question> | <premier paragraphe>
+```
+
+La question et l'option retenue servent à **choisir** les décisions à lire en
+entier, jamais à s'en passer : ce qu'une décision a écarté, et pourquoi, n'est que
+dans son fichier. Le `<ref>:<chemin>` en tête de ligne se passe tel quel à
+`--lire`.
 
 Un domaine se choisit par le **métier** de la demande, pas par le dossier de code
 touché : le vocabulaire du référentiel n'est pas celui du code.
@@ -139,16 +171,20 @@ intervention dans le code. La recherche ignore la casse mais non les accents.
 ## 4. Lire ce qui compte
 
 Le script ne donne que le premier paragraphe. Lire en entier ce qui touche la
-demande de près :
+demande de près — règles, cadrages, décisions —, **en un seul appel** :
 
 ```bash
-git -C <REFERENTIEL> show origin/main:rules/<id>.md
-git -C <REFERENTIEL> show <branche>:cadrages/<id>/cadrage.md
-git -C <REFERENTIEL> show <branche>:cadrages/<id>/decisions/<fichier>.md
+node ${CLAUDE_SKILL_DIR}/scripts/consulter.mjs --lire origin/main:rules/<id>.md --lire <branche>:cadrages/<id>/cadrage.md --lire <ref>:cadrages/<id>/decisions/<fichier>.md
 ```
 
-Pour un cadrage en cours, lire aussi ses décisions : ce sont elles qui disent ce
-qui est déjà tranché, et qui ne le sera plus par la demande présente.
+Chaque fichier vient entier sous une ligne `LIRE <ref>:<chemin> (<n> lignes)` ;
+un fichier qui n'existe pas sur la référence est signalé par `ABSENT`. Seules
+`origin/main` et les branches distantes `origin/…` sont admises, pour la raison du
+§1 : une branche locale du clone peut être en retard.
+
+Lire aussi les décisions des cadrages qui touchent la demande, livrés comme en
+cours : ce sont elles qui disent ce qui est déjà tranché, et qui ne le sera plus
+par la demande présente.
 
 ## 5. Restituer
 
