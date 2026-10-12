@@ -311,9 +311,8 @@ const decisionsDe = (id) => (decisionsACharger.get(id) ?? [])
 
 // ── Restitution ──────────────────────────────────────────────────────────────
 
-const enteteCadrage = (c, etiquette) =>
-  `  ${etiquette} ${c.id} | ${c.libelle} | domaines: ${(c.domaines ?? []).join(', ')}${c.branche ? ` | ${c.branche}` : ''}`;
-const ligneCadrage = (c, etiquette) => dire(enteteCadrage(c, etiquette));
+const ligneCadrage = (c, etiquette) =>
+  dire(`  ${etiquette} ${c.id} | ${c.libelle} | domaines: ${(c.domaines ?? []).join(', ')}${c.branche ? ` | ${c.branche}` : ''}`);
 
 /**
  * Le titre d'une décision est sa question, l'option retenue sa réponse : de quoi
@@ -321,8 +320,8 @@ const ligneCadrage = (c, etiquette) => dire(enteteCadrage(c, etiquette));
  */
 function direDecisions(c, retrait) {
   for (const { objet, d } of decisionsDe(c.id)) {
-    const issue = d.option_retenue ? ` → ${d.option_retenue}` : '';
-    dire(`${retrait}DECISION_DE_CADRAGE ${objet} [${d.statut ?? '?'}${issue}] | ${d.libelle} | ${d.enonce}`);
+    const option = d.option_retenue ? ` → ${d.option_retenue}` : '';
+    dire(`${retrait}DECISION_DE_CADRAGE ${objet} [${d.statut ?? '?'}${option}] | ${d.libelle} | ${d.enonce}`);
   }
 }
 
@@ -502,9 +501,9 @@ while (i < total) {
   if (k === 0 && i > debut) {
     // Un bloc qui ne tient plus sur cette page mais tiendrait entier sur la
     // suivante y passe tout entier : un fichier ou un cadrage se lit d'un tenant.
-    const bloc = taille(b.lignes);
+    const tailleDuBloc = taille(b.lignes);
     const surLaSuivante = plafond - taille(entete) - (ligneReprise(i).length + 1);
-    if (utilise + bloc > plafond && bloc <= surLaSuivante) break;
+    if (utilise + tailleDuBloc > plafond && tailleDuBloc <= surLaSuivante) break;
   }
   if (utilise + texte.length + 1 > plafond) {
     if (i > debut) break;
