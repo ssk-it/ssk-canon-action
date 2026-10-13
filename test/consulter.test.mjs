@@ -52,6 +52,9 @@ const travail = join(tmp, 'travail');
 const REFERENTIEL = join(tmp, 'referentiel');
 execFileSync('git', ['init', '-q', '--bare', '-b', 'main', origine]);
 cpSync(FIXTURE, travail, { recursive: true });
+// Le dépôt de code que ce référentiel déclare, pour éprouver la situation.
+const DEPOT_DECLARE = 'ssk-it/depot-de-test';
+writeFileSync(join(travail, 'ssk-canon.yml'), `${readFileSync(join(travail, 'ssk-canon.yml'), 'utf8')}\ndepots_code:\n  - { repo: ${DEPOT_DECLARE}, role: Test }\n`);
 git(travail, 'init', '-q', '-b', 'main');
 git(travail, 'add', '.');
 git(travail, 'commit', '-q', '-m', 'fixture');
@@ -187,7 +190,9 @@ test('lit plusieurs fichiers en un appel, chacun entier sous son en-tête', () =
   const b = 'cadrages/2026-013/decisions/01-comparer-ou-consulter.md';
   const sortie = lancer(['--lire', `origin/main:${a}`, '--lire', `origin/main:${b}`]);
   for (const f of [a, b]) {
-    const contenu = readFileSync(join(FIXTURE, f), 'utf8').replace(/\n$/, '');
+    // Git rend le fichier tel qu'il est commité ; extrait sous Windows, il peut
+    // porter des CRLF que le script n'a jamais lus.
+    const contenu = readFileSync(join(FIXTURE, f), 'utf8').replace(/\r\n/g, '\n').replace(/\n$/, '');
     const n = contenu.split('\n').length;
     vrai(sortie.includes(`LIRE origin/main:${f} (${n} lignes)\n${contenu}\n`), `${f} absent ou incomplet`);
   }
@@ -259,6 +264,56 @@ test('à la reprise au milieu d’un fichier, dit lequel et à quelle ligne', ()
   vrai(pages.length > 1, 'le fichier devait être coupé');
   const reprise = lignes(pages[1]).find((l) => l.startsWith('REPRISE '));
   vrai(reprise && new RegExp(`dans : LIRE origin/main:${grand} \\(à partir de sa ligne \\d+\\)`).test(reprise), `reprise inattendue : ${reprise}`);
+});
+
+// ── Situation ────────────────────────────────────────────────────────────────
+
+// Une machine où ce référentiel est déclaré : la situation la lit dans
+// ~/.claude/cadrage-canon.json, que homedir() trouve par HOME ou USERPROFILE.
+const maison = join(tmp, 'maison');
+mkdirSync(join(maison, '.claude'), { recursive: true });
+writeFileSync(join(maison, '.claude', 'cadrage-canon.json'), JSON.stringify({ projets: [REFERENTIEL] }));
+const horsDepot = join(tmp, 'hors-depot');
+mkdirSync(horsDepot);
+const sansOrigine = join(tmp, 'sans-origine');
+execFileSync('git', ['init', '-q', sansOrigine]);
+
+/** Le script sans --referentiel, depuis un dossier courant donné. */
+function situer(cwd, args = []) {
+  return execFileSync('node', [SCRIPT, ...args], {
+    cwd,
+    env: { ...process.env, ...SANS_LIMITE, HOME: maison, USERPROFILE: maison, GIT_CEILING_DIRECTORIES: tmp },
+    encoding: 'utf8',
+  });
+}
+
+test('--depot désigne le dépôt de code, quel que soit le dossier courant', () => {
+  // Une session ouverte ailleurs que dans le dépôt de code — un dossier de
+  // travail, ou un dépôt sous WSL qu'une session Windows ne lit pas — ne doit
+  // pas empêcher de consulter son référentiel.
+  const sortie = situer(horsDepot, ['--depot', DEPOT_DECLARE]);
+  vrai(sortie.includes(`REFERENTIEL ${REFERENTIEL} @ origin/main `), sortie);
+});
+
+test('nomme la cause quand git ne dit pas quel est le dépôt courant', () => {
+  // « hors dépôt git » couvrait aussi un dépôt sans origin, ou un dépôt que git
+  // refuse de lire, qui ne se règlent pas de la même façon.
+  const sortie = situer(sansOrigine);
+  const ligne = lignes(sortie).find((l) => l.startsWith('DEPOT_COURANT '));
+  vrai(/^DEPOT_COURANT \(inconnu\) — .*origin/.test(ligne ?? ''), `ligne inattendue : ${ligne}\n${sortie}`);
+  vrai(sortie.includes('REFERENTIEL_NON_RETENU'), sortie);
+});
+
+test('dit pourquoi git refuse le référentiel, au lieu de se croire hors ligne', () => {
+  // Sous Windows, git refuse un référentiel cloné sous WSL (« dubious
+  // ownership ») : le script annonçait une lecture hors ligne, puis une
+  // origin/main absente — deux causes fausses.
+  const sortie = execFileSync('node', [SCRIPT, '--referentiel', horsDepot], {
+    env: { ...process.env, GIT_CEILING_DIRECTORIES: tmp },
+    encoding: 'utf8',
+  });
+  vrai(sortie.startsWith(`REFERENTIEL_ILLISIBLE ${horsDepot} — `), sortie);
+  vrai(!sortie.includes('FETCH_ECHOUE') && !sortie.includes('REFERENCE_ABSENTE'), sortie);
 });
 
 rmSync(tmp, { recursive: true, force: true });

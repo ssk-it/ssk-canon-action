@@ -30,8 +30,10 @@ node ${CLAUDE_SKILL_DIR}/scripts/comparer.mjs
 ```
 
 - **Tous identiques** — continuer.
-- **Installé ≠ source** — quelqu'un a modifié sa copie. Récupérer ce qu'elle
-  porte de bon avant de la remplacer.
+- **Installé ≠ source** — une copie modifiée sur place, ou simplement en
+  retard : installée depuis une version antérieure de la source. Si aucune
+  version de l'historique de la source ne lui est identique, récupérer ce
+  qu'elle porte de bon avant de la remplacer.
 - **Source ≠ publié** — un travail attend d'être fusionné. Le vérifier avant
   d'en empiler un autre.
 
