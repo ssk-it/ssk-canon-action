@@ -59,11 +59,16 @@ notes.
 
 ## 2. Ce qui vaut d'être su avant d'écrire
 
-**Ne jamais employer l'injection de commande dans un SKILL.md** — la forme qui
-préfixe par un point d'exclamation une commande entourée d'accents graves, pour
-en insérer la sortie. Elle demande une approbation à chaque invocation et fait
-échouer le chargement du skill. Écrire la commande dans un bloc `bash` en
-demandant de l'exécuter — c'est ce que fait l'étape 0 de `cadrage-canon`.
+**N'employer l'injection de commande que pour une commande que les
+`allowed-tools` du skill autorisent** — la forme qui préfixe par un point
+d'exclamation une commande entourée d'accents graves, pour en insérer la sortie
+au chargement. Non autorisée, elle demande une approbation à chaque invocation
+et fait échouer le chargement du skill : écrire alors la commande dans un bloc
+`bash` en demandant de l'exécuter — c'est ce que fait l'étape 0 de
+`cadrage-canon`. Autorisée, elle passe sans approbation, y compris en
+`context: fork` : `consulter-referentiel` injecte ainsi son index. Vérifié le
+2026-10-13 avec Claude Code 2.1.289, sous `--permission-mode dontAsk`, qui
+refuse tout ce qui n'est pas pré-autorisé.
 
 **Ne pas l'écrire littéralement non plus, même pour la citer.** Le harnais ne
 distingue pas une citation d'une vraie injection : la première version de ce

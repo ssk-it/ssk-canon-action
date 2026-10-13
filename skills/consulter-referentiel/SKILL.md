@@ -79,10 +79,11 @@ fichier elle poursuit la lecture.
 
 ## 1. L'index
 
-Depuis le dépôt de code courant, exécuter, et lire la sortie :
+L'index a été calculé au chargement de ce skill, depuis le dépôt de code
+courant ; inutile de relancer le script sans option :
 
-```bash
-node ${CLAUDE_SKILL_DIR}/scripts/consulter.mjs
+```
+!`node ${CLAUDE_SKILL_DIR}/scripts/consulter.mjs`
 ```
 
 Le script trouve le référentiel par la même situation que `cadrage-canon` — il
