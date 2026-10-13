@@ -242,6 +242,17 @@ test('ne coupe pas un fichier qui tiendrait entier sur la page suivante', () => 
   vrai(seconde.includes(`LIRE origin/main:${grand}`), 'il doit ouvrir la seconde');
 });
 
+test('nomme, sur la ligne SUITE, les fichiers qui restent à lire', () => {
+  // Une sortie coupée au milieu d'une lecture ne doit pas pouvoir passer pour
+  // complète : la ligne SUITE dit ce qui manque encore, fichier par fichier.
+  const grand = 'cadrages/2026-013/decisions/01-comparer-ou-consulter.md';
+  const petit = 'rules/RG-auteur-reel-commit.md';
+  const args = ['--lire', `origin/main:${grand}`, '--lire', `origin/main:${petit}`];
+  const [premiere] = toutesLesPages(args, { CONSULTER_MAX_CARACTERES: '2500' });
+  const suite = lignes(premiere).at(-1);
+  vrai(new RegExp(`fichiers non lus : origin/main:${grand} \\(à partir de sa ligne \\d+\\), origin/main:${petit} — `).test(suite), `SUITE inattendue : ${suite}`);
+});
+
 test('à la reprise au milieu d’un fichier, dit lequel et à quelle ligne', () => {
   const grand = 'cadrages/2026-013/decisions/01-comparer-ou-consulter.md';
   const pages = toutesLesPages(['--lire', `origin/main:${grand}`], { CONSULTER_MAX_CARACTERES: '2500' });

@@ -73,8 +73,8 @@ const entete = [];
 const blocs = [];
 let courant = null;
 const annoncer = (l) => entete.push(l);
-function bloc({ contexte = [], reprise = null } = {}) {
-  courant = { lignes: [], contexte, reprise };
+function bloc({ contexte = [], reprise = null, fichier = null } = {}) {
+  courant = { lignes: [], contexte, reprise, fichier };
   blocs.push(courant);
 }
 function dire(l) {
@@ -480,7 +480,7 @@ for (const objet of aLire) {
     continue;
   }
   const lignesDuFichier = contenu.replace(/\n$/, '').split('\n');
-  bloc({ reprise: (k) => `LIRE ${objet} (à partir de sa ligne ${k})` });
+  bloc({ reprise: (k) => `LIRE ${objet} (à partir de sa ligne ${k})`, fichier: objet });
   dire(`LIRE ${objet} (${lignesDuFichier.length} lignes)`);
   for (const l of lignesDuFichier) dire(l);
 }
@@ -504,12 +504,25 @@ function ligneReprise(i) {
   const ou = [...b.contexte, ...titre];
   return `REPRISE à la ligne ${i + 1} sur ${total}${ou.length ? `, dans : ${ou.join(' › ')}` : ''}`;
 }
-const ligneSuite = (i) => `SUITE lignes ${i + 1} à ${total} sur ${total} non rendues — lire la suite : ${relance} --depuis ${i + 1}`;
+/**
+ * Une lecture coupée ne doit pas pouvoir passer pour complète : la ligne SUITE
+ * nomme chaque fichier dont il reste quelque chose à lire.
+ */
+function nonLus(i) {
+  const restants = plat.slice(i).filter(({ b, k }, j) => b.fichier && (k === 0 || j === 0));
+  return restants.map(({ b, k }) => (k === 0 ? b.fichier : `${b.fichier} (à partir de sa ligne ${k})`));
+}
+function ligneSuite(i) {
+  const fichiers = nonLus(i);
+  const dont = fichiers.length ? `, fichiers non lus : ${fichiers.join(', ')}` : '';
+  return `SUITE lignes ${i + 1} à ${total} sur ${total} non rendues${dont} — lire la suite : ${relance} --depuis ${i + 1}`;
+}
+const lePlusLong = `${ligneSuite(total)}, fichiers non lus : ${blocs.filter((b) => b.fichier).map((b) => `${b.fichier} (à partir de sa ligne ${b.lignes.length})`).join(', ')}`;
 
 const debut = Math.min((depuis ?? 1) - 1, total);
 const page = [...entete];
 if (depuis) page.push(ligneReprise(debut));
-const plafond = BUDGET - (ligneSuite(total).length + 1);
+const plafond = BUDGET - (lePlusLong.length + 1);
 let utilise = taille(page);
 let i = debut;
 while (i < total) {

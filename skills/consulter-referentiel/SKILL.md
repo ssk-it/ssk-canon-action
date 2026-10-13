@@ -66,11 +66,14 @@ lignes, sans séparer un fichier ou un cadrage qui tiendrait entier sur la page
 suivante, et finit par :
 
 ```
-SUITE lignes <n> à <total> sur <total> non rendues — lire la suite : node … --depuis <n>
+SUITE lignes <n> à <total> sur <total> non rendues, fichiers non lus : … — lire la suite : node … --depuis <n>
 ```
 
 **Une sortie qui finit par `SUITE` n'est pas lue en entier** : relancer la commande
-donnée, telle quelle, jusqu'à ce qu'aucune ligne `SUITE` ne termine la sortie. La
+donnée, telle quelle, jusqu'à ce qu'aucune ligne `SUITE` ne termine la sortie —
+pour une lecture `--lire` comme pour les autres. Les fichiers que la ligne nomme
+n'ont pas été lus, ou seulement en partie : s'arrêter là, c'est restituer comme
+lu ce qui ne l'a pas été. La
 page suivante commence par `REPRISE à la ligne <n> sur <total>, dans : …`, qui dit
 de quel domaine, de quel cadrage ou de quel fichier elle poursuit la lecture.
 
