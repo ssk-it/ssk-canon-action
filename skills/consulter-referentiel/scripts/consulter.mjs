@@ -11,7 +11,9 @@
  *   consulter.mjs --lire <ref>:<chemin> … des fichiers entiers, en un lot
  *   consulter.mjs … --depuis <ligne>      la suite d'une sortie coupée
  *   consulter.mjs --referentiel <chemin>  sans passer par la situation
- *   consulter.mjs --fetch                 rafraîchir même si le dernier fetch est récent
+ *   consulter.mjs --depot <org/depot>     situer ce dépôt de code, non celui du
+ *                                         dossier courant
+ *   consulter.mjs --fetch                rafraîchir même si le dernier fetch est récent
  *
  * Tout se lit sur origin/main et sur les branches de cadrage distantes, jamais
  * dans la copie de travail : un clone de référentiel ouvert une fois et jamais
@@ -34,6 +36,7 @@ const issues = [];
 const motifs = [];
 const aLire = [];
 let racine = null;
+let depot = null;
 let forcerFetch = false;
 let depuis = null;
 for (let i = 0; i < args.length; i++) {
@@ -45,6 +48,7 @@ for (let i = 0; i < args.length; i++) {
   else if (a === '--lire' && valeur) { aLire.push(valeur); i++; }
   else if (a === '--depuis' && /^[1-9]\d*$/.test(valeur ?? '')) { depuis = Number(valeur); i++; }
   else if (a === '--referentiel' && valeur) { racine = resolve(valeur); i++; }
+  else if (a === '--depot' && valeur) { depot = valeur; i++; }
   else if (a === '--fetch') forcerFetch = true;
   else { console.log(`ARGUMENT_INCONNU ${a}`); process.exit(1); }
 }
@@ -95,7 +99,7 @@ if (!racine) {
     console.log(`SITUER_INTROUVABLE ${situer} — installer cadrage-canon à côté de ce skill`);
     process.exit(0);
   }
-  const sortie = execFileSync('node', [situer], { encoding: 'utf8' });
+  const sortie = execFileSync('node', [situer, ...(depot ? ['--depot', depot] : [])], { encoding: 'utf8' });
   const retenu = sortie.match(/^CADRAGE_RETENU (.+)$/m);
   if (!retenu) {
     // Ambiguïté ou absence : la situation l'a nommée, on la relaie telle quelle
@@ -112,6 +116,20 @@ const git = (...a) => execFileSync('git', ['-C', racine, ...a], {
   stdio: ['ignore', 'pipe', 'ignore'],
   maxBuffer: 64 * 1024 * 1024,
 });
+
+/**
+ * Le référentiel doit d'abord se lire : sans quoi le fetch échoue et passe pour
+ * une absence de réseau, puis origin/main pour absente — deux causes fausses.
+ * Sous Windows, git refuse ainsi un référentiel cloné sous WSL (« dubious
+ * ownership ») : c'est sa réponse qui dit quoi faire.
+ */
+try {
+  execFileSync('git', ['-C', racine, 'rev-parse', '--git-dir'], { stdio: ['ignore', 'ignore', 'pipe'] });
+} catch (e) {
+  const cause = String(e.stderr || e.message).split('\n').map((l) => l.trim()).find(Boolean);
+  console.log(`REFERENTIEL_ILLISIBLE ${racine} — ${cause}`);
+  process.exit(0);
+}
 
 /**
  * Le fetch n'écrit que dans .git : il ne dérange pas une session qui aurait

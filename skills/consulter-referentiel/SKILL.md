@@ -101,6 +101,8 @@ répondent en moins d'une seconde.
 | `ARCHITECTURE <id> \| <nature> \| …` | composants, flux et contextes documentés |
 | `EN_COURS <id> \| <titre> \| domaines: … \| <branche>` | un cadrage non fusionné — **à lire avec attention** |
 | `REFERENTIEL_NON_RETENU` | la situation a échoué ; sa sortie est relayée au-dessus |
+| `DEPOT_COURANT (inconnu) — <cause>` | git n'a pas dit quel est le dépôt courant ; sa réponse suit |
+| `REFERENTIEL_ILLISIBLE <chemin> — <cause>` | git refuse de lire le référentiel ; sa réponse suit |
 | `FETCH_RECENT il y a <n> s` | le dernier `fetch` date de moins de cinq minutes ; `--fetch` le force |
 | `FETCH_ECHOUE` | hors ligne : la lecture porte sur la dernière image connue, à dire |
 
@@ -116,6 +118,38 @@ référentiel n'est pas une erreur. Avec `PLUSIEURS_PROJETS_DECLARENT_CE_DEPOT`,
 ne pas choisir : rendre la main en listant les `CANDIDAT`, pour que l'appelant
 demande lequel et relance en précisant le chemin dans la demande — le script
 l'accepte par `--referentiel <chemin>`.
+
+**Le dépôt de la demande n'est pas celui de la session.** L'index injecté se
+calcule depuis le dossier où la session est ouverte, que `DEPOT_COURANT` nomme.
+Si ce n'est pas le dépôt de code de la demande — une session ouverte dans un
+dossier de travail, ou sur un autre dépôt —, relancer en le désignant ;
+`--depot` se combine avec toutes les autres options :
+
+```bash
+node ${CLAUDE_SKILL_DIR}/scripts/consulter.mjs --depot <organisation/depot>
+```
+
+**Un référentiel que ce poste ne connaît pas.** `AUCUN_PROJET_NE_DECLARE_CE_DEPOT`
+ne dit que ce qu'ont déclaré les `PROJET` listés, ceux de
+`~/.claude/cadrage-canon.json`. Si le dépôt de code nomme pourtant son
+référentiel — dans son `CLAUDE.md`, son `README` —, ce n'est pas un projet sans
+référentiel : c'est ce poste qui ne l'a pas déclaré. Le dire à l'appelant, avec
+le dépôt nommé, qui une fois cloné s'ajoute à `projets`. Ne pas conclure qu'il
+n'y a rien.
+
+**Git refuse de lire : sous Windows, un dépôt cloné sous WSL.** Une cause
+« dubious ownership », sur `DEPOT_COURANT` ou `REFERENTIEL_ILLISIBLE` : Git pour
+Windows ne tient pas pour sien un dépôt de `\\wsl.localhost\…`, dont le
+propriétaire est l'utilisateur Linux. Le remède relâche une protection de git,
+une fois par poste : il revient à l'utilisateur, non à ce skill. Le rendre à
+l'appelant avec la commande, pour le dossier qui contient les dépôts :
+
+```bash
+git config --global --add safe.directory '%(prefix)///wsl.localhost/<distribution>/home/<utilisateur>/<dossier>/*'
+```
+
+Le référentiel se déclare alors dans `~/.claude/cadrage-canon.json` par ce même
+chemin, en barres obliques : `"//wsl.localhost/<distribution>/home/…"`.
 
 ## 2. Le sujet
 

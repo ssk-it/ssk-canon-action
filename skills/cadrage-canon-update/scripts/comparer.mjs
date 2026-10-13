@@ -49,7 +49,10 @@ const RACINE_SOURCE = join(homedir(), 'dev', 'ssk-it', 'ssk-canon-action', 'skil
 const RACINE_PUBLIE =
   'https://raw.githubusercontent.com/ssk-it/ssk-canon-action/main/skills';
 
-const empreinte = (texte) => createHash('sha256').update(texte).digest('hex').slice(0, 12);
+// Les fins de ligne ne comptent pas : extrait sous Windows (core.autocrlf), un
+// fichier porte des CRLF que ni le dépôt ni le publié n'ont, et chaque fichier
+// passait pour « SOURCE ≠ PUBLIÉ ».
+const empreinte = (texte) => createHash('sha256').update(texte.replace(/\r\n/g, '\n')).digest('hex').slice(0, 12);
 
 function local(racine, fichier) {
   const chemin = join(racine, fichier);
@@ -129,8 +132,9 @@ for (const nom of SKILLS) {
           : enCours
             ? '    → SOURCE MODIFIÉE : travail en cours dans le dépôt, pas encore ' +
               'publié ni réinstallé. Rien à récupérer.'
-            : '    → INSTALLÉ ≠ SOURCE : une copie a été modifiée sur place. Récupérer ' +
-              'ce qu’elle porte avant de la remplacer.',
+            : '    → INSTALLÉ ≠ SOURCE : une copie modifiée sur place, ou installée ' +
+              'depuis une version antérieure. Si l’historique de la source ne la ' +
+              'contient pas, récupérer ce qu’elle porte avant de la remplacer.',
       );
       divergent = true;
     }

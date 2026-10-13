@@ -6,8 +6,12 @@
  * la plateforme le nomme, et c'est le dépôt de cadrage qui déclare quels dépôts
  * de code composent le projet. Le lien est ainsi déclaré une seule fois, du
  * côté qui a autorité, au lieu d'une fois par dépôt de code.
+ *
+ *   situer.mjs                         le dépôt courant, par son origin
+ *   situer.mjs --depot <org/depot>     un dépôt désigné, quel que soit le dossier
+ *                                      courant
  */
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -15,20 +19,41 @@ import { join, resolve } from 'node:path';
 const CONFIG = join(homedir(), '.claude', 'cadrage-canon.json');
 const dire = (...m) => console.log(...m);
 
+/**
+ * Une session peut être ouverte ailleurs que dans le dépôt de code qu'elle
+ * traite : un dossier de travail, ou un dépôt sous WSL qu'une session Windows
+ * ne lit pas. `--depot` le désigne alors sans dépendre du dossier courant.
+ */
+const args = process.argv.slice(2);
+let depotDesigne = null;
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--depot' && args[i + 1]) depotDesigne = args[++i];
+  else { dire(`ARGUMENT_INCONNU ${args[i]}`); process.exit(1); }
+}
+
 function developper(chemin) {
   return resolve(chemin.startsWith('~') ? join(homedir(), chemin.slice(1)) : chemin);
 }
 
-/** Le dépôt courant, tel que la plateforme le nomme. */
+/**
+ * Le dépôt courant, tel que la plateforme le nomme — ou ce que git répond quand
+ * il ne le dit pas.
+ *
+ * Git s'appelle sans shell : sous Windows, celui de Node est cmd.exe, qui refuse
+ * un dossier courant UNC — celui d'un dépôt sous WSL, `\\wsl.localhost\…` —
+ * avant même que git ne démarre. Et sa réponse est gardée : un dépôt sans
+ * origin, hors dépôt git, ou que git refuse de lire (« dubious ownership ») ne
+ * se règlent pas de la même façon.
+ */
 function depotCourant() {
   try {
-    const url = execSync('git remote get-url origin', {
+    const url = execFileSync('git', ['remote', 'get-url', 'origin'], {
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
+      stdio: ['ignore', 'pipe', 'pipe'],
     }).trim();
-    return url.replace(/^git@[^:]+:/, '').replace(/^https?:\/\/[^/]+\//, '').replace(/\.git$/, '');
-  } catch {
-    return null;
+    return { depot: url.replace(/^git@[^:]+:/, '').replace(/^https?:\/\/[^/]+\//, '').replace(/\.git$/, '') };
+  } catch (e) {
+    return { cause: String(e.stderr || e.message).split('\n').map((l) => l.trim()).find(Boolean) };
   }
 }
 
@@ -67,8 +92,12 @@ function lireProjet(racine) {
   return { nom: nom || '(sans nom)', racine, depots };
 }
 
-const courant = depotCourant();
-dire(`DEPOT_COURANT ${courant ?? '(hors dépôt git)'}`);
+const { depot: courant, cause } = depotDesigne ? { depot: depotDesigne } : depotCourant();
+dire(
+  courant
+    ? `DEPOT_COURANT ${courant}${depotDesigne ? ' (désigné par --depot)' : ''}`
+    : `DEPOT_COURANT (inconnu) — ${cause}`,
+);
 
 if (!existsSync(CONFIG)) {
   dire(`CONFIG_ABSENTE ${CONFIG}`);

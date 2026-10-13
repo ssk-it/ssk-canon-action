@@ -26,6 +26,8 @@ Ce que sa sortie signifie :
 
 | Ligne | Ce qu'elle dit |
 |---|---|
+| `DEPOT_COURANT <repo>` | le dépôt de code d'où l'on part, par son `origin` — ou celui que désigne `--depot` |
+| `DEPOT_COURANT (inconnu) — <cause>` | voir « Quand la situation échoue » |
 | `CADRAGE_RETENU <chemin>` | le dépôt de cadrage à employer — **tous les chemins de ce skill s'y rapportent** |
 | `PROJET <nom> \| <chemin>` | un projet déclaré, avec ses dépôts de code |
 | `DEPOT_CODE <repo>` | un dépôt que ce projet réalise — utile pour explorer le code au-delà du dépôt courant |
@@ -38,7 +40,8 @@ Ce que sa sortie signifie :
 Le dépôt courant se reconnaît à son `origin` : **rien n'est à configurer dans un
 dépôt de code.** C'est le `ssk-canon.yml` du référentiel qui déclare les dépôts
 de code du projet, et `~/.claude/cadrage-canon.json` qui dit où les référentiels
-sont clonés sur cette machine.
+sont clonés sur cette machine. Une session ouverte ailleurs que dans le dépôt de
+code le désigne : `situer.mjs --depot <organisation/depot>`.
 
 ### Explorer l'ensemble du projet
 
@@ -81,6 +84,19 @@ se signale à l'utilisateur **avant** d'en écrire un second.
   ```
   Le déclarer là plutôt que dans chaque dépôt de code évite d'écrire *n* fois ce
   qui est un fait unique, et que les copies divergent.
+
+  Si aucun `PROJET` listé n'est le référentiel du projet, c'est ce poste qui ne
+  le connaît pas : le cloner, et ajouter son chemin à `~/.claude/cadrage-canon.json`.
+
+- **`DEPOT_COURANT (inconnu)`** — git n'a pas dit quel est le dépôt courant, et
+  sa réponse suit. Hors dépôt git, ou dans un dépôt sans `origin` : désigner le
+  dépôt de code par `--depot <organisation/depot>`. « dubious ownership », sous
+  Windows : un dépôt cloné sous WSL, que Git pour Windows ne tient pas pour sien.
+  Le remède relâche une protection de git, une fois par poste, et revient à
+  l'utilisateur :
+  ```bash
+  git config --global --add safe.directory '%(prefix)///wsl.localhost/<distribution>/home/<utilisateur>/<dossier>/*'
+  ```
 
 - **`PLUSIEURS_PROJETS_DECLARENT_CE_DEPOT`** — plusieurs référentiels déclarent
   le dépôt courant, et il n'y a pas de `CADRAGE_RETENU`. C'est le cas normal
