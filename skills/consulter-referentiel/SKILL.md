@@ -73,9 +73,9 @@ SUITE lignes <n> à <total> sur <total> non rendues, fichiers non lus : … — 
 donnée, telle quelle, jusqu'à ce qu'aucune ligne `SUITE` ne termine la sortie —
 pour une lecture `--lire` comme pour les autres. Les fichiers que la ligne nomme
 n'ont pas été lus, ou seulement en partie : s'arrêter là, c'est restituer comme
-lu ce qui ne l'a pas été. La
-page suivante commence par `REPRISE à la ligne <n> sur <total>, dans : …`, qui dit
-de quel domaine, de quel cadrage ou de quel fichier elle poursuit la lecture.
+lu ce qui ne l'a pas été. La page suivante commence par `REPRISE à la ligne <n>
+sur <total>, dans : …`, qui dit de quel domaine, de quel cadrage ou de quel
+fichier elle poursuit la lecture.
 
 ## 1. L'index
 
