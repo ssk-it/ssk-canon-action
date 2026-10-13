@@ -3,7 +3,7 @@ name: consulter-referentiel
 description: Dit ce que le référentiel SSK Canon du projet courant sait déjà d'un sujet — règles de gestion en vigueur, décisions prises, cadrages livrés, et surtout cadrages encore en cours sur leur branche — avant de cadrer ou de développer. Lecture seule, sur origin/main et les branches distantes, jamais sur une copie locale en retard. À utiliser avant tout cadrage ou toute implémentation d'une évolution fonctionnelle, quand un skill de dépôt y renvoie, ou quand l'utilisateur demande "qu'a-t-on déjà décidé sur…", "y a-t-il une règle pour…", "quelqu'un travaille-t-il déjà sur…". Passer en argument le texte de la demande, et son issue ou sa carte s'il y en a une : le skill s'exécute dans un sous-agent qui ne voit pas la conversation.
 context: fork
 agent: Explore
-model: sonnet
+model: inherit
 background: false
 allowed-tools:
   - Bash(node ${CLAUDE_SKILL_DIR}/scripts/consulter.mjs)
