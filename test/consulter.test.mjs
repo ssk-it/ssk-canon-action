@@ -66,7 +66,11 @@ titre: Se connecter par un jeton d'organisation
 domaines: [acces]
 liens:
   - { tag: issue_github, url: 'https://github.com/ssk-it/ssk-canon-pwa/issues/99' }
-impacts: []
+impacts:
+  - { regle: RG-connexion-optionnelle, operation: modifie, enonce: 'Un jeton d’organisation suffit.' }
+  - { regle: RG-jeton-d-organisation, operation: cree, enonce: 'Un jeton couvre un dépôt.' }
+  - { adr: ADR-jetons, operation: modifie }
+  - { regle: RG-identite-separee, operation: touche }
 ---
 
 ## Objectif
@@ -151,6 +155,15 @@ test('liste aussi les décisions d’un cadrage en cours, lues sur sa branche', 
     sortie.includes('    DECISION_DE_CADRAGE origin/cadrage-2026-016:cadrages/2026-016/decisions/01-portee-du-jeton.md [retenue → un-depot] | Le jeton couvre-t-il une organisation ou un dépôt ? | Un jeton d\'organisation ouvre tous ses dépôts'),
     `décision du cadrage en cours absente :\n${sortie}`,
   );
+});
+
+test('dit, sous un cadrage en cours, les règles qu’il créerait, modifierait ou abrogerait', () => {
+  // C'est ce qu'un cadrage en cours change au référentiel, et que ni les règles
+  // ni l'index ne montrent avant sa fusion.
+  const sortie = lancer(['--domaine', 'acces']);
+  const tout = lignes(sortie);
+  const cadrage = tout.findIndex((l) => l.startsWith('  CADRAGE_EN_COURS 2026-016 '));
+  egal(tout[cadrage + 1], '    IMPACTS modifie RG-connexion-optionnelle · cree RG-jeton-d-organisation · modifie ADR-jetons · touche RG-identite-separee');
 });
 
 test('ne répète pas les décisions d’un cadrage commun à deux domaines', () => {

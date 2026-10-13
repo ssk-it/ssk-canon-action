@@ -142,6 +142,11 @@ entier, jamais à s'en passer : ce qu'une décision a écarté, et pourquoi, n'e
 dans son fichier. Le `<ref>:<chemin>` en tête de ligne se passe tel quel à
 `--lire`.
 
+Sous un cadrage en cours, une ligne `IMPACTS` dit ce qu'il changerait au
+référentiel — `cree`, `modifie`, `abroge` ou `touche`, règle par règle et ADR par
+ADR. Une règle qui contraint la demande et qu'un cadrage en cours abroge ou
+modifie est un recouvrement : c'est ce cadrage qu'il faut lire, au §4.
+
 Un domaine se choisit par le **métier** de la demande, pas par le dossier de code
 touché : le vocabulaire du référentiel n'est pas celui du code.
 
@@ -186,6 +191,11 @@ Lire aussi les décisions des cadrages qui touchent la demande, livrés comme en
 cours : ce sont elles qui disent ce qui est déjà tranché, et qui ne le sera plus
 par la demande présente.
 
+**Un cadrage en cours qui recouvre la demande se lit en entier** — son
+`cadrage.md` et chacune de ses décisions, dans le même appel. C'est le chantier
+qu'on risque de refaire ou de contredire, et ni ses premiers paragraphes ni sa
+ligne `IMPACTS` ne disent ce qu'il change à la demande présente.
+
 ## 5. Restituer
 
 Une section, à insérer dans ce que l'appelant rend :
@@ -199,6 +209,12 @@ Référentiel <nom> @ origin/main <sha> — domaines consultés : <ids> — term
 - **Cadrages en cours qui recouvrent** — <id> (<branche>) : ce qu'il couvre, et le recouvrement
 - **Contradictions** — ce que la demande dit, ce que le référentiel dit
 ```
+
+**Tout ce qui a été rencontré et qui contraint la demande y figure** : chaque
+règle, chaque ADR rattachée aux domaines (`DECISION`), chaque décision de cadrage
+(`DECISION_DE_CADRAGE`), chaque cadrage en cours qui recouvre. La synthèse est
+courte parce qu'elle écarte ce qui ne touche pas la demande, jamais parce qu'elle
+omet ce qui la touche.
 
 **Une section vide se dit** : « Rien dans le référentiel ne contraint cette
 demande », suivi de ce qui a été consulté. Un constat d'absence vaut s'il dit où

@@ -209,6 +209,7 @@ function analyser(texte) {
   if (!m) return null;
   const champs = {};
   const liens = [];
+  const impacts = [];
   for (const ligne of m[1].split('\n')) {
     const cle = ligne.match(/^([a-z_]+): *(.*)$/);
     if (cle && cle[1] !== 'liens') {
@@ -220,8 +221,12 @@ function analyser(texte) {
     }
     const url = ligne.match(/url: *'?([^',}\s]+)/);
     if (url) liens.push(url[1]);
+    // { regle: …, operation: … }, ou { adr: … } pour une décision d'architecture
+    const impact = ligne.match(/\{ *[a-z_]+: *([\w.-]+)[^}]*operation: *(\w+)/);
+    if (impact) impacts.push(`${impact[2]} ${impact[1]}`);
   }
   champs.liens = liens;
+  champs.impacts = impacts;
   // Domaines et fonctionnalités se nomment tantôt par « titre », tantôt par
   // « nom » : les deux formes coexistent dans les référentiels existants.
   champs.libelle = champs.titre || champs.nom || '';
@@ -315,6 +320,15 @@ const ligneCadrage = (c, etiquette) =>
   dire(`  ${etiquette} ${c.id} | ${c.libelle} | domaines: ${(c.domaines ?? []).join(', ')}${c.branche ? ` | ${c.branche}` : ''}`);
 
 /**
+ * Ce qu'un cadrage en cours changerait aux règles n'apparaît nulle part
+ * ailleurs avant sa fusion : c'est là que se voit une abrogation, ou une
+ * modification que la demande contredirait.
+ */
+function direImpacts(c, retrait) {
+  if (c.branche && c.impacts.length > 0) dire(`${retrait}IMPACTS ${c.impacts.join(' · ')}`);
+}
+
+/**
  * Le titre d'une décision est sa question, l'option retenue sa réponse : de quoi
  * choisir celles qu'il faut lire en entier, non de quoi s'en passer.
  */
@@ -374,6 +388,7 @@ for (const id of domaines) {
     for (const c of liste.filter((c) => (c.domaines ?? []).includes(id))) {
       bloc({ contexte: [titre] });
       ligneCadrage(c, etiquette);
+      direImpacts(c, '    ');
       if (decisionsListees.has(c.id)) {
         if (decisionsDe(c.id).length > 0) dire(`    (décisions listées sous le domaine ${decisionsListees.get(c.id)})`);
       } else {
@@ -398,6 +413,7 @@ for (const issue of issues) {
     bloc();
     dire(`ISSUE ${issue} → CADRAGE ${c.id} | ${c.libelle} | ${c.branche ? `en cours sur ${c.branche}` : 'livré'}`);
     dire(`  lire : --lire ${c.branche ?? REF}:cadrages/${c.id}/cadrage.md`);
+    direImpacts(c, '  ');
     direDecisions(c, '  ');
   }
 }
