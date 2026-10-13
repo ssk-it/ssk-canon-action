@@ -8,6 +8,8 @@
  *                                         cadrages livrés et en cours du domaine
  *   consulter.mjs --issue <url|depot#n>   le cadrage qui porte cette issue
  *   consulter.mjs --motif <terme> …       où le terme apparaît, livré et en cours
+ *   consulter.mjs --lire <ref>:<chemin> … des fichiers entiers, en un lot
+ *   consulter.mjs … --depuis <ligne>      la suite d'une sortie coupée
  *   consulter.mjs --referentiel <chemin>  sans passer par la situation
  *   consulter.mjs --fetch                 rafraîchir même si le dernier fetch est récent
  *
@@ -22,7 +24,6 @@ import { existsSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const dire = (...m) => console.log(...m);
 const REF = 'origin/main';
 
 // ── Arguments ────────────────────────────────────────────────────────────────
@@ -31,17 +32,54 @@ const args = process.argv.slice(2);
 const domaines = [];
 const issues = [];
 const motifs = [];
+const aLire = [];
 let racine = null;
 let forcerFetch = false;
+let depuis = null;
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
   const valeur = args[i + 1];
   if (a === '--domaine' && valeur) { domaines.push(valeur); i++; }
   else if (a === '--issue' && valeur) { issues.push(valeur); i++; }
   else if (a === '--motif' && valeur) { motifs.push(valeur); i++; }
+  else if (a === '--lire' && valeur) { aLire.push(valeur); i++; }
+  else if (a === '--depuis' && /^[1-9]\d*$/.test(valeur ?? '')) { depuis = Number(valeur); i++; }
   else if (a === '--referentiel' && valeur) { racine = resolve(valeur); i++; }
   else if (a === '--fetch') forcerFetch = true;
-  else { dire(`ARGUMENT_INCONNU ${a}`); process.exit(1); }
+  else { console.log(`ARGUMENT_INCONNU ${a}`); process.exit(1); }
+}
+
+// ── Sortie ───────────────────────────────────────────────────────────────────
+
+/**
+ * Au-delà de 30 000 caractères (réglage `bashOutputMaxChars` de Claude Code),
+ * une sortie n'est plus rendue à l'agent : elle part dans un fichier dont il ne
+ * voit que les deux premiers kilo-octets, et il lui faut deux ou trois tours de
+ * plus pour la relire par morceaux — la moitié des consultations mesurées le
+ * payaient. On reste donc en deçà, avec de la marge, et c'est le script qui
+ * coupe : proprement, entre deux lignes, en disant la commande qui rend la suite.
+ *
+ * CONSULTER_MAX_CARACTERES ajuste le seuil, pour qui aurait abaissé le réglage.
+ */
+const BUDGET = Number(process.env.CONSULTER_MAX_CARACTERES) || 25000;
+
+/**
+ * La sortie se compose de blocs — un fichier lu, une fonctionnalité et ses
+ * règles, un cadrage et ses décisions —, que la coupe évite de séparer. Chaque
+ * bloc garde son contexte, pour qu'une page qui reprend en son milieu dise où
+ * elle en est.
+ */
+const entete = [];
+const blocs = [];
+let courant = null;
+const annoncer = (l) => entete.push(l);
+function bloc({ contexte = [], reprise = null, fichier = null } = {}) {
+  courant = { lignes: [], contexte, reprise, fichier };
+  blocs.push(courant);
+}
+function dire(l) {
+  if (!courant) bloc();
+  courant.lignes.push(l);
 }
 
 // ── Trouver le référentiel ───────────────────────────────────────────────────
@@ -54,7 +92,7 @@ for (let i = 0; i < args.length; i++) {
 if (!racine) {
   const situer = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'cadrage-canon', 'scripts', 'situer.mjs');
   if (!existsSync(situer)) {
-    dire(`SITUER_INTROUVABLE ${situer} — installer cadrage-canon à côté de ce skill`);
+    console.log(`SITUER_INTROUVABLE ${situer} — installer cadrage-canon à côté de ce skill`);
     process.exit(0);
   }
   const sortie = execFileSync('node', [situer], { encoding: 'utf8' });
@@ -63,7 +101,7 @@ if (!racine) {
     // Ambiguïté ou absence : la situation l'a nommée, on la relaie telle quelle
     // plutôt que de choisir — c'est à l'appelant de désigner le référentiel.
     process.stdout.write(sortie);
-    dire('REFERENTIEL_NON_RETENU — relancer avec --referentiel <chemin>');
+    console.log('REFERENTIEL_NON_RETENU — relancer avec --referentiel <chemin>');
     process.exit(0);
   }
   racine = retenu[1].trim();
@@ -82,6 +120,9 @@ const git = (...a) => execFileSync('git', ['-C', racine, ...a], {
  * Il coûte en revanche plusieurs secondes, et une consultation enchaîne trois
  * ou quatre appels en une minute : au-delà du premier, il ne rapporterait rien.
  * On ne le refait donc qu'au-delà de quelques minutes, ou sur demande.
+ *
+ * Jamais pour lire la suite d'une sortie coupée : elle doit venir de la même
+ * image que son début, sans quoi les lignes ne correspondraient plus.
  */
 const FRAICHEUR_MS = 5 * 60 * 1000;
 function ageDuDernierFetch() {
@@ -93,24 +134,26 @@ function ageDuDernierFetch() {
   }
 }
 const age = ageDuDernierFetch();
-if (forcerFetch || age > FRAICHEUR_MS) {
+if (depuis) {
+  // la suite d'une sortie : pas de fetch, voir ci-dessus
+} else if (forcerFetch || age > FRAICHEUR_MS) {
   try {
     git('fetch', '-q', '--prune', 'origin');
   } catch {
-    dire('FETCH_ECHOUE — lecture de la dernière image connue de origin/main, peut-être en retard');
+    annoncer('FETCH_ECHOUE — lecture de la dernière image connue de origin/main, peut-être en retard');
   }
 } else {
-  dire(`FETCH_RECENT il y a ${Math.round(age / 1000)} s — --fetch pour le refaire`);
+  annoncer(`FETCH_RECENT il y a ${Math.round(age / 1000)} s — --fetch pour le refaire`);
 }
 
 let sha;
 try {
   sha = git('log', '-1', '--format=%h %cs', REF).trim();
 } catch {
-  dire(`REFERENCE_ABSENTE ${REF} dans ${racine}`);
+  console.log(`REFERENCE_ABSENTE ${REF} dans ${racine}`);
   process.exit(0);
 }
-dire(`REFERENTIEL ${racine} @ ${REF} ${sha}`);
+annoncer(`REFERENTIEL ${racine} @ ${REF} ${sha}`);
 
 // ── Lecture ──────────────────────────────────────────────────────────────────
 
@@ -166,6 +209,7 @@ function analyser(texte) {
   if (!m) return null;
   const champs = {};
   const liens = [];
+  const impacts = [];
   for (const ligne of m[1].split('\n')) {
     const cle = ligne.match(/^([a-z_]+): *(.*)$/);
     if (cle && cle[1] !== 'liens') {
@@ -177,8 +221,12 @@ function analyser(texte) {
     }
     const url = ligne.match(/url: *'?([^',}\s]+)/);
     if (url) liens.push(url[1]);
+    // { regle: …, operation: … }, ou { adr: … } pour une décision d'architecture
+    const impact = ligne.match(/\{ *[a-z_]+: *([\w.-]+)[^}]*operation: *(\w+)/);
+    if (impact) impacts.push(`${impact[2]} ${impact[1]}`);
   }
   champs.liens = liens;
+  champs.impacts = impacts;
   // Domaines et fonctionnalités se nomment tantôt par « titre », tantôt par
   // « nom » : les deux formes coexistent dans les référentiels existants.
   champs.libelle = champs.titre || champs.nom || '';
@@ -209,6 +257,31 @@ for (const branche of git('branch', '-r', '--no-merged', REF, '--format=%(refnam
   }
 }
 
+/**
+ * Les décisions d'un cadrage — livré autant qu'en cours — disent ce qui est
+ * tranché, et surtout ce qui a été écarté et pourquoi. Elles ne remontent pas
+ * toutes dans decisions/ : sans elles, l'agent n'apprendrait leur existence
+ * qu'en listant chaque cadrage, un appel par cadrage. On ne les lit que pour
+ * un domaine ou une issue, l'index n'en a pas l'usage.
+ */
+const avecDecisions = domaines.length > 0 || issues.length > 0;
+const DECISION_DE_CADRAGE = /^cadrages\/(\d{4}-\d{3})\/decisions\/[^/]+\.md$/;
+const decisionsACharger = new Map(); // id du cadrage → objets git de ses décisions
+const noterDecision = (id, objet) => decisionsACharger.set(id, [...(decisionsACharger.get(id) ?? []), objet]);
+if (avecDecisions) {
+  for (const f of surMain) {
+    const id = f.match(DECISION_DE_CADRAGE)?.[1];
+    if (id) noterDecision(id, `${REF}:${f}`);
+  }
+  for (const { id, branche } of aLireEnCours) {
+    try {
+      for (const f of git('ls-tree', '--name-only', `${branche}:cadrages/${id}/decisions`).split('\n')) {
+        if (f.endsWith('.md')) noterDecision(id, `${branche}:cadrages/${id}/decisions/${f}`);
+      }
+    } catch { /* cadrage sans décisions */ }
+  }
+}
+
 const objetsMain = surMain.filter((f) => {
   const [dossier, nom, suite] = f.split('/');
   if (dossier === 'cadrages') return suite === 'cadrage.md';
@@ -217,6 +290,7 @@ const objetsMain = surMain.filter((f) => {
 const lus = lireEnLot([
   ...objetsMain.map((f) => `${REF}:${f}`),
   ...aLireEnCours.map(({ id, branche }) => `${branche}:cadrages/${id}/cadrage.md`),
+  ...[...decisionsACharger.values()].flat(),
 ]);
 
 const charger = (dossier) => objetsMain
@@ -236,33 +310,65 @@ const enCours = aLireEnCours
     return c && { ...c, branche };
   })
   .filter(Boolean);
+const decisionsDe = (id) => (decisionsACharger.get(id) ?? [])
+  .map((objet) => ({ objet, d: analyser(lus.get(objet)) }))
+  .filter(({ d }) => d);
 
 // ── Restitution ──────────────────────────────────────────────────────────────
 
 const ligneCadrage = (c, etiquette) =>
   dire(`  ${etiquette} ${c.id} | ${c.libelle} | domaines: ${(c.domaines ?? []).join(', ')}${c.branche ? ` | ${c.branche}` : ''}`);
 
-if (domaines.length === 0 && issues.length === 0 && motifs.length === 0) {
+/**
+ * Ce qu'un cadrage en cours changerait aux règles n'apparaît nulle part
+ * ailleurs avant sa fusion : c'est là que se voit une abrogation, ou une
+ * modification que la demande contredirait.
+ */
+function direImpacts(c, retrait) {
+  if (c.branche && c.impacts.length > 0) dire(`${retrait}IMPACTS ${c.impacts.join(' · ')}`);
+}
+
+/**
+ * Le titre d'une décision est sa question, l'option retenue sa réponse : de quoi
+ * choisir celles qu'il faut lire en entier, non de quoi s'en passer.
+ */
+function direDecisions(c, retrait) {
+  for (const { objet, d } of decisionsDe(c.id)) {
+    const option = d.option_retenue ? ` → ${d.option_retenue}` : '';
+    dire(`${retrait}DECISION_DE_CADRAGE ${objet} [${d.statut ?? '?'}${option}] | ${d.libelle} | ${d.enonce}`);
+  }
+}
+
+if (domaines.length === 0 && issues.length === 0 && motifs.length === 0 && aLire.length === 0) {
+  bloc();
   dire(`DOMAINES ${lesDomaines.length}`);
   for (const d of lesDomaines) dire(`  DOMAINE ${d.id} | ${d.libelle}`);
+  bloc();
   dire(`ARCHITECTURE ${architecture.length}`);
   for (const a of architecture) dire(`  ARCHITECTURE ${a.id} | ${a.nature ?? ''} | ${a.enonce}`);
+  bloc();
   dire(`CADRAGES_EN_COURS ${enCours.length}`);
   for (const c of enCours) ligneCadrage(c, 'EN_COURS');
   dire(`TOTAUX fonctionnalites=${fonctionnalites.length} regles=${regles.length} decisions=${decisions.length} cadrages_livres=${livres.length}`);
 }
 
+// Un cadrage commun à deux domaines demandés ne liste ses décisions qu'une fois.
+const decisionsListees = new Map(); // id du cadrage → domaine sous lequel elles l'ont été
+
 for (const id of domaines) {
   const domaine = lesDomaines.find((d) => d.id === id);
+  bloc();
   if (!domaine) {
     dire(`DOMAINE_INCONNU ${id} — connus : ${lesDomaines.map((d) => d.id).join(', ')}`);
     continue;
   }
-  dire(`DOMAINE ${domaine.id} | ${domaine.libelle}`);
+  const titre = `DOMAINE ${domaine.id} | ${domaine.libelle}`;
+  dire(titre);
   dire(`  ${domaine.enonce}`);
 
   const siennes = fonctionnalites.filter((f) => (f.domaines ?? []).includes(id));
   for (const f of siennes) {
+    bloc({ contexte: [titre] });
     dire(`  FONCTIONNALITE ${f.id} | ${f.libelle}`);
     for (const r of regles.filter((r) => (r.fonctionnalites ?? []).includes(f.id))) {
       dire(`    REGLE ${r.id} [${r.statut ?? '?'}] | ${r.enonce}`);
@@ -271,14 +377,26 @@ for (const id of domaines) {
 
   // Une décision n'a pas de domaine : elle hérite de ceux des cadrages qui
   // l'ont créée ou modifiée.
+  bloc({ contexte: [titre] });
   const cadragesDuDomaine = new Set(livres.filter((c) => (c.domaines ?? []).includes(id)).map((c) => c.id));
   for (const d of decisions) {
     const auteurs = [d.cree_par, ...(d.modifie_par ?? [])].filter(Boolean);
     if (auteurs.some((a) => cadragesDuDomaine.has(a))) dire(`  DECISION ${d.id} [${d.statut ?? '?'}] | ${d.enonce}`);
   }
 
-  for (const c of livres.filter((c) => (c.domaines ?? []).includes(id))) ligneCadrage(c, 'CADRAGE_LIVRE');
-  for (const c of enCours.filter((c) => (c.domaines ?? []).includes(id))) ligneCadrage(c, 'CADRAGE_EN_COURS');
+  for (const [etiquette, liste] of [['CADRAGE_LIVRE', livres], ['CADRAGE_EN_COURS', enCours]]) {
+    for (const c of liste.filter((c) => (c.domaines ?? []).includes(id))) {
+      bloc({ contexte: [titre] });
+      ligneCadrage(c, etiquette);
+      direImpacts(c, '    ');
+      if (decisionsListees.has(c.id)) {
+        if (decisionsDe(c.id).length > 0) dire(`    (décisions listées sous le domaine ${decisionsListees.get(c.id)})`);
+      } else {
+        decisionsListees.set(c.id, id);
+        direDecisions(c, '    ');
+      }
+    }
+  }
 }
 
 /**
@@ -289,10 +407,14 @@ for (const issue of issues) {
   const court = issue.match(/^(?:[\w.-]+\/)?([\w.-]+)#(\d+)$/);
   const suffixe = court ? `/${court[1]}/issues/${court[2]}` : issue.replace(/\/+$/, '');
   const trouves = [...livres, ...enCours].filter((c) => c.liens.some((l) => l.endsWith(suffixe)));
+  bloc();
   if (trouves.length === 0) dire(`ISSUE_SANS_CADRAGE ${issue}`);
   for (const c of trouves) {
+    bloc();
     dire(`ISSUE ${issue} → CADRAGE ${c.id} | ${c.libelle} | ${c.branche ? `en cours sur ${c.branche}` : 'livré'}`);
-    dire(`  lire : git -C ${racine} show ${c.branche ?? REF}:cadrages/${c.id}/cadrage.md`);
+    dire(`  lire : --lire ${c.branche ?? REF}:cadrages/${c.id}/cadrage.md`);
+    direImpacts(c, '  ');
+    direDecisions(c, '  ');
   }
 }
 
@@ -329,7 +451,101 @@ function parFichier(lignes) {
 for (const terme of motifs) {
   const livresTrouves = parFichier(chercher(REF, ['rules', 'decisions', 'architecture', 'cadrages'], terme));
   const enCoursTrouves = parFichier(enCours.flatMap((c) => chercher(c.branche, [`cadrages/${c.id}`], terme)));
+  bloc();
   dire(`MOTIF ${terme} | fichiers livrés: ${livresTrouves.size} | fichiers en cours: ${enCoursTrouves.size}`);
   for (const [f, { n, premiere }] of livresTrouves) dire(`  LIVRE ${f} (${n}) | ${couper(premiere)}`);
   for (const [f, { n, premiere }] of enCoursTrouves) dire(`  EN_COURS ${f} (${n}) | ${couper(premiere)}`);
 }
+
+/**
+ * Plusieurs fichiers en un appel, et en un seul processus git : chaque appel
+ * coûte un tour à l'agent, bien plus que la lecture elle-même.
+ *
+ * Seules les références distantes sont admises, pour la raison qui fait tout
+ * lire sur origin : une branche locale du clone peut avoir des semaines de
+ * retard sans que rien ne le signale.
+ */
+const objetsALire = aLire.filter((o) => /^origin\/[^:]+:./.test(o));
+const contenus = lireEnLot(objetsALire);
+for (const objet of aLire) {
+  if (!objetsALire.includes(objet)) {
+    bloc();
+    dire(`LIRE_REFUSE ${objet} — lire sur origin/main ou sur une branche distante : --lire origin/<branche>:<chemin>`);
+    continue;
+  }
+  const contenu = contenus.get(objet);
+  if (contenu == null) {
+    bloc();
+    dire(`ABSENT ${objet}`);
+    continue;
+  }
+  const lignesDuFichier = contenu.replace(/\n$/, '').split('\n');
+  bloc({ reprise: (k) => `LIRE ${objet} (à partir de sa ligne ${k})`, fichier: objet });
+  dire(`LIRE ${objet} (${lignesDuFichier.length} lignes)`);
+  for (const l of lignesDuFichier) dire(l);
+}
+
+// ── Pagination ───────────────────────────────────────────────────────────────
+
+/** La commande à relancer, telle que l'agent la copiera. */
+const citer = (a) => (/^[\w@%+=:,./#-]+$/.test(a) ? a : `'${a.replace(/'/g, `'\\''`)}'`);
+const relance = ['node', process.argv[1], ...args.filter((a, i) => a !== '--fetch' && a !== '--depuis' && args[i - 1] !== '--depuis')]
+  .map(citer)
+  .join(' ');
+
+const plat = blocs.flatMap((b) => b.lignes.map((texte, k) => ({ texte, b, k })));
+const total = plat.length;
+const taille = (lignes) => lignes.reduce((n, l) => n + l.length + 1, 0);
+
+/** Où l'on reprend : le contexte du bloc, et sa ligne quand on reprend en son milieu. */
+function ligneReprise(i) {
+  const { b, k } = plat[i] ?? { b: { contexte: [] }, k: 0 };
+  const titre = k === 0 ? [] : [b.reprise ? b.reprise(k) : `${b.lignes[0].trim()} (suite)`];
+  const ou = [...b.contexte, ...titre];
+  return `REPRISE à la ligne ${i + 1} sur ${total}${ou.length ? `, dans : ${ou.join(' › ')}` : ''}`;
+}
+/**
+ * Une lecture coupée ne doit pas pouvoir passer pour complète : la ligne SUITE
+ * nomme chaque fichier dont il reste quelque chose à lire.
+ */
+function nonLus(i) {
+  const restants = plat.slice(i).filter(({ b, k }, j) => b.fichier && (k === 0 || j === 0));
+  return restants.map(({ b, k }) => (k === 0 ? b.fichier : `${b.fichier} (à partir de sa ligne ${k})`));
+}
+function ligneSuite(i) {
+  const fichiers = nonLus(i);
+  const dont = fichiers.length ? `, fichiers non lus : ${fichiers.join(', ')}` : '';
+  return `SUITE lignes ${i + 1} à ${total} sur ${total} non rendues${dont} — lire la suite : ${relance} --depuis ${i + 1}`;
+}
+const lePlusLong = `${ligneSuite(total)}, fichiers non lus : ${blocs.filter((b) => b.fichier).map((b) => `${b.fichier} (à partir de sa ligne ${b.lignes.length})`).join(', ')}`;
+
+const debut = Math.min((depuis ?? 1) - 1, total);
+const page = [...entete];
+if (depuis) page.push(ligneReprise(debut));
+const plafond = BUDGET - (lePlusLong.length + 1);
+let utilise = taille(page);
+let i = debut;
+while (i < total) {
+  const { texte, b, k } = plat[i];
+  if (k === 0 && i > debut) {
+    // Un bloc qui ne tient plus sur cette page mais tiendrait entier sur la
+    // suivante y passe tout entier : un fichier ou un cadrage se lit d'un tenant.
+    const tailleDuBloc = taille(b.lignes);
+    const surLaSuivante = plafond - taille(entete) - (ligneReprise(i).length + 1);
+    if (utilise + tailleDuBloc > plafond && tailleDuBloc <= surLaSuivante) break;
+  }
+  if (utilise + texte.length + 1 > plafond) {
+    if (i > debut) break;
+    // Une seule ligne plus longue que toute une page : on la tronque en le
+    // disant, faute de quoi la suite recommencerait indéfiniment sur elle.
+    const marque = ` … [ligne tronquée : ${texte.length} caractères]`;
+    page.push(`${texte.slice(0, Math.max(0, plafond - utilise - marque.length - 1))}${marque}`);
+    i++;
+    break;
+  }
+  page.push(texte);
+  utilise += texte.length + 1;
+  i++;
+}
+if (i < total) page.push(ligneSuite(i));
+process.stdout.write(`${page.join('\n')}\n`);
