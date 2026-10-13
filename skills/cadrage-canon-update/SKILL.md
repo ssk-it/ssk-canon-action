@@ -1,6 +1,7 @@
 ---
 name: cadrage-canon-update
-description: Met à jour le skill cadrage-canon — le corriger, l'enrichir, ou le remettre à niveau depuis sa source publiée. À utiliser quand l'utilisateur signale un défaut du skill de cadrage, veut y ajouter quelque chose, ou demande de le mettre à jour. Le skill vit dans ssk-it/ssk-canon-action et non chez le développeur : ce skill-ci dit par où passer pour que les exemplaires ne divergent pas.
+description: >-
+  Met à jour le skill cadrage-canon — le corriger, l'enrichir, ou le remettre à niveau depuis sa source publiée. À utiliser quand l'utilisateur signale un défaut du skill de cadrage, veut y ajouter quelque chose, ou demande de le mettre à jour. Le skill vit dans ssk-it/ssk-canon-action et non chez le développeur : ce skill-ci dit par où passer pour que les exemplaires ne divergent pas.
 ---
 
 # Mettre à jour le skill de cadrage
@@ -75,6 +76,14 @@ distingue pas une citation d'une vraie injection : la première version de ce
 skill-ci échouait au chargement à cause de la ligne même qui met en garde
 contre elle. La décrire en mots, comme ci-dessus.
 
+**Un frontmatter que YAML refuse ne se signale pas.** Claude Code charge alors le
+corps du skill avec des métadonnées vides : plus de `context: fork` ni
+d'`allowed-tools`, et le titre pour toute description — le skill tourne dans la
+conversation au lieu d'un sous-agent, et se déclenche mal. Une description non
+citée qui contient « : » y suffit, ce qu'un texte français fait vite : l'écrire
+en scalaire plié, `description: >-` puis le texte à la ligne, indenté.
+`test/skills.test.mjs` analyse le frontmatter de chaque skill.
+
 **`${CLAUDE_SKILL_DIR}` se substitue**, y compris hors injection. C'est ainsi
 que `SKILL.md` atteint ses scripts sans supposer où le skill est installé.
 
@@ -90,8 +99,9 @@ ensemble. Quand l'un bouge, relire l'autre.
 
 ## 3. Éprouver pour de bon
 
-**Rien en intégration continue ne vérifie le skill** — ni sa forme, ni son
-comportement. Ce qui suit est la seule vérification qui existe.
+**L'intégration continue ne vérifie que la forme du skill** — que son
+frontmatter se lit (`test/skills.test.mjs`) —, jamais son comportement. Ce qui
+suit est la seule vérification qui existe.
 
 Une sonde simplifiée ne suffit pas : c'est ainsi que le défaut de l'injection
 était passé, une sonde ayant employé une commande autorisée d'emblée là où la

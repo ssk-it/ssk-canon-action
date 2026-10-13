@@ -1,6 +1,7 @@
 ---
 name: cadrage-canon
-description: Rédige un cadrage dans le référentiel SSK Canon du projet courant — l'unité de changement datée qui décrit ce qu'on veut faire, pourquoi, et quelles règles de gestion en découlent —, puis propose d'ouvrir le chantier sur les dépôts de code : une issue portant le besoin par dépôt impacté, et le lien retour dans le cadrage. Le référentiel vit dans un dépôt à part, que ce skill trouve seul. À utiliser quand l'utilisateur dit "cadre cette évolution", "rédige le cadrage", "consigne cette décision", ou avant d'ouvrir un chantier dont les règles métier ne sont pas encore posées.
+description: >-
+  Rédige un cadrage dans le référentiel SSK Canon du projet courant — l'unité de changement datée qui décrit ce qu'on veut faire, pourquoi, et quelles règles de gestion en découlent —, puis propose d'ouvrir le chantier sur les dépôts de code : une issue portant le besoin par dépôt impacté, et le lien retour dans le cadrage. Le référentiel vit dans un dépôt à part, que ce skill trouve seul. À utiliser quand l'utilisateur dit "cadre cette évolution", "rédige le cadrage", "consigne cette décision", ou avant d'ouvrir un chantier dont les règles métier ne sont pas encore posées.
 ---
 
 # Rédiger un cadrage
