@@ -186,9 +186,12 @@ qu'on reprend.
 
 ### Ce que le script garantit, et ce qu'il ne garantit pas
 
-L'identifiant est choisi en regardant **le dépôt, les branches distantes et les
-espaces préparés localement** : un cadrage en cours ailleurs est donc vu, ce que
-la seule lecture du dépôt ne montrerait pas.
+L'identifiant est choisi en regardant **la branche principale distante, juste
+après un fetch, les branches distantes et locales, et les espaces préparés
+localement** : un cadrage en cours ailleurs est donc vu, ce que la seule lecture
+du dépôt ne montrerait pas. Un clone en retard ne fait pas proposer le numéro
+d'un cadrage livré depuis, et une branche locale restée après la fusion garde le
+sien.
 
 La séquence ne comble jamais un trou : un identifiant abandonné reste brûlé. Le
 réutiliser ferait pointer d'anciennes références vers un cadrage sans rapport.

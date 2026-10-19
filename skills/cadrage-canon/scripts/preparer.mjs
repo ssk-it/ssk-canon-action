@@ -26,6 +26,21 @@ if (!existsSync(join(racine, 'ssk-canon.yml'))) {
   process.exit(1);
 }
 
+// Avant de compter quoi que ce soit : un clone en retard ignore les cadrages
+// livrés depuis son dernier fetch, et proposerait l'un de leurs numéros.
+try {
+  git('fetch --quiet origin');
+} catch {
+  /* distant injoignable : signalé plus bas, et la préparation échouera */
+}
+
+let principale = 'main';
+try {
+  principale = git('symbolic-ref --short refs/remotes/origin/HEAD').replace(/^origin\//, '');
+} catch {
+  /* origin/HEAD absent : la branche principale par défaut */
+}
+
 /**
  * Les identifiants déjà pris, de toutes provenances.
  *
@@ -38,23 +53,27 @@ function identifiantsPris() {
   const ajouter = (texte) => {
     for (const m of texte.matchAll(/(\d{4})-(\d{3})/g)) pris.add(m[0]);
   };
+  const essayer = (args) => {
+    try {
+      ajouter(git(args));
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
-  try {
-    ajouter(git('ls-tree --name-only HEAD cadrages/'));
-  } catch {
-    /* dépôt sans cadrages encore */
-  }
-  try {
-    // Le distant fait autorité sur ce que les autres préparent.
-    ajouter(git('ls-remote --heads origin'));
-  } catch {
+  // La branche principale distante dit ce qui est livré ; la copie locale peut
+  // être en retard, ou sur une autre branche. Les deux sont lues.
+  essayer(`ls-tree --name-only origin/${principale} cadrages/`);
+  essayer('ls-tree --name-only HEAD cadrages/');
+  // Le distant fait autorité sur ce que les autres préparent.
+  if (!essayer('ls-remote --heads origin')) {
     console.log('AVERTISSEMENT distant injoignable — les cadrages en cours ailleurs sont ignorés');
   }
-  try {
-    ajouter(git('worktree list --porcelain'));
-  } catch {
-    /* rien */
-  }
+  // Une branche locale survit à la fusion qui a supprimé sa distante : son
+  // numéro est brûlé, et `worktree add -b` refuserait de la recréer.
+  essayer('for-each-ref "--format=%(refname:short)" "refs/heads/cadrage-*"');
+  essayer('worktree list --porcelain');
   return pris;
 }
 
@@ -97,7 +116,6 @@ try {
   // Depuis la branche principale distante : partir de la copie locale ferait
   // hériter de ce qu'elle a de retard, ou pire, du travail d'une autre session.
   git('fetch --quiet origin');
-  const principale = git('symbolic-ref --short refs/remotes/origin/HEAD').replace(/^origin\//, '');
   git(`worktree add --quiet -b ${branche} "${chemin}" origin/${principale}`);
 } catch (e) {
   console.log(`ECHEC ${String(e.stderr ?? e.message).split('\n')[0]}`);
