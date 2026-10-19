@@ -4,6 +4,10 @@
 // faire compiler depuis TypeScript ajouterait une étape de construction à un
 // paquet qui n'en a aucune. Sa surface est étroite et stable.
 
+import type { FichierIdentite } from './identite.js';
+
+export * from './identite.js';
+
 /** Un référentiel chargé, quelle qu'en soit la provenance. */
 export interface RepoVerifiable {
   /**
@@ -25,6 +29,13 @@ export interface RepoVerifiable {
   readonly decisions?: ReadonlyMap<string, unknown>;
   readonly architecture?: ReadonlyMap<string, unknown>;
   readonly cadrages: ReadonlyMap<string, unknown>;
+  /**
+   * Les fichiers du répertoire `identite/`, avec leur poids.
+   *
+   * Absents, l'identité n'est pas contrôlée ; un tableau vide dit qu'il n'y en
+   * a pas.
+   */
+  readonly identite?: readonly FichierIdentite[];
   /** Erreurs déjà rencontrées au chargement, reprises telles quelles. */
   readonly errors?: readonly string[];
 }

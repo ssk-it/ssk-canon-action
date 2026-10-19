@@ -9,6 +9,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { load } from 'js-yaml';
 import { splitFrontmatter, extractEnonces } from './format.mjs';
+import { REPERTOIRE_IDENTITE } from './identite.mjs';
 
 // Réexportés pour ne pas casser les appelants : le découpage entre ce qui
 // touche au disque et ce qui n'y touche pas est une affaire interne.
@@ -20,6 +21,23 @@ export function listMarkdown(dir, out = []) {
     const p = join(dir, entry);
     if (statSync(p).isDirectory()) listMarkdown(p, out);
     else if (p.endsWith('.md')) out.push(p);
+  }
+  return out;
+}
+
+/**
+ * Liste récursivement les fichiers d'un répertoire, avec leur poids.
+ *
+ * Les chemins sont relatifs à `racine`, séparés par « / » quel que soit le
+ * système : c'est la forme sous laquelle la plateforme les donne, et celle que
+ * la règle partagée contrôle.
+ */
+function listFichiers(racine, dir = racine, out = []) {
+  for (const entry of readdirSync(dir)) {
+    const p = join(dir, entry);
+    const s = statSync(p);
+    if (s.isDirectory()) listFichiers(racine, p, out);
+    else out.push({ chemin: relative(racine, p).split(sep).join('/'), taille: s.size });
   }
   return out;
 }
@@ -100,6 +118,17 @@ export function loadRepo(root) {
     // les décisions de cadrage et attachments sont rattachés à leur cadrage plus bas
   }
 
+  // L'identité visuelle n'est pas un contenu : ses fichiers ne sont pas des
+  // entités, et seuls leur nom et leur poids comptent — RG-identite-du-projet.
+  let identite = [];
+  try {
+    identite = listFichiers(join(root, REPERTOIRE_IDENTITE)).sort((a, b) =>
+      a.chemin.localeCompare(b.chemin),
+    );
+  } catch {
+    // pas d'identité, cas normal
+  }
+
   // rattachement des décisions et pièces jointes
   for (const [id, c] of cadrages) {
     const dir = join(root, 'cadrages', id);
@@ -123,5 +152,5 @@ export function loadRepo(root) {
     }
   }
 
-  return { config, domains, features, rules, cadrages, decisions, architecture, errors };
+  return { config, domains, features, rules, cadrages, decisions, architecture, identite, errors };
 }
