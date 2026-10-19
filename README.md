@@ -113,6 +113,20 @@ règle inexistante, un énoncé manquant pour une création ou une modification,
 rattachement vers une entité inconnue, une règle abrogée par un cadrage non
 livré.
 
+Elle contrôle aussi le répertoire `identite/`, où un référentiel peut porter
+l'identité visuelle de son projet. Rien ne la déclare : c'est le nom des
+fichiers qui fait foi, et un fichier mal nommé serait sinon ignoré sans bruit.
+
+- **Noms admis** : `symbole` et `logotype`, suivis ou non de `-clair` ou
+  `-sombre` — `symbole.svg`, `logotype-sombre.png` —, et un `README.md`.
+- **Formats admis** : SVG, WebP et PNG, dans cet ordre de préférence.
+- **Poids** : 100 Kio au plus par fichier.
+
+Un autre nom, un autre format ou un poids dépassé est une erreur. Un même nom
+en plusieurs formats, ou une variante sans sa jumelle quand aucune version sans
+suffixe ne couvre l'autre fond, est signalé sans bloquer. Le répertoire n'est
+pas un répertoire de contenu : ses fichiers ne sont pas lus comme des entités.
+
 Dès que la demande de fusion est **proposée à la relecture**, elle contrôle en
 outre l'état qu'aura le référentiel **une fois cette demande fusionnée** : les
 cadrages qu'elle porte y sont tenus pour livrés. Ce que la livraison exigera —
@@ -156,6 +170,18 @@ qu'elles divergent.
 
 `@ssk-it/canon-check/format` expose le découpage du frontmatter et l'extraction
 des énoncés, pour construire ce référentiel depuis des fichiers Markdown.
+
+`@ssk-it/canon-check/identite` expose la règle de l'identité visuelle : les
+noms, les variantes et les formats admis dans leur ordre de préférence
+(`FORMATS_IDENTITE`), la borne de poids, la lecture d'un nom
+(`lireNomIdentite`) et le contrôle du répertoire (`checkIdentite`). Les mêmes
+exports sont repris à la racine du paquet. `checkRepo` contrôle l'identité
+quand le référentiel chargé porte `identite`, la liste des fichiers du
+répertoire avec leur poids :
+
+```js
+checkRepo({ ...referentiel, identite: [{ chemin: 'symbole-clair.svg', taille: 812 }] });
+```
 
 ## En ligne de commande
 

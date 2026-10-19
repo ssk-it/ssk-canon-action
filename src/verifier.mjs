@@ -10,6 +10,11 @@
 // croisées, énoncés manquants, cohérence des statuts.
 
 import { extractEnonces } from './format.mjs';
+import { checkIdentite } from './identite.mjs';
+
+// L'identité visuelle relève des mêmes règles partagées : l'application les
+// reprend d'ici, sans avoir à connaître le découpage interne du paquet.
+export * from './identite.mjs';
 
 const OPERATIONS = new Set(['cree', 'modifie', 'abroge', 'touche']);
 const STATUTS_REGLE = new Set(['actif', 'abroge']);
@@ -241,6 +246,15 @@ export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set(
       if (r?.statut === 'abroge' && impact.operation !== 'touche')
         warnings.push(`cadrage ${id} : opère sur ${cible.id}, qui est abrogée`);
     }
+  }
+
+  // --- identité visuelle ---
+  // Absente de ce qu'on passe, elle n'est pas contrôlée : un référentiel chargé
+  // sans son arborescence reste vérifiable pour le reste.
+  if (repo.identite) {
+    const identite = checkIdentite(repo.identite);
+    errors.push(...identite.errors);
+    warnings.push(...identite.warnings);
   }
 
   return {
