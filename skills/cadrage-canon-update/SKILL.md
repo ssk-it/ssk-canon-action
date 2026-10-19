@@ -164,14 +164,14 @@ qui change la façon de travailler mérite d'être dite.
 
 **Cadrer si une décision a été prise.** Le skill décrit le format du produit :
 en changer la description, c'est souvent changer le format. Si un choix a été
-tranché, invoquer `cadrer-la-boucle` depuis `ssk-canon-pwa`.
+tranché, invoquer `cadrer-la-boucle` depuis `skanon`.
 
 ## Si le changement touche au format lui-même
 
 Alors il ne concerne pas que le skill. Vérifier ce qui doit bouger avec :
 
 - `src/verifier.mjs` — le contrôle qui applique le format ;
-- `example-repo/` dans `ssk-canon-pwa` — le référentiel de référence ;
+- `test/fixture-repo/` — le référentiel sur lequel la vérification est éprouvée ;
 - l'application, si elle lit ou écrit le champ concerné.
 
 Un format décrit d'un côté et vérifié de l'autre ne se contredit jamais
