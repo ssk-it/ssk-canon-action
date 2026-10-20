@@ -55,6 +55,31 @@ cpSync(FIXTURE, travail, { recursive: true });
 // Le dépôt de code que ce référentiel déclare, pour éprouver la situation.
 const DEPOT_DECLARE = 'ssk-it/depot-de-test';
 writeFileSync(join(travail, 'ssk-canon.yml'), `${readFileSync(join(travail, 'ssk-canon.yml'), 'utf8')}\ndepots_code:\n  - { repo: ${DEPOT_DECLARE}, role: Test }\n`);
+// Une décision livrée dont les repères manquent : la lecture condensée doit le
+// dire, non inventer — le format ne garantit ni le « Contre », ni la section
+// Décision, ni une option retenue nommée.
+writeFileSync(join(travail, 'cadrages/2026-015/decisions/04-reperes-manquants.md'), `---
+id: 04-reperes-manquants
+titre: Une décision sans ses repères ?
+statut: retenue
+---
+
+## Description
+
+Une décision écrite avant que la convention ne se fixe.
+
+## Options
+
+### premiere
+
+Ce que la première option propose.
+
+**Contrepartie assumée** — un écart au gabarit.
+
+### seconde
+
+Ce que la seconde option propose.
+`);
 git(travail, 'init', '-q', '-b', 'main');
 git(travail, 'add', '.');
 git(travail, 'commit', '-q', '-m', 'fixture');
@@ -188,7 +213,7 @@ test('rend, pour une issue, son cadrage, ses décisions et la façon de le lire'
 test('lit plusieurs fichiers en un appel, chacun entier sous son en-tête', () => {
   const a = 'rules/RG-pj-retention.md';
   const b = 'cadrages/2026-013/decisions/01-comparer-ou-consulter.md';
-  const sortie = lancer(['--lire', `origin/main:${a}`, '--lire', `origin/main:${b}`]);
+  const sortie = lancer(['--entier', '--lire', `origin/main:${a}`, '--lire', `origin/main:${b}`]);
   for (const f of [a, b]) {
     // Git rend le fichier tel qu'il est commité ; extrait sous Windows, il peut
     // porter des CRLF que le script n'a jamais lus.
@@ -212,6 +237,86 @@ test('refuse une référence locale, qui peut être en retard sur l’origine', 
   const sortie = lancer(['--lire', 'main:rules/RG-pj-retention.md']);
   vrai(sortie.includes('LIRE_REFUSE main:rules/RG-pj-retention.md'), sortie);
   vrai(!sortie.includes('jamais\nsupprimé'), 'le contenu ne doit pas être rendu');
+});
+
+// ── Lecture condensée ────────────────────────────────────────────────────────
+
+// Ce qu'ils protègent : un cadrage livré se lisait en entier, Énoncés compris,
+// alors que la livraison les a recopiés dans rules/ et qu'un cadrage ultérieur
+// a pu les modifier depuis — la moitié du volume lu, et un texte qui n'est plus
+// forcément en vigueur. Et une décision livrée se lisait avec la description et
+// les « Pour » de chaque option, quand la consultation n'a besoin que de ce qui
+// est tranché et du motif de chaque écart.
+
+const lireSeul = (objet, ...options) => {
+  const sortie = lancer([...options, '--lire', objet]);
+  return sortie.slice(sortie.indexOf('LIRE '));
+};
+const fixture = (f) => readFileSync(join(FIXTURE, f), 'utf8').replace(/\r\n/g, '\n');
+
+test('condense un cadrage livré : ses Énoncés renvoient au texte en vigueur', () => {
+  const sortie = lireSeul('origin/main:cadrages/2026-002/cadrage.md');
+  vrai(/^LIRE origin\/main:cadrages\/2026-002\/cadrage\.md \(\d+ lignes, condensé — --entier pour le fichier entier\)\n/.test(sortie), `en-tête inattendu :\n${sortie.slice(0, 200)}`);
+  vrai(sortie.includes('## Objectif') && sortie.includes('## Parcours utilisateur') && sortie.includes('## Énoncés'), 'les autres sections doivent rester');
+  // Le premier paragraphe de l'énoncé d'époque de RG-chemins-immuables.
+  const epoque = fixture('cadrages/2026-002/cadrage.md').split('### RG-chemins-immuables\n\n')[1].split('\n')[0];
+  vrai(!sortie.includes(epoque), 'l’énoncé d’époque ne doit pas être rendu');
+  vrai(!sortie.includes('### RG-chemins-immuables'), 'le titre d’énoncé est remplacé par sa ligne ENONCE');
+  vrai(sortie.includes('ENONCE RG-chemins-immuables [cree] → --lire origin/main:rules/RG-chemins-immuables.md\n'), sortie);
+  vrai(sortie.includes('ENONCE RG-statuts-cadrage [modifie] → --lire origin/main:rules/RG-statuts-cadrage.md'), sortie);
+  const n = (sortie.match(/^ENONCE /gm) ?? []).length;
+  egal(n, 15, 'lignes ENONCE');
+});
+
+test('dit, pour chaque énoncé d’un cadrage livré, quel cadrage l’a modifié depuis', () => {
+  // RG-referentiel-a-une-date naît en 2026-002 et change en 2026-013 : le texte
+  // de 2026-002 n'est plus celui qui fait foi, et le lecteur doit le savoir.
+  const sortie = lireSeul('origin/main:cadrages/2026-002/cadrage.md');
+  vrai(sortie.includes('ENONCE RG-referentiel-a-une-date [cree] → --lire origin/main:rules/RG-referentiel-a-une-date.md | modifié depuis par 2026-013\n'), sortie);
+  vrai(sortie.includes('ENONCE RG-pj-ordre-upload [cree] → --lire origin/main:rules/RG-pj-ordre-upload.md | modifié depuis par 2026-003\n'), sortie);
+});
+
+test('--entier rend le cadrage livré tel qu’il est, Énoncés compris', () => {
+  const contenu = fixture('cadrages/2026-002/cadrage.md').replace(/\n$/, '');
+  const sortie = lireSeul('origin/main:cadrages/2026-002/cadrage.md', '--entier');
+  egal(sortie, `LIRE origin/main:cadrages/2026-002/cadrage.md (${contenu.split('\n').length} lignes)\n${contenu}\n`, 'lecture entière');
+});
+
+test('lit en entier un cadrage en cours : ses énoncés sont la proposition', () => {
+  const sortie = lireSeul('origin/cadrage-2026-016:cadrages/2026-016/cadrage.md');
+  vrai(/^LIRE origin\/cadrage-2026-016:cadrages\/2026-016\/cadrage\.md \(\d+ lignes\)\n/.test(sortie), sortie);
+});
+
+test('condense une décision livrée : question, description, motif de chaque écart, décision', () => {
+  const f = 'cadrages/2026-013/decisions/01-comparer-ou-consulter.md';
+  const sortie = lireSeul(`origin/main:${f}`);
+  vrai(sortie.startsWith(`LIRE origin/main:${f} (`) && sortie.includes('condensé — --entier pour le fichier entier)'), sortie.slice(0, 200));
+  vrai(sortie.includes('titre: Consulter le référentiel à une date, ou comparer deux états ?\nstatut: retenue\noption_retenue: comparer-deux-etats'), 'frontmatter');
+  vrai(sortie.includes('Le référentiel à une date passée était énoncé depuis le socle'), 'premier paragraphe de la description');
+  vrai(!sortie.includes('Consulter un état ancien suppose'), 'la suite de la description ne doit pas être rendue');
+  vrai(sortie.includes('### bascule-globale (écartée)\n\n**Contre** — le lecteur doit comparer de mémoire.'), sortie);
+  vrai(sortie.includes('### page-de-consultation-datee (écartée)\n\n**Contre** — même défaut central'), sortie);
+  vrai(!sortie.includes('Un sélecteur de date dans la barre') && !sortie.includes('fidèle à l\'énoncé initial'), 'ni la description ni les « Pour » d’une option écartée');
+  vrai(sortie.includes('### comparer-deux-etats (retenue)'), 'option retenue');
+  vrai(sortie.includes('Enseignement à retenir'), 'la section Décision est rendue entière');
+});
+
+test('garde entière une section que le résumé ne connaît pas, comme le motif d’une annulation', () => {
+  const sortie = lireSeul('origin/main:cadrages/2026-003/decisions/02-duree-autorisations.md');
+  vrai(sortie.includes('statut: annulee'), 'le statut doit rester visible');
+  vrai(sortie.includes('**Un point reste à vérifier empiriquement**'), sortie);
+});
+
+test('dit quand un repère manque, plutôt que d’inventer', () => {
+  const sortie = lireSeul('origin/main:cadrages/2026-015/decisions/04-reperes-manquants.md');
+  vrai(sortie.includes('RETENUE_NON_IDENTIFIEE'), sortie);
+  vrai(sortie.includes('### premiere\n\nCONTRE_ABSENT'), sortie);
+  vrai(sortie.includes('DECISION_ABSENTE'), sortie);
+});
+
+test('lit en entier une décision de cadrage en cours', () => {
+  const sortie = lireSeul('origin/cadrage-2026-016:cadrages/2026-016/decisions/01-portee-du-jeton.md');
+  vrai(/^LIRE \S+ \(\d+ lignes\)\n/.test(sortie) && sortie.includes('Un jeton d\'organisation ouvre tous ses dépôts'), sortie);
 });
 
 // ── Garde de taille ──────────────────────────────────────────────────────────
@@ -239,7 +344,7 @@ for (const [nom, args] of [
 test('ne coupe pas un fichier qui tiendrait entier sur la page suivante', () => {
   const petit = 'rules/RG-auteur-reel-commit.md';
   const grand = 'cadrages/2026-013/decisions/01-comparer-ou-consulter.md';
-  const args = ['--lire', `origin/main:${petit}`, '--lire', `origin/main:${grand}`];
+  const args = ['--entier', '--lire', `origin/main:${petit}`, '--lire', `origin/main:${grand}`];
   // Les deux ne tiennent pas ensemble avec la ligne SUITE ; le grand, seul, tient.
   const budget = String(lancer(args).length + 200);
   const [premiere, seconde] = toutesLesPages(args, { CONSULTER_MAX_CARACTERES: budget });
@@ -252,7 +357,7 @@ test('nomme, sur la ligne SUITE, les fichiers qui restent à lire', () => {
   // complète : la ligne SUITE dit ce qui manque encore, fichier par fichier.
   const grand = 'cadrages/2026-013/decisions/01-comparer-ou-consulter.md';
   const petit = 'rules/RG-auteur-reel-commit.md';
-  const args = ['--lire', `origin/main:${grand}`, '--lire', `origin/main:${petit}`];
+  const args = ['--entier', '--lire', `origin/main:${grand}`, '--lire', `origin/main:${petit}`];
   const [premiere] = toutesLesPages(args, { CONSULTER_MAX_CARACTERES: '2500' });
   const suite = lignes(premiere).at(-1);
   vrai(new RegExp(`fichiers non lus : origin/main:${grand} \\(à partir de sa ligne \\d+\\), origin/main:${petit} — `).test(suite), `SUITE inattendue : ${suite}`);
@@ -260,7 +365,7 @@ test('nomme, sur la ligne SUITE, les fichiers qui restent à lire', () => {
 
 test('à la reprise au milieu d’un fichier, dit lequel et à quelle ligne', () => {
   const grand = 'cadrages/2026-013/decisions/01-comparer-ou-consulter.md';
-  const pages = toutesLesPages(['--lire', `origin/main:${grand}`], { CONSULTER_MAX_CARACTERES: '2500' });
+  const pages = toutesLesPages(['--entier', '--lire', `origin/main:${grand}`], { CONSULTER_MAX_CARACTERES: '2500' });
   vrai(pages.length > 1, 'le fichier devait être coupé');
   const reprise = lignes(pages[1]).find((l) => l.startsWith('REPRISE '));
   vrai(reprise && new RegExp(`dans : LIRE origin/main:${grand} \\(à partir de sa ligne \\d+\\)`).test(reprise), `reprise inattendue : ${reprise}`);

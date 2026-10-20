@@ -176,10 +176,9 @@ ligne :
 DECISION_DE_CADRAGE <ref>:cadrages/<id>/decisions/<fichier>.md [<statut> → <option retenue>] | <question> | <premier paragraphe>
 ```
 
-La question et l'option retenue servent à **choisir** les décisions à lire en
-entier, jamais à s'en passer : ce qu'une décision a écarté, et pourquoi, n'est que
-dans son fichier. Le `<ref>:<chemin>` en tête de ligne se passe tel quel à
-`--lire`.
+La question et l'option retenue servent à **choisir** les décisions à lire,
+jamais à s'en passer : ce qu'une décision a écarté, et pourquoi, n'est que dans
+son fichier. Le `<ref>:<chemin>` en tête de ligne se passe tel quel à `--lire`.
 
 Sous un cadrage en cours, une ligne `IMPACTS` dit ce qu'il changerait au
 référentiel — `cree`, `modifie`, `abroge` ou `touche`, règle par règle et ADR par
@@ -214,26 +213,50 @@ intervention dans le code. La recherche ignore la casse mais non les accents.
 
 ## 4. Lire ce qui compte
 
-Le script ne donne que le premier paragraphe. Lire en entier ce qui touche la
-demande de près — règles, cadrages, décisions —, **en un seul appel** :
+Le script ne donne que le premier paragraphe. Lire ce qui touche la demande de
+près — règles, cadrages, décisions —, **en un seul appel** :
 
 ```bash
 node ${CLAUDE_SKILL_DIR}/scripts/consulter.mjs --lire origin/main:rules/<id>.md --lire <branche>:cadrages/<id>/cadrage.md --lire <ref>:cadrages/<id>/decisions/<fichier>.md
 ```
 
-Chaque fichier vient entier sous une ligne `LIRE <ref>:<chemin> (<n> lignes)` ;
-un fichier qui n'existe pas sur la référence est signalé par `ABSENT`. Seules
+Chaque fichier vient sous une ligne `LIRE <ref>:<chemin> (<n> lignes)` ; un
+fichier qui n'existe pas sur la référence est signalé par `ABSENT`. Seules
 `origin/main` et les branches distantes `origin/…` sont admises, pour la raison du
 §1 : une branche locale du clone peut être en retard.
+
+**Ce qui est livré vient condensé**, et l'en-tête le dit : `(<n> lignes, condensé
+— --entier pour le fichier entier)`.
+
+- **Un cadrage livré** vient sans le texte de ses Énoncés. La livraison les a
+  recopiés dans `rules/`, `decisions/` ou `architecture/`, et un cadrage ultérieur
+  a pu les modifier depuis : l'énoncé d'époque n'est plus forcément en vigueur.
+  Chacun devient une ligne
+  `ENONCE <id> [<opération>] → --lire origin/main:<chemin> | modifié depuis par <cadrages>`.
+  Une règle qui contraint la demande se lit par cette commande, et une règle
+  `abroge` ne se cite pas comme en vigueur.
+- **Une décision livrée** vient réduite à ce qui est tranché : la question, le
+  premier paragraphe de sa description, chaque option suivie de `(retenue)` ou,
+  pour une option `(écartée)`, de son « Contre » — le motif de l'écart —, et la
+  section Décision entière. Toute autre section, comme le motif d'une annulation,
+  reste entière. Un repère que le format ne garantit pas et qui manque se dit :
+  `RETENUE_NON_IDENTIFIEE`, `CONTRE_ABSENT`, `DECISION_ABSENTE`.
+
+Relancer avec `--entier` quand le condensé ne suffit pas : pour citer l'énoncé
+d'époque d'un cadrage, pour une décision dont un repère manque, ou quand le
+« Contre » d'une option écartée ne dit pas pourquoi elle l'a été au regard de la
+demande.
 
 Lire aussi les décisions des cadrages qui touchent la demande, livrés comme en
 cours : ce sont elles qui disent ce qui est déjà tranché, et qui ne le sera plus
 par la demande présente.
 
-**Un cadrage en cours qui recouvre la demande se lit en entier** — son
-`cadrage.md` et chacune de ses décisions, dans le même appel. C'est le chantier
-qu'on risque de refaire ou de contredire, et ni ses premiers paragraphes ni sa
-ligne `IMPACTS` ne disent ce qu'il change à la demande présente.
+**Un cadrage en cours qui recouvre la demande se lit en entier**, ce que le
+script fait de lui-même sur une branche — son `cadrage.md` et chacune de ses
+décisions, dans le même appel. C'est le chantier qu'on risque de refaire ou de
+contredire : ses énoncés et ses options sont sa proposition, qu'aucun autre
+fichier ne porte encore, et ni ses premiers paragraphes ni sa ligne `IMPACTS` ne
+disent ce qu'il change à la demande présente.
 
 ## 5. Restituer
 
