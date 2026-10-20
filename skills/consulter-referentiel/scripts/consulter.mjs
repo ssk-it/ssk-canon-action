@@ -8,7 +8,11 @@
  *                                         cadrages livrés et en cours du domaine
  *   consulter.mjs --issue <url|depot#n>   le cadrage qui porte cette issue
  *   consulter.mjs --motif <terme> …       où le terme apparaît, livré et en cours
- *   consulter.mjs --lire <ref>:<chemin> … des fichiers entiers, en un lot
+ *   consulter.mjs --lire <ref>:<chemin> … des fichiers, en un lot — condensés
+ *                                         quand ils sont livrés : un cadrage sans
+ *                                         ses Énoncés, une décision sans ce
+ *                                         qu'elle n'a pas tranché
+ *   consulter.mjs --lire … --entier       les mêmes, tels qu'ils sont
  *   consulter.mjs … --depuis <ligne>      la suite d'une sortie coupée
  *   consulter.mjs --referentiel <chemin>  sans passer par la situation
  *   consulter.mjs --depot <org/depot>     situer ce dépôt de code, non celui du
@@ -38,6 +42,7 @@ const aLire = [];
 let racine = null;
 let depot = null;
 let forcerFetch = false;
+let entier = false;
 let depuis = null;
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
@@ -50,6 +55,7 @@ for (let i = 0; i < args.length; i++) {
   else if (a === '--referentiel' && valeur) { racine = resolve(valeur); i++; }
   else if (a === '--depot' && valeur) { depot = valeur; i++; }
   else if (a === '--fetch') forcerFetch = true;
+  else if (a === '--entier') entier = true;
   else { console.log(`ARGUMENT_INCONNU ${a}`); process.exit(1); }
 }
 
@@ -475,6 +481,124 @@ for (const terme of motifs) {
   for (const [f, { n, premiere }] of enCoursTrouves) dire(`  EN_COURS ${f} (${n}) | ${couper(premiere)}`);
 }
 
+// ── Lecture condensée ────────────────────────────────────────────────────────
+
+/** Un texte en sections de niveau 2, chacune avec son titre ; ce qui précède en a un vide. */
+function sections(texte) {
+  const liste = [{ titre: '', lignes: [] }];
+  for (const l of texte.split('\n')) {
+    const titre = l.match(/^## (.+?)\s*$/)?.[1];
+    if (titre) liste.push({ titre, lignes: [l] });
+    else liste.at(-1).lignes.push(l);
+  }
+  return liste;
+}
+
+/** Les sous-sections de niveau 3 d'une section, et ce qui précède la première. */
+function sousSections(lignes) {
+  const avant = [];
+  const liste = [];
+  for (const l of lignes) {
+    const titre = l.match(/^### (.+?)\s*$/)?.[1];
+    if (titre) liste.push({ titre, lignes: [] });
+    else (liste.at(-1)?.lignes ?? avant).push(l);
+  }
+  return { avant, liste };
+}
+
+const paragraphes = (lignes) => lignes.join('\n').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+const CIBLES = ['rules', 'decisions', 'architecture'];
+
+/**
+ * Un cadrage livré, sans le texte de ses Énoncés. La livraison les a recopiés
+ * dans rules/, decisions/ ou architecture/, et un cadrage ultérieur a pu les
+ * modifier depuis : c'est là que se lit le texte qui fait foi. Le cadrage garde
+ * l'énoncé d'époque, que --entier rend.
+ *
+ * Chaque énoncé devient une ligne qui dit l'opération — une règle abrogée ne
+ * doit pas passer pour en vigueur —, où lire son texte, et les cadrages livrés
+ * après celui-ci qui l'ont modifiée ou abrogée.
+ */
+function condenserCadrage(id, texte) {
+  const meta = analyser(texte);
+  const operation = new Map((meta?.impacts ?? []).map((i) => i.split(' ')).map(([op, cible]) => [cible, op]));
+  const morceaux = sections(texte);
+  const enonces = morceaux.find((m) => m.titre === 'Énoncés');
+  if (!enonces) return null;
+  const { avant, liste } = sousSections(enonces.lignes.slice(1));
+  const lignes = [enonces.lignes[0], ...avant.filter((l) => l.trim())];
+  if (lignes.length > 1) lignes.push('');
+  for (const { titre: cible } of liste) {
+    const chemin = CIBLES.map((d) => `${d}/${cible}.md`).find((f) => surMain.includes(f));
+    const depuis = livres
+      .filter((c) => c.id > id && c.impacts.some((i) => i === `modifie ${cible}` || i === `abroge ${cible}`))
+      .map((c) => c.id)
+      .sort();
+    lignes.push(`ENONCE ${cible} [${operation.get(cible) ?? '?'}] → ${chemin ? `--lire ${REF}:${chemin}` : `ABSENT de ${REF}`}${depuis.length ? ` | modifié depuis par ${depuis.join(', ')}` : ''}`);
+  }
+  lignes.push('');
+  return morceaux.flatMap((m) => (m === enonces ? lignes : m.lignes)).join('\n');
+}
+
+/**
+ * Une décision livrée, réduite à ce qui est tranché et à ce qui a été écarté :
+ * le premier paragraphe de sa description, le « Contre » de chaque option
+ * écartée — son motif —, et la section Décision entière. Les « Pour » et la
+ * description des options n'y sont plus ; toute autre section, comme le motif
+ * d'une annulation, reste entière.
+ *
+ * Le format ne garantit aucun de ces repères. Quand l'un manque, une ligne le
+ * dit, plutôt qu'un paragraphe pris au hasard ne passe pour lui.
+ */
+function condenserDecision(texte) {
+  const meta = analyser(texte);
+  const morceaux = sections(texte);
+  const options = morceaux.find((m) => m.titre === 'Options');
+  const sortie = [];
+  for (const m of morceaux) {
+    if (m.titre === 'Description') {
+      const [premier] = paragraphes(m.lignes.slice(1));
+      sortie.push(m.lignes[0], '', ...(premier ? [premier, ''] : []));
+    } else if (m === options) {
+      const { liste } = sousSections(m.lignes.slice(1));
+      const retenue = (o) => o.titre === meta?.option_retenue || o.lignes.some((l) => /^\*\*Retenue\.?\*\*/.test(l));
+      sortie.push(m.lignes[0], '');
+      // Sans option retenue nommée, aucune ne se dit écartée : on ne le sait pas.
+      const identifiee = liste.some(retenue);
+      if (!identifiee) sortie.push('RETENUE_NON_IDENTIFIEE — ni option_retenue, ni « **Retenue.** » : --entier pour en juger', '');
+      for (const o of liste) {
+        if (retenue(o)) {
+          sortie.push(`### ${o.titre} (retenue)`, '');
+          continue;
+        }
+        const contre = paragraphes(o.lignes)
+          .flatMap((p) => p.split(/\n(?=\*\*)/))
+          .find((p) => /^\*\*Contre\*\*/.test(p));
+        sortie.push(`### ${o.titre}${identifiee ? ' (écartée)' : ''}`, '', contre ?? 'CONTRE_ABSENT — pas de « **Contre** » : --entier pour lire l’option', '');
+      }
+    } else {
+      sortie.push(...m.lignes);
+    }
+  }
+  if (options && !morceaux.some((m) => m.titre === 'Décision')) sortie.push('DECISION_ABSENTE — pas de section « ## Décision »', '');
+  return sortie.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+/**
+ * Ce qui est livré se lit condensé, ce qui est en cours se lit entier : les
+ * énoncés et les options d'un cadrage en cours sont sa proposition, qu'aucun
+ * autre fichier ne porte encore.
+ */
+function condenser(objet, contenu) {
+  if (entier) return null;
+  const [ref, chemin] = [objet.slice(0, objet.indexOf(':')), objet.slice(objet.indexOf(':') + 1)];
+  if (ref !== REF) return null;
+  const cadrage = chemin.match(/^cadrages\/(\d{4}-\d{3})\/cadrage\.md$/)?.[1];
+  if (cadrage) return condenserCadrage(cadrage, contenu);
+  if (DECISION_DE_CADRAGE.test(chemin)) return condenserDecision(contenu);
+  return null;
+}
+
 /**
  * Plusieurs fichiers en un appel, et en un seul processus git : chaque appel
  * coûte un tour à l'agent, bien plus que la lecture elle-même.
@@ -497,9 +621,10 @@ for (const objet of aLire) {
     dire(`ABSENT ${objet}`);
     continue;
   }
-  const lignesDuFichier = contenu.replace(/\n$/, '').split('\n');
+  const condense = condenser(objet, contenu);
+  const lignesDuFichier = (condense?.replace(/\n+$/, '') ?? contenu.replace(/\n$/, '')).split('\n');
   bloc({ reprise: (k) => `LIRE ${objet} (à partir de sa ligne ${k})`, fichier: objet });
-  dire(`LIRE ${objet} (${lignesDuFichier.length} lignes)`);
+  dire(`LIRE ${objet} (${lignesDuFichier.length} lignes${condense ? ', condensé — --entier pour le fichier entier' : ''})`);
   for (const l of lignesDuFichier) dire(l);
 }
 
