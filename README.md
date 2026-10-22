@@ -1,3 +1,4 @@
+voir aussi: [Skanon UI](https://ssk-canon.s3-website.fr-par.scw.cloud/)
 # SSK Canon — action de propagation
 
 Vérifie l'intégrité d'un référentiel [SSK Canon](https://github.com/ssk-it/ssk-canon)
