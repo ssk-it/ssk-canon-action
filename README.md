@@ -52,6 +52,11 @@ Puis, dans les réglages du dépôt :
    outillage/preparer-depot-cadre.sh <organisation>/<depot>
    ```
 
+   Le même script règle **General → Pull Requests → Automatically delete head
+   branches** : chaque cadrage et chaque propagation laissent sinon leur branche
+   derrière eux, et un commit poussé après la fusion — jamais livré — s'y perd
+   parmi des dizaines d'autres.
+
 2. **Branches → règle de protection sur la branche principale** : ajouter la
    vérification comme contrôle requis. Sans cela, elle signale sans bloquer, et
    un cadrage incohérent peut être livré.
