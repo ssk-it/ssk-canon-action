@@ -633,6 +633,93 @@ test('une base hors d’atteinte se signale, plutôt que de se taire', (racine) 
   );
 });
 
+// --- branche déjà fusionnée ---
+//
+// Le contrôle lancé à la main compare à `origin/main`, qui avance avec chaque
+// `fetch`. Une branche fusionnée entre deux contrôles y voit son propre cadrage
+// livré, mais pas encore propagé : les index dérivés en attente passaient pour
+// des erreurs du rédacteur. Arrivé sur ssk-canon avec 2026-052.
+
+/** Livre un cadrage par une fusion, et laisse sa branche sortie. */
+function fusionnerCadrage(racine, id) {
+  socle(racine);
+  livrer(racine);
+  git(racine, ['checkout', '-q', '-b', `cadrage-${id}`]);
+  ecrireRegle(racine, 'RG-a', 'À propager.');
+  ecrireCadrage(racine, id, 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+  git(racine, ['checkout', '-q', 'main']);
+  git(racine, ['merge', '-q', '--no-ff', '-m', `Fusion du ${id}`, `cadrage-${id}`]);
+  git(racine, ['checkout', '-q', `cadrage-${id}`]);
+}
+
+test('une branche déjà fusionnée se signale, sans réclamer la propagation', (racine) => {
+  fusionnerCadrage(racine, '2026-001');
+
+  const { errors, warnings } = check(racine, { base: 'main', livraison: true });
+  assert(errors.length === 0, `la propagation en attente est réclamée : ${errors.join(' | ')}`);
+  assert(
+    warnings.some((w) => w.includes('déjà fusionnée')),
+    `la fusion n’est pas signalée : ${warnings.join(' | ')}`,
+  );
+});
+
+test('reprendre un cadrage sur sa branche fusionnée reste refusé', (racine) => {
+  fusionnerCadrage(racine, '2026-001');
+  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé repris après la fusion.',
+  });
+
+  const { errors, warnings } = check(racine, { base: 'main', livraison: true });
+  assert(
+    errors.some((e) => e.includes('livré, donc figé')),
+    `la reprise d’un cadrage livré passe : ${errors.join(' | ')}`,
+  );
+  assert(
+    !errors.some((e) => e.includes('cree_par')),
+    `la propagation en attente est réclamée : ${errors.join(' | ')}`,
+  );
+  assert(
+    warnings.some((w) => w.includes('déjà fusionnée')),
+    `la fusion n’est pas signalée : ${warnings.join(' | ')}`,
+  );
+});
+
+test('une branche en cours ne passe pas pour fusionnée', (racine) => {
+  socle(racine);
+  livrer(racine);
+  git(racine, ['checkout', '-q', '-b', 'cadrage-2026-001']);
+  ecrireRegle(racine, 'RG-a', 'À propager.');
+  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+  // la branche principale avance pendant ce temps
+  git(racine, ['checkout', '-q', 'main']);
+  writeFileSync(join(racine, 'domains/e.md'), '---\nid: e\nnom: E\n---\n\nUn autre domaine.\n');
+  livrer(racine);
+  git(racine, ['checkout', '-q', 'cadrage-2026-001']);
+
+  const { warnings } = check(racine, { base: 'main', livraison: true });
+  assert(
+    !warnings.some((w) => w.includes('fusionnée')),
+    `une branche en cours est dite fusionnée : ${warnings.join(' | ')}`,
+  );
+});
+
+test('la branche principale ne passe pas pour fusionnée', (racine) => {
+  fusionnerCadrage(racine, '2026-001');
+  git(racine, ['checkout', '-q', 'main']);
+
+  // c'est ce que l'intégration continue voit d'une demande de fusion : un commit
+  // dont la branche principale est la première parenté
+  const { warnings } = check(racine, { base: 'main' });
+  assert(
+    !warnings.some((w) => w.includes('fusionnée')),
+    `la branche principale est dite fusionnée : ${warnings.join(' | ')}`,
+  );
+});
+
 // --- cibles d'architecture ---
 //
 // Un impact peut viser une décision d'architecture ou un document

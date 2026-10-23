@@ -392,6 +392,13 @@ Une erreur « à la livraison » se corrige en créant le fichier de la cible, a
 cadrage livré ne la crée » qui l'accompagnent alors sont attendus jusqu'à la
 fusion.
 
+L'avertissement **« branche déjà fusionnée »** dit que le `fetch` a ramené la
+fusion de la demande : le cadrage est livré, et la vérification ne réclame plus
+ses index dérivés, que la propagation écrira. Rien ne se pousse plus sur cette
+branche. Une erreur « livré, donc figé » qui l'accompagne vise un commit fait
+après la fusion : il ne sera jamais livré, et ce qu'il porte relève d'un nouveau
+cadrage — le signaler à l'utilisateur plutôt que de le pousser.
+
 **Si le dépôt n'a pas son automatisation**, rien ne bloque une livraison
 incohérente. L'application de cadrage sait l'installer : ses réglages proposent
 « Installer l'automatisation » tant qu'elle manque. Cela vaut mieux que de
@@ -636,8 +643,15 @@ liens:
 ```
 
 Cela s'écrit dans l'espace de l'étape 2, sur la branche du cadrage, et se pousse
-sur la demande de fusion déjà ouverte. Elle l'est encore à coup sûr : elle ne se
-fusionne qu'une fois le chantier réalisé (étape 7, « Quand fusionner »).
+sur la demande de fusion déjà ouverte. Elle devrait l'être encore, puisqu'elle ne
+se fusionne qu'une fois le chantier réalisé (étape 7, « Quand fusionner ») ; le
+vérifier avant d'écrire, une fusion faite à la main ne prévenant personne :
+
+```bash
+gh pr view <numero> --repo <organisation>/<referentiel> --json state -q .state
+```
+
+Tout autre état qu'`OPEN` ramène au paragraphe suivant.
 
 Un cadrage déjà livré ne se réécrit pas. S'il l'a été avant que son chantier ne
 s'ouvre, c'est un écart à la règle, non un cas normal : le lien n'existe alors

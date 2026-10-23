@@ -106,6 +106,36 @@ export function listFichiersModifies(root, ref = 'origin/main') {
 }
 
 /**
+ * Le dernier commit de la branche courante qu'une référence a déjà fusionné.
+ *
+ * Une branche en cours se détache de la branche principale sur sa première
+ * parenté : leur ancêtre commun est un commit de la branche principale elle-même.
+ * Une branche fusionnée, elle, a son ancêtre commun sur la branche principale par
+ * la seconde parenté d'un commit de fusion — c'est la pointe qu'avait la branche
+ * quand on l'a fusionnée. Le cas se rencontre dès qu'un `fetch` suit la fusion :
+ * la référence porte alors le cadrage de la branche, livré, mais pas encore
+ * propagé.
+ *
+ * Une branche partie d'une branche fusionnée depuis répond de la même façon, et
+ * c'est juste : ce qu'elle porte encore de sa devancière est déjà livré.
+ *
+ * @param {string} root racine du dépôt
+ * @param {string} ref référence de comparaison, typiquement `origin/main`
+ * @returns {string | null} l'identifiant abrégé de ce commit, ou null si la
+ *   branche n'a pas été fusionnée — ou si la référence est hors d'atteinte, ce
+ *   que les autres contrôles signalent déjà
+ */
+export function pointDeFusion(root, ref = 'origin/main') {
+  const ancetre = git(root, ['merge-base', ref, 'HEAD'])?.trim();
+  if (!ancetre) return null;
+
+  const principale = git(root, ['rev-list', '--first-parent', ref]);
+  if (principale === null || principale.split('\n').includes(ancetre)) return null;
+
+  return git(root, ['rev-parse', '--short', ancetre])?.trim() ?? ancetre;
+}
+
+/**
  * Cadrages qu'une demande de fusion porte — ceux que sa fusion livrerait.
  *
  * Rend `null` quand la comparaison échoue, comme `listFichiersModifies` : ne pas
