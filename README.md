@@ -202,6 +202,12 @@ travail non encore enregistré : le cadrage qu'on vient d'écrire y compte comme
 porté par la demande, ce qui est précisément le moment où l'on veut savoir ce
 qui manque.
 
+Une branche que la base a déjà fusionnée — le cas d'un `fetch` qui suit la fusion
+— est signalée par un avertissement « branche déjà fusionnée ». Ses index dérivés
+n'y sont pas contrôlés : la base porte son cadrage livré sans encore la
+propagation qui en écrira les index, et ce retard n'est pas une erreur du
+rédacteur. Un cadrage livré repris après la fusion reste refusé.
+
 ## Développement
 
 `test/fixture-repo/` est une copie du dépôt de référence

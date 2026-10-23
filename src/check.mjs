@@ -13,6 +13,7 @@ import {
   listCadragesPortes,
   listFichiersModifies,
   findCadragesLivresModifies,
+  pointDeFusion,
 } from './livraison.mjs';
 
 export { checkRepo };
@@ -28,8 +29,26 @@ export function check(root, options = {}) {
   // branche principale est ce qui établit la livraison. Hors dépôt Git — un
   // référentiel vérifié depuis une archive — aucun cadrage n'est tenu pour
   // livré, ce que `checkRepo` traite comme un cas normal.
-  const livres = livresFournis ?? listCadragesLivres(root, base ?? 'origin/main') ?? new Set();
-  const resultat = checkRepo(loadRepo(root), { ...reste, livres });
+  const reference = base ?? 'origin/main';
+  const livres = livresFournis ?? listCadragesLivres(root, reference) ?? new Set();
+
+  // Une branche que la référence a déjà fusionnée y trouve son propre cadrage
+  // livré, sans la propagation qui suit la fusion : ses index dérivés sont en
+  // attente, non faux. Les réclamer au rédacteur lui ferait chercher une erreur
+  // qui n'existe pas — c'est la propagation qui en répond, RG-propagation-verifiee.
+  // La fusion se dit, sans rien bloquer — RG-branches-survivantes-signalees.
+  const fusion = livresFournis ? null : pointDeFusion(root, reference);
+  const resultat = checkRepo(loadRepo(root), {
+    ...reste,
+    livres,
+    ...(fusion ? { ignorerIndexDerives: true } : {}),
+  });
+  if (fusion)
+    resultat.warnings.unshift(
+      `branche déjà fusionnée dans « ${reference} », jusqu'à ${fusion} : ses index dérivés ` +
+        `y attendent la propagation et ne sont pas contrôlés ici — repartir de ` +
+        `« ${reference} », et changer un cadrage livré par un nouveau cadrage`,
+    );
 
   // L'immuabilité ne se contrôle que face à une base explicite, c'est-à-dire sur
   // une demande de fusion. La propagation, elle, s'exécute après la fusion : son
