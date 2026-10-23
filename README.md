@@ -40,11 +40,18 @@ curl -o .github/workflows/propagation.yml \
 
 Puis, dans les réglages du dépôt :
 
-1. **Actions → General → Workflow permissions** : choisir *Read and write
-   permissions*, et cocher *Allow GitHub Actions to create and approve pull
+1. **Actions → General → Workflow permissions** : *Read and write
+   permissions*, et *Allow GitHub Actions to create and approve pull
    requests*. Sans la première, la propagation ne peut rien écrire ; sans la
    seconde, elle ne peut pas ouvrir sa demande de fusion sur une branche
-   protégée.
+   protégée — elle pousse sa branche `propagation/<sha>` puis échoue, et le
+   cadrage fusionné reste sans ses index. Un script les règle et le vérifie,
+   avec la session de `gh` et les droits d'administration du dépôt :
+
+   ```bash
+   outillage/preparer-depot-cadre.sh <organisation>/<depot>
+   ```
+
 2. **Branches → règle de protection sur la branche principale** : ajouter la
    vérification comme contrôle requis. Sans cela, elle signale sans bloquer, et
    un cadrage incohérent peut être livré.
