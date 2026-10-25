@@ -202,6 +202,19 @@ La sortie `ecarts` donne le nombre d'écarts trouvés. En ligne de commande :
 node src/verifier-piste.mjs /chemin/du/depot --evenement evenement.json --sans-commentaire
 ```
 
+### Préparer les étiquettes et les jalons
+
+Un dépôt qui accueille des pistes a besoin de l'étiquette `piste`, d'une étiquette `domaine/<id>` par domaine et `fonctionnalite/<id>` par fonctionnalité de sa branche principale, et des jalons « Maintenant », « Ensuite » et « Plus tard », sans échéance — RG-piste-horizon. Un script les crée, avec la session de `gh` et le droit d'écrire les issues du dépôt :
+
+```bash
+npm ci
+outillage/preparer-pistes.sh <organisation>/<depot>
+```
+
+Les identifiants sont lus sur un clone superficiel de la branche principale, par le chargeur que la vérification utilise (`src/etiquettes-pistes.mjs`) : ceux du frontmatter, et non les noms de fichiers.
+
+Chaque groupe d'écritures est annoncé et confirmé ; ce qui existe est laissé tel quel. Le relancer après l'ajout d'un domaine ou d'une fonctionnalité crée les étiquettes qui manquent. Une étiquette qui ne désigne plus rien est signalée, jamais supprimée : des pistes la portent peut-être encore.
+
 ## Comme bibliothèque
 
 Le vérificateur est aussi publié comme paquet, pour être exécuté ailleurs que

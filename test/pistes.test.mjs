@@ -12,7 +12,7 @@
 //   node test/pistes.test.mjs
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,12 +21,14 @@ import {
   MARQUEUR_PISTE,
   checkPiste,
   corpsCommentairePiste,
+  etiquettesRattachementPiste,
   planifierCommentairePiste,
 } from '../src/pistes.mjs';
 import { verifierPiste } from '../src/verifier-piste.mjs';
 
 const FIXTURE = fileURLToPath(new URL('./fixture-repo', import.meta.url));
 const SCRIPT = fileURLToPath(new URL('../src/verifier-piste.mjs', import.meta.url));
+const SCRIPT_ETIQUETTES = fileURLToPath(new URL('../src/etiquettes-pistes.mjs', import.meta.url));
 const referentiel = loadRepo(FIXTURE);
 
 let reussis = 0;
@@ -113,6 +115,54 @@ await test('une étiquette inconnue ne vaut pas rattachement', () => {
 
 await test('les étiquettes se lisent aussi comme de simples noms', () => {
   egal(checkPiste(['piste', 'domaine/acces'], referentiel).ecarts, []);
+});
+
+// --- les étiquettes à créer dans un référentiel ---
+
+await test('une étiquette de rattachement par domaine puis par fonctionnalité, dans l\'ordre des identifiants', () => {
+  const noms = etiquettesRattachementPiste(referentiel);
+  egal(noms.length, referentiel.domains.size + referentiel.features.size, "nombre d'étiquettes");
+  egal(noms.slice(0, 2), ['domaine/acces', 'domaine/cadrage']);
+  vrai(noms.includes('fonctionnalite/authentification'), noms.join(', '));
+  egal(noms.filter((n) => n.startsWith('domaine/')).length, referentiel.domains.size, 'domaines');
+});
+
+await test('chaque étiquette de rattachement est acceptée par la vérification', () => {
+  for (const nom of etiquettesRattachementPiste(referentiel))
+    egal(checkPiste(['piste', nom], referentiel).ecarts, [], nom);
+});
+
+await test("l'identifiant vient du frontmatter, pas du nom du fichier", () => {
+  const racine = mkdtempSync(join(tmpdir(), 'pistes-id-'));
+  try {
+    cpSync(FIXTURE, racine, { recursive: true });
+    writeFileSync(join(racine, 'domains', 'Facturation-v2.md'), '---\nid: facturation\nnom: Facturation\n---\n');
+    const noms = etiquettesRattachementPiste(loadRepo(racine));
+    vrai(noms.includes('domaine/facturation'), noms.join(', '));
+    vrai(!noms.some((n) => /Facturation-v2/.test(n)), 'le nom du fichier ne fait pas une étiquette');
+  } finally {
+    rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+await test('en ligne de commande, une étiquette par ligne', () => {
+  const lignes = execFileSync('node', [SCRIPT_ETIQUETTES, FIXTURE]).toString().trim().split('\n');
+  egal(lignes, etiquettesRattachementPiste(referentiel));
+});
+
+await test("en ligne de commande, un référentiel sans domaine ni fonctionnalité est une erreur", () => {
+  const vide = mkdtempSync(join(tmpdir(), 'pistes-vide-'));
+  try {
+    let echoue = false;
+    try {
+      execFileSync('node', [SCRIPT_ETIQUETTES, vide], { stdio: 'pipe' });
+    } catch {
+      echoue = true;
+    }
+    vrai(echoue, 'le script doit échouer');
+  } finally {
+    rmSync(vide, { recursive: true, force: true });
+  }
 });
 
 // --- le commentaire ---
