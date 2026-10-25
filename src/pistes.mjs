@@ -127,3 +127,23 @@ export function planifierCommentairePiste(commentaires, ecarts) {
   if (existant.body === corps) return { action: 'rien' };
   return { action: 'modifier', id: existant.id, corps };
 }
+
+/**
+ * Les étiquettes de rattachement qu'un référentiel attend : une par domaine, puis
+ * une par fonctionnalité, dans l'ordre des identifiants.
+ *
+ * Les identifiants sont ceux que le chargeur a lus dans le frontmatter — les mêmes
+ * que la vérification accepte. Les tirer des noms de fichiers créerait, pour un
+ * fichier qui ne porte pas le nom de son identifiant, une étiquette que la
+ * vérification refuserait.
+ *
+ * @param {{ domains: ReadonlyMap<string, unknown>, features: ReadonlyMap<string, unknown> }} repo
+ */
+export function etiquettesRattachementPiste(repo) {
+  return RATTACHEMENTS_PISTE.flatMap(({ prefixe, collection }) =>
+    [...(repo[collection]?.keys() ?? [])]
+      .filter(Boolean)
+      .sort()
+      .map((id) => `${prefixe}${id}`),
+  );
+}

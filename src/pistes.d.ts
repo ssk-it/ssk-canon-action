@@ -53,3 +53,9 @@ export function planifierCommentairePiste(
   | { action: 'creer'; corps: string }
   | { action: 'modifier'; id: number; corps: string }
   | { action: 'supprimer'; id: number };
+
+/** Les étiquettes de rattachement qu'un référentiel attend, domaines puis fonctionnalités. */
+export function etiquettesRattachementPiste(repo: {
+  readonly domains: ReadonlyMap<string, unknown>;
+  readonly features: ReadonlyMap<string, unknown>;
+}): string[];

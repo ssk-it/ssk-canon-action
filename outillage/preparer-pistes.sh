@@ -14,8 +14,8 @@
 # la piste : la vérification la signale, mais après coup. Sans les jalons, chacun nomme
 # son horizon, et Skanon range avec les non classées tout jalon qu'il ne reconnaît pas.
 #
-# Les identifiants sont lus sur la branche principale du dépôt, comme la vérification
-# les lit. Un domaine ou une fonctionnalité ajouté plus tard demande de relancer le
+# Les identifiants sont lus sur la branche principale du dépôt, par le même chargeur
+# que la vérification. Un domaine ou une fonctionnalité ajouté plus tard demande de relancer le
 # script. Une étiquette qui ne désigne plus rien est signalée, jamais supprimée : des
 # pistes la portent peut-être encore, et c'est au rédacteur de les rattacher ailleurs.
 #
@@ -28,7 +28,7 @@
 # Chaque groupe d'écritures est annoncé et confirmé avant d'être fait ; ce qui existe déjà
 # est laissé tel quel. Le script peut donc être relancé.
 #
-# Prérequis : gh, jq.
+# Prérequis : gh, jq, git, node, et `npm ci` dans ce dépôt.
 
 set -euo pipefail
 
@@ -42,9 +42,13 @@ confirmer() {
     [ "${reponse}" = "o" ] || [ "${reponse}" = "O" ]
 }
 
-for outil in gh jq; do
+for outil in gh jq git node; do
     command -v "${outil}" >/dev/null || ko "${outil} introuvable"
 done
+
+# Le chargeur vit dans ce dépôt, et a besoin de ses dépendances.
+OUTIL="$(cd "$(dirname "$0")/.." && pwd)"
+[ -d "${OUTIL}/node_modules/js-yaml" ] || ko "dépendances absentes — npm ci dans ${OUTIL}"
 
 DEPOT="${1:-}"
 [[ "${DEPOT}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] \
@@ -55,31 +59,21 @@ gh auth status >/dev/null 2>&1 || ko "gh n'est pas connecté — gh auth login"
 BRANCHE="$(gh api "repos/${DEPOT}" -q .default_branch 2>/dev/null)" \
     || ko "dépôt ${DEPOT} illisible — nom inconnu, ou hors de portée de la session gh"
 
-# Les identifiants d'une collection : un fichier Markdown à plat, hors fichier d'accueil
-# (RG-documentation-non-entite). Lus dans une affectation, que `set -e` arrête si la
-# lecture échoue : une lecture en échec ne doit pas passer pour un référentiel vide.
-ARBRE="$(gh api "repos/${DEPOT}/git/trees/${BRANCHE}?recursive=1" 2>/dev/null)" \
-    || ko "arborescence de ${DEPOT}@${BRANCHE} illisible"
-[ "$(jq -r .truncated <<< "${ARBRE}")" = false ] \
-    || ko "arborescence de ${DEPOT} tronquée par GitHub — identifiants incomplets, rien n'est écrit"
+# Les identifiants sont lus par le chargeur partagé, sur un clone superficiel de la
+# branche principale — RG-parseur-partage : ceux du frontmatter, que la vérification
+# accepte, et non les noms de fichiers. Lus dans une affectation, que `set -e` arrête
+# si la lecture échoue : une lecture en échec ne doit pas passer pour un référentiel vide.
+CLONE="$(mktemp -d)"
+trap 'rm -rf "${CLONE}"' EXIT
+gh repo clone "${DEPOT}" "${CLONE}" -- --depth 1 --branch "${BRANCHE}" --quiet >/dev/null 2>&1 \
+    || ko "clone de ${DEPOT}@${BRANCHE} impossible"
+ATTENDUES="$(node "${OUTIL}/src/etiquettes-pistes.mjs" "${CLONE}" 2>&1)" \
+    || ko "${DEPOT}@${BRANCHE} : ${ATTENDUES#"${CLONE}" : }"
 
-identifiants() {
-    jq -r --arg dossier "$1" '
-        .tree[]
-        | select(.type == "blob")
-        | .path
-        | select(startswith($dossier + "/"))
-        | ltrimstr($dossier + "/")
-        | select(test("^[^/]+\\.md$"))
-        | select(ascii_downcase != "readme.md")
-        | rtrimstr(".md")
-    ' <<< "${ARBRE}" | sort
-}
+identifiants() { grep "^$1/" <<< "${ATTENDUES}" | sed "s#^$1/##" || true; }
 
-DOMAINES="$(identifiants domains)"
-FONCTIONNALITES="$(identifiants features)"
-[ -n "${DOMAINES}${FONCTIONNALITES}" ] \
-    || ko "${DEPOT}@${BRANCHE} ne porte ni domains/ ni features/ — est-ce un dépôt cadré ?"
+DOMAINES="$(identifiants domaine)"
+FONCTIONNALITES="$(identifiants fonctionnalite)"
 
 etiquettes_existantes() {
     gh api --paginate "repos/${DEPOT}/labels?per_page=100" -q '.[].name' 2>/dev/null \
