@@ -45,3 +45,23 @@ jobs:
         with:
           referentiel: test/fixture-repo
           appliquer: 'false'
+
+  # La vérification des pistes est une seconde action, sous `pistes/` : son
+  # montage se teste de même, sur une issue fictive et sans rien écrire sur la
+  # plateforme.
+  pistes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - id: piste
+        uses: ./pistes
+        with:
+          referentiel: test/fixture-repo
+          evenement: test/evenements/piste-mal-rattachee.json
+          commenter: 'false'
+      - name: Vérifier que l'écart a été vu
+        run: |
+          if [ "${{ steps.piste.outputs.ecarts }}" != "1" ]; then
+            echo "::error::attendu 1 écart de rattachement, obtenu « ${{ steps.piste.outputs.ecarts }} »"
+            exit 1
+          fi

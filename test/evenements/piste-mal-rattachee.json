@@ -1,0 +1,8 @@
+{
+  "action": "labeled",
+  "issue": {
+    "number": 12,
+    "title": "Permettre au client de commenter un cadrage",
+    "labels": [{ "name": "piste" }, { "name": "domaine/cadrage" }, { "name": "fonctionnalite/export" }]
+  }
+}

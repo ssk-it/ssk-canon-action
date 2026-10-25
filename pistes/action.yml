@@ -1,0 +1,90 @@
+# Action composite : vérifie le rattachement d'une piste à l'événement de son
+# issue, et le signale par un commentaire sur l'issue — RG-piste-rattachee.
+#
+# Destinée aux dépôts cadrés, qui la référencent ainsi, depuis un workflow
+# déclenché par les événements `issues` :
+#
+#   - uses: ssk-it/ssk-canon-action/pistes@main
+#     with:
+#       referentiel: .        # racine du dépôt cadré, sur sa branche principale
+#
+# Une piste ne passe par aucune demande de fusion : la vérification du
+# référentiel ne la voit jamais. Elle a donc son action, à côté de l'autre, qui
+# lit le référentiel avec le même chargeur.
+name: Vérifier le rattachement des pistes
+description: >
+  Vérifie qu'une issue étiquetée « piste » se rattache à des domaines et des
+  fonctionnalités du référentiel SSK Canon, et le signale sur l'issue.
+author: SSK IT
+
+branding:
+  icon: map
+  color: blue
+
+inputs:
+  referentiel:
+    description: Chemin du référentiel, relatif à la racine du dépôt appelant.
+    required: false
+    default: '.'
+  commenter:
+    description: >
+      Signaler les écarts par un commentaire sur l'issue. À false, l'action les
+      dit dans le journal sans rien lire ni écrire sur la plateforme.
+    required: false
+    default: 'true'
+  evenement:
+    description: >
+      Fichier de l'événement à vérifier. Par défaut, celui qui a déclenché le
+      workflow.
+    required: false
+    default: ''
+  jeton:
+    description: Jeton qui lit l'issue et écrit son commentaire, avec la permission « issues » en écriture.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  ecarts:
+    description: Nombre d'écarts de rattachement trouvés.
+    value: ${{ steps.verifier.outputs.ecarts }}
+
+runs:
+  using: composite
+  steps:
+    - name: Installer Node
+      uses: actions/setup-node@v7
+      with:
+        node-version: '22'
+
+    - name: Récupérer le vérificateur
+      shell: bash
+      run: |
+        # `github.action_path` désigne ce répertoire ; le vérificateur vit à la
+        # racine du dépôt outil, sous `src/`.
+        OUTIL="${{ github.action_path }}/.."
+
+        if [ ! -f "$OUTIL/src/verifier-piste.mjs" ]; then
+          echo "::error::Vérificateur introuvable sous $OUTIL — la structure du dépôt outil a changé."
+          exit 1
+        fi
+
+        # Copié hors de l'arbre de travail du dépôt appelant, comme le propagateur.
+        cp -R "$OUTIL" "${RUNNER_TEMP}/ssk-canon-pistes"
+        cd "${RUNNER_TEMP}/ssk-canon-pistes"
+        npm ci --omit=dev
+
+    - name: Vérifier la piste
+      id: verifier
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.jeton }}
+      run: |
+        cd "${RUNNER_TEMP}/ssk-canon-pistes"
+        ARGS=("${GITHUB_WORKSPACE}/${{ inputs.referentiel }}")
+        if [ -n "${{ inputs.evenement }}" ]; then
+          ARGS+=(--evenement "${GITHUB_WORKSPACE}/${{ inputs.evenement }}")
+        fi
+        if [ "${{ inputs.commenter }}" != "true" ]; then
+          ARGS+=(--sans-commentaire)
+        fi
+        node src/verifier-piste.mjs "${ARGS[@]}"

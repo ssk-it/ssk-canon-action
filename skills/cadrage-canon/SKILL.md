@@ -260,6 +260,33 @@ qu'on relira dans six mois quand quelqu'un voudra changer la règle.
 deux-points comme un séparateur, et le fichier devient illisible — la faute la
 plus fréquente du format.
 
+### Un cadrage qui réalise une piste
+
+Une **piste** est une issue du dépôt de référentiel étiquetée `piste` : ce qu'on
+envisage, rattaché par des étiquettes `domaine/<id>` et `fonctionnalite/<id>`,
+rangé par jalon. Elle n'entre jamais dans le référentiel, et son état se déduit
+— RG-piste-etat-deduit.
+
+**Le cadrage qui la réalise la cite**, par un lien de nature `piste` vers l'issue :
+
+```yaml
+liens:
+  - { tag: piste, nom: '#12', url: 'https://github.com/<organisation>/<referentiel>/issues/12' }
+```
+
+**Et sa demande de fusion porte « Ferme #12 »** dans sa description, une ligne par
+piste qu'il réalise : c'est la livraison qui ferme l'issue, et la piste quitte la
+roadmap d'elle-même. Tant que le cadrage n'est pas livré, la piste se lit « en
+cours ».
+
+C'est le cadrage qui cite la piste, jamais l'inverse : ne rien écrire sur l'issue,
+ni le numéro du cadrage, ni une étiquette d'état. Un geste différé serait oublié,
+et la piste mentirait. Le tag `piste` se déclare dans les `tags_liens` du
+`ssk-canon.yml`, comme les autres (voir « Reposer le lien dans le cadrage »).
+
+Une piste abandonnée ne passe par aucun cadrage : son issue se ferme comme « non
+planifiée », en disant pourquoi.
+
 **Le statut ne se déclare pas.** Il se déduit de l'état du dépôt — une branche
 ouverte dit un brouillon, une demande de fusion prête à relire dit une relecture,
 la fusion dit la livraison. L'écrire dans le fichier en ferait une seconde source
@@ -513,6 +540,10 @@ git commit -m "Cadrage <id> : <titre>"                  # à partir de « commit
 git push -u origin <BRANCHE>                            # à partir de « push »
 gh pr create --fill                                     # seulement pour « pr »
 ```
+
+Un cadrage qui réalise une piste ajoute « Ferme #<n> » à la description de sa
+demande — `gh pr edit <numero> --body-file <fichier>` après le `--fill` : sans
+elle, la livraison laisse la piste ouverte.
 
 Les trois répertoires de cibles sont à ajouter, et non `rules/` seul : un
 cadrage qui crée une décision ou un document d'architecture en dépose le fichier

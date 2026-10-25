@@ -214,6 +214,12 @@ Le tag `carte_trello` doit être déclaré dans le `ssk-canon.yml` du référent
 S'il ne l'est pas, le proposer à l'utilisateur plutôt que d'inventer un autre
 tag.
 
+**Une carte n'est pas une piste.** Si le besoin qu'elle porte est déjà une piste —
+une issue étiquetée `piste` dans le dépôt de référentiel —, le cadrage la cite en
+plus, par un lien `piste`, et sa demande de fusion porte « Ferme #<n> » : voir
+« Un cadrage qui réalise une piste » dans `cadrage-canon`. La chercher avant
+d'écrire : `gh issue list --repo <organisation>/<referentiel> --label piste`.
+
 **Les commentaires de la carte** alimentent les décisions. Une discussion où deux
 options ont été pesées est déjà une décision au sens du référentiel : elle mérite
 son fichier dans `decisions/`, avec les options et le motif qui a tranché. C'est
