@@ -27,7 +27,7 @@ machine.
 
 ## Installation dans un dépôt cadré
 
-Deux workflows à copier depuis [`modeles/`](modeles/) :
+Trois workflows à copier depuis [`modeles/`](modeles/) :
 
 ```bash
 # depuis la racine du dépôt cadré
@@ -36,7 +36,13 @@ curl -o .github/workflows/verification.yml \
   https://raw.githubusercontent.com/ssk-it/ssk-canon-action/main/modeles/verification-depot-cadre.yml
 curl -o .github/workflows/propagation.yml \
   https://raw.githubusercontent.com/ssk-it/ssk-canon-action/main/modeles/propagation-depot-cadre.yml
+curl -o .github/workflows/pistes.yml \
+  https://raw.githubusercontent.com/ssk-it/ssk-canon-action/main/modeles/pistes-depot-cadre.yml
 ```
+
+Le troisième vérifie les pistes : voir « Rattachement des pistes ». Il ne demande
+aucun réglage du dépôt — ses permissions, `contents: read` et `issues: write`, se
+déclarent dans le workflow.
 
 Puis, dans les réglages du dépôt :
 
@@ -158,6 +164,44 @@ Deux contrôles sur la même poussée se lisent à contretemps — celui qui n'�
 pas rapporte l'état d'avant l'autre, et échoue à chaque livraison d'un cadrage
 créant une règle.
 
+## Rattachement des pistes
+
+Une **piste** est une issue du dépôt de référentiel étiquetée `piste` : ce qu'on
+envisage pour le produit, hors du référentiel. Elle se rattache à au moins un
+domaine ou une fonctionnalité par des étiquettes `domaine/<id>` et
+`fonctionnalite/<id>` — RG-piste-rattachee. Une piste rattachée à rien, ou par une
+étiquette qui ne désigne aucun identifiant, n'apparaît nulle part.
+
+Une piste ne passe par aucune demande de fusion : la vérification du référentiel
+ne la voit pas. Une seconde action, sous [`pistes/`](pistes/), la vérifie à
+l'événement de l'issue — ouverture, modification, étiquette posée ou retirée,
+réouverture — contre la branche principale, avec le même chargeur :
+
+```yaml
+- uses: ssk-it/ssk-canon-action/pistes@main
+  with:
+    referentiel: '.'
+```
+
+Un écart se signale par **un seul commentaire** sur l'issue, retrouvé par un
+marqueur caché : mis à jour quand les étiquettes changent, supprimé quand le
+rattachement est juste, ou quand l'issue n'est plus une piste. Le commentaire d'une
+personne qui citerait le marqueur n'est jamais repris. L'exécution n'échoue pas :
+le commentaire est le signal, à l'endroit où le rédacteur corrige.
+
+| Entrée | Défaut | Rôle |
+|---|---|---|
+| `referentiel` | `.` | Chemin du référentiel, relatif à la racine du dépôt appelant. |
+| `commenter` | `true` | À `false`, dit les écarts dans le journal sans rien lire ni écrire sur la plateforme. |
+| `evenement` | celui du workflow | Fichier d'événement à vérifier, relatif à la racine. |
+| `jeton` | `github.token` | Jeton qui lit l'issue et écrit son commentaire. |
+
+La sortie `ecarts` donne le nombre d'écarts trouvés. En ligne de commande :
+
+```bash
+node src/verifier-piste.mjs /chemin/du/depot --evenement evenement.json --sans-commentaire
+```
+
 ## Comme bibliothèque
 
 Le vérificateur est aussi publié comme paquet, pour être exécuté ailleurs que
@@ -183,6 +227,10 @@ qu'elles divergent.
 
 `@ssk-it/canon-check/format` expose le découpage du frontmatter et l'extraction
 des énoncés, pour construire ce référentiel depuis des fichiers Markdown.
+
+`@ssk-it/canon-check/pistes` expose la lecture des étiquettes d'une piste
+(`estPiste`, `lireRattachementsPiste`) et son contrôle (`checkPiste`), pour qu'une
+application qui affiche les pistes les rattache comme l'Action les vérifie.
 
 `@ssk-it/canon-check/identite` expose la règle de l'identité visuelle : les
 noms, les variantes et les formats admis dans leur ordre de préférence

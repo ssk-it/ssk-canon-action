@@ -1,0 +1,46 @@
+# Workflow à installer dans un DÉPÔT CADRÉ, sous `.github/workflows/`.
+#
+# Vérifie qu'une piste — une issue étiquetée `piste` — se rattache à au moins un
+# domaine ou une fonctionnalité du référentiel, par des étiquettes
+# `domaine/<id>` et `fonctionnalite/<id>` qui désignent chacune un identifiant de
+# la branche principale — RG-piste-rattachee.
+#
+# Une piste ne passe par aucune demande de fusion : la vérification du
+# référentiel ne la voit pas. Un écart se signale par un seul commentaire sur
+# l'issue, là où le rédacteur la corrige, mis à jour à chaque modification et
+# retiré quand le rattachement est juste. Le workflow ne fait pas échouer
+# l'exécution : le commentaire est le signal.
+name: Rattachement des pistes
+
+on:
+  issues:
+    types: [opened, edited, labeled, unlabeled, reopened]
+
+# Lire le référentiel, écrire le commentaire de l'issue : rien d'autre.
+permissions:
+  contents: read
+  issues: write
+
+# Une issue ouverte avec trois étiquettes émet quatre événements. Les
+# vérifications d'une même issue se suivent, sans se croiser : chacune relit les
+# étiquettes au moment où elle s'exécute.
+concurrency:
+  group: piste-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  verifier:
+    # Une issue sans l'étiquette ne coûte aucune exécution — sauf quand on vient
+    # de la lui retirer : le signalement qu'elle portait est alors à effacer.
+    if: >-
+      contains(github.event.issue.labels.*.name, 'piste')
+      || (github.event.action == 'unlabeled' && github.event.label.name == 'piste')
+    runs-on: ubuntu-latest
+    steps:
+      # Le déclenchement par une issue extrait la branche principale : c'est elle
+      # dont les identifiants comptent.
+      - uses: actions/checkout@v4
+
+      - uses: ssk-it/ssk-canon-action/pistes@main
+        with:
+          referentiel: '.'
