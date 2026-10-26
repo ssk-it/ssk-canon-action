@@ -22,6 +22,7 @@ import {
   REPERTOIRE_IDENTITE,
 } from '../src/identite.mjs';
 import { checkRepo } from '../src/verifier.mjs';
+import { formaterAnomalie, enTexte } from '../src/anomalies.mjs';
 import { loadRepo } from '../src/parse.mjs';
 import { check } from '../src/check.mjs';
 
@@ -131,6 +132,47 @@ await test('la jumelle peut être d’un autre format', () => {
 await test('un fichier refusé ne compte pas comme jumelle', () => {
   const { warnings } = checkIdentite([petit('symbole-clair.svg'), petit('symbole-sombre.jpg')]);
   vrai(warnings.some((w) => w.includes('symbole-sombre')), `avertissements : ${warnings.join(' | ')}`);
+});
+
+// --- les anomalies codées — RG-anomalies-codees ---
+
+await test('chaque cause a son code, et errors et warnings en restent la forme française', () => {
+  const r = checkIdentite([
+    { chemin: 'logotype.png', taille: 400 * 1024 },
+    petit('symbol.svg'),
+    petit('symbole.jpg'),
+    petit('logotype.svg'),
+    petit('symbole-clair.svg'),
+  ]);
+  const codes = r.anomalies.map((a) => `${a.gravite}:${a.code}`);
+  vrai(
+    codes.join() ===
+      'erreur:identite-trop-lourde,erreur:identite-nom-non-admis,erreur:identite-format-non-admis,' +
+        'avertissement:identite-plusieurs-formats,avertissement:identite-variante-seule',
+    codes.join(),
+  );
+  const fr = enTexte(r.anomalies, 'fr');
+  vrai(JSON.stringify(fr.errors) === JSON.stringify(r.errors), r.errors.join(' | '));
+  vrai(JSON.stringify(fr.warnings) === JSON.stringify(r.warnings), r.warnings.join(' | '));
+});
+
+await test('les messages de l’identité se disent en anglais', () => {
+  const r = checkIdentite([
+    { chemin: 'logotype.png', taille: 400 * 1024 },
+    petit('symbol.svg'),
+    petit('symbole.jpg'),
+    petit('logotype.svg'),
+    petit('symbole-clair.svg'),
+  ], 'marque');
+  const en = r.anomalies.map((a) => formaterAnomalie(a, 'en'));
+  const attendu = [
+    'marque/logotype.png: 400 KiB, above the limit of 100 KiB per file',
+    'marque/symbol.svg: name not allowed — expected symbole or logotype, optionally followed by -clair or -sombre, or README.md',
+    'marque/symbole.jpg: format not allowed — expected svg, webp or png',
+    'marque/logotype: present as svg and png — the svg is used',
+    'marque/symbole-clair: no symbole-sombre nor symbole without suffix — on a dark background, the application shows its fallback',
+  ];
+  vrai(JSON.stringify(en) === JSON.stringify(attendu), en.join(' | '));
 });
 
 // --- ce que l'application reprend ---

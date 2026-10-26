@@ -12,6 +12,12 @@
 // résolutions finiraient par lire deux référentiels différents
 // (RG-parseur-partage).
 
+// Ses fautes se disent en anomalies codées — RG-anomalies-codees —, dont le
+// message vient du catalogue de la bibliothèque. Le module n'importe rien pour
+// autant : les skills en portent une copie, sans la bibliothèque. D'où ce
+// constructeur, le même que celui de `anomalies.mjs`.
+const erreur = (code, params = {}) => ({ code, gravite: 'erreur', params });
+
 /** Les noms du format, que garde toute clé non déclarée. */
 export const NOMS_PAR_DEFAUT = Object.freeze({
   dossiers: Object.freeze({
@@ -59,14 +65,15 @@ const VOISINAGES = [
 
 const estTable = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
-/** Ce qu'un nom a de fautif, ou `null` s'il est admis. */
-function fauteDuNom(bloc, valeur) {
-  if (valeur === null || valeur === undefined || valeur === '') return 'nom vide';
-  if (typeof valeur !== 'string') return 'attendu une chaîne';
-  if (valeur.trim() !== valeur) return 'nom bordé d’espaces';
-  if (/[/\\]/.test(valeur)) return 'un nom, non un chemin : sans « / »';
-  if (valeur.startsWith('.')) return 'ne commence pas par « . »';
-  if (bloc === 'fichiers' && !valeur.endsWith('.md')) return 'un fichier Markdown, finissant par « .md »';
+/** La faute d'un nom déclaré, ou `null` s'il est admis. */
+function fauteDuNom(bloc, cle, valeur) {
+  const p = { bloc, cle, defaut: NOMS_PAR_DEFAUT[bloc][cle] };
+  if (valeur === null || valeur === undefined || valeur === '') return erreur('nom-vide', p);
+  if (typeof valeur !== 'string') return erreur('nom-non-chaine', p);
+  if (valeur.trim() !== valeur) return erreur('nom-borde-d-espaces', p);
+  if (/[/\\]/.test(valeur)) return erreur('nom-chemin', p);
+  if (valeur.startsWith('.')) return erreur('nom-commence-par-point', p);
+  if (bloc === 'fichiers' && !valeur.endsWith('.md')) return erreur('nom-fichier-non-markdown', p);
   return null;
 }
 
@@ -79,7 +86,8 @@ function fauteDuNom(bloc, valeur) {
  * du format qu'aucune déclaration ne remplace n'est jamais en faute.
  *
  * @param {unknown} config la configuration lue de `ssk-canon.yml`, ou rien
- * @returns {{ dossiers: Record<string, string>, fichiers: Record<string, string>, erreurs: string[] }}
+ * @returns {{ dossiers: Record<string, string>, fichiers: Record<string, string>, erreurs: object[] }}
+ *   `erreurs` : des anomalies codées, que `formaterAnomalie` dit dans une langue
  */
 export function resoudreNoms(config) {
   const erreurs = [];
@@ -93,22 +101,17 @@ export function resoudreNoms(config) {
     const declaration = estTable(config) ? config[bloc] : undefined;
     if (declaration === undefined || declaration === null) continue;
     if (!estTable(declaration)) {
-      erreurs.push(`ssk-canon.yml → ${bloc} : attendu une table de noms — les noms du format sont retenus`);
+      erreurs.push(erreur('noms-bloc-non-table', { bloc }));
       continue;
     }
     for (const [cle, valeur] of Object.entries(declaration)) {
       if (!(cle in NOMS_PAR_DEFAUT[bloc])) {
-        erreurs.push(
-          `ssk-canon.yml → ${bloc}.${cle} : clé inconnue — attendu l’une de ` +
-            Object.keys(NOMS_PAR_DEFAUT[bloc]).join(', '),
-        );
+        erreurs.push(erreur('nom-cle-inconnue', { bloc, cle, cles: Object.keys(NOMS_PAR_DEFAUT[bloc]) }));
         continue;
       }
-      const faute = fauteDuNom(bloc, valeur);
+      const faute = fauteDuNom(bloc, cle, valeur);
       if (faute) {
-        erreurs.push(
-          `ssk-canon.yml → ${bloc}.${cle} : ${faute} — « ${NOMS_PAR_DEFAUT[bloc][cle]} » est retenu`,
-        );
+        erreurs.push(faute);
         continue;
       }
       noms[bloc][cle] = valeur;
@@ -132,9 +135,13 @@ export function resoudreNoms(config) {
         .filter((e) => e.autres.length);
       for (const { bloc, cle, nom, autres } of fautives) {
         erreurs.push(
-          `ssk-canon.yml → ${bloc}.${cle} : « ${nom} » est aussi le nom de ` +
-            `${autres.map((e) => `${e.bloc}.${e.cle}`).join(', ')} — ` +
-            `« ${NOMS_PAR_DEFAUT[bloc][cle]} » est retenu`,
+          erreur('nom-en-double', {
+            bloc,
+            cle,
+            nom,
+            autres: autres.map((e) => `${e.bloc}.${e.cle}`),
+            defaut: NOMS_PAR_DEFAUT[bloc][cle],
+          }),
         );
         noms[bloc][cle] = NOMS_PAR_DEFAUT[bloc][cle];
         declares.delete(`${bloc}.${cle}`);
@@ -156,7 +163,7 @@ export function resoudreNoms(config) {
  *
  * @param {{ dossiers: Record<string, string>, fichiers: Record<string, string> }} noms
  * @param {readonly string[]} chemins les fichiers du dépôt, relatifs à sa racine, séparés par « / »
- * @returns {string[]}
+ * @returns {object[]} des anomalies codées, que `formaterAnomalie` dit dans une langue
  */
 export function verifierDossiersDeclares(noms, chemins) {
   const erreurs = [];
@@ -170,10 +177,7 @@ export function verifierDossiersDeclares(noms, chemins) {
     if (Object.entries(noms.dossiers).some(([c, n]) => c !== cle && c !== 'decisions_cadrage' && n === ancien))
       continue;
     if (!contient(`${nom}/`) && contient(`${ancien}/`))
-      erreurs.push(
-        `ssk-canon.yml → dossiers.${cle} : « ${nom}/ » est introuvable, alors que « ${ancien}/ » existe — ` +
-          `un dossier ne se renomme pas, son nom se choisit à la création`,
-      );
+      erreurs.push(erreur('dossier-declare-introuvable', { cle, nom, ancien }));
   }
 
   // Dans chaque cadrage, ce qui porte encore le nom du format alors qu'un autre
@@ -199,8 +203,11 @@ export function verifierDossiersDeclares(noms, chemins) {
       const present = (n) => contenu.some((c) => (n.endsWith('/') ? c.startsWith(n) : c === n));
       if (!present(nom) && present(ancien))
         erreurs.push(
-          `${cadrages}${id}/${nom} : introuvable, alors que « ${cadrages}${id}/${ancien} » existe ` +
-            `(ssk-canon.yml → ${cle}) — un nom se choisit à la création`,
+          erreur('nom-de-cadrage-introuvable', {
+            chemin: `${cadrages}${id}/${nom}`,
+            ancien: `${cadrages}${id}/${ancien}`,
+            cle,
+          }),
         );
     }
 
