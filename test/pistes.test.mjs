@@ -12,7 +12,7 @@
 //   node test/pistes.test.mjs
 
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +25,7 @@ import {
   planifierCommentairePiste,
 } from '../src/pistes.mjs';
 import { verifierPiste } from '../src/verifier-piste.mjs';
+import { formaterAnomalie } from '../src/anomalies.mjs';
 
 const FIXTURE = fileURLToPath(new URL('./fixture-repo', import.meta.url));
 const SCRIPT = fileURLToPath(new URL('../src/verifier-piste.mjs', import.meta.url));
@@ -59,13 +60,13 @@ const etiquettes = (...noms) => noms.map((name) => ({ name }));
 // --- lecture des étiquettes ---
 
 await test("une issue sans l'étiquette piste n'est pas vérifiée", () => {
-  egal(checkPiste(etiquettes('domaine/inconnu'), referentiel), { piste: false, ecarts: [] });
+  egal(checkPiste(etiquettes('domaine/inconnu'), referentiel), { piste: false, ecarts: [], anomalies: [] });
 });
 
 await test('une piste rattachée à un domaine et une fonctionnalité existants est en ordre', () => {
   egal(
     checkPiste(etiquettes('piste', 'domaine/acces', 'fonctionnalite/authentification'), referentiel),
-    { piste: true, ecarts: [] },
+    { piste: true, ecarts: [], anomalies: [] },
   );
 });
 
@@ -309,6 +310,121 @@ await test("sans commenter, une piste en ordre ne compte aucun écart", () => {
 await test("un événement sans issue n'est pas une erreur : rien à vérifier", () => {
   const chemin = evenement('push.json', { ref: 'refs/heads/main' });
   vrai(/aucun écart de rattachement/.test(lancer(FIXTURE, '--evenement', chemin, '--sans-commentaire')), 'aucun écart');
+});
+
+
+// --- les anomalies codées, et la langue du dépôt — RG-anomalies-codees, RG-langue-du-depot ---
+
+/** La fixture, déclarée en anglais. */
+function referentielEnAnglais() {
+  const racine = mkdtempSync(join(tmpdir(), 'pistes-en-'));
+  cpSync(FIXTURE, racine, { recursive: true });
+  appendFileSync(join(racine, 'ssk-canon.yml'), '\nlangue: en\n');
+  return racine;
+}
+
+await test('chaque écart est une anomalie codée, ses paramètres tirés des étiquettes', () => {
+  const { anomalies, ecarts } = checkPiste(
+    etiquettes('piste', 'domaine/', 'fonctionnalite/export'),
+    referentiel,
+  );
+  egal(
+    anomalies.map((a) => [a.code, a.gravite]),
+    [
+      ['piste-non-rattachee', 'avertissement'],
+      ['etiquette-piste-sans-identifiant', 'avertissement'],
+      ['etiquette-piste-inconnue', 'avertissement'],
+    ],
+  );
+  egal(anomalies[1].params, { etiquette: 'domaine/' });
+  egal(anomalies[2].params.etiquette, 'fonctionnalite/export');
+  egal(anomalies[2].params.collection, 'features');
+  egal(ecarts, anomalies.map((a) => formaterAnomalie(a, 'fr')), 'les écarts sont les anomalies dites en français');
+});
+
+await test('une piste en ordre ne porte aucune anomalie', () => {
+  egal(checkPiste(etiquettes('piste', 'domaine/acces'), referentiel).anomalies, []);
+  egal(checkPiste(etiquettes('bug'), referentiel).anomalies, []);
+});
+
+await test('les écarts se disent en anglais, les étiquettes et les identifiants tels quels', () => {
+  const { ecarts } = checkPiste(etiquettes('piste', 'domaine/', 'domaine/facturation'), referentiel, 'en');
+  egal(ecarts[0], 'the roadmap item is linked to no domain and no feature of the specification: ' +
+    'it will appear nowhere — add a `domaine/<id>` or `fonctionnalite/<id>` label to it');
+  egal(ecarts[1], 'the label `domaine/` has no identifier');
+  egal(ecarts[2], 'the label `domaine/facturation` designates no domain of the specification — known domains: `acces`, `cadrage`, `persistance`, `referentiel`');
+});
+
+await test('le commentaire se dit en anglais, marqueur en tête', () => {
+  const corps = corpsCommentairePiste(['gap A'], 'en');
+  vrai(corps.startsWith(MARQUEUR_PISTE), 'le marqueur ouvre le commentaire');
+  vrai(corps.includes('**This roadmap item is not properly linked to the specification.**'), corps);
+  vrai(corps.includes('- gap A') && corps.includes('RG-piste-rattachee'), corps);
+  vrai(!/piste se rattache/.test(corps), corps);
+  egal(planifierCommentairePiste([], ['gap A'], 'en'), { action: 'creer', corps });
+});
+
+await test("un dépôt déclaré en anglais reçoit un commentaire en anglais", async () => {
+  const racine = referentielEnAnglais();
+  try {
+    const { etat, api } = plateforme(['piste', 'domaine/facturation']);
+    const { anomalies } = await verifierPiste({ racine, api });
+    egal(anomalies.map((a) => a.code), ['piste-non-rattachee', 'etiquette-piste-inconnue']);
+    const corps = commentairesDuBot(etat)[0].body;
+    vrai(corps.includes('the label `domaine/facturation` designates no domain'), corps);
+    vrai(corps.includes('This roadmap item'), corps);
+  } finally {
+    rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+await test("en ligne de commande, un dépôt déclaré en anglais lit ses avertissements en anglais", () => {
+  const racine = referentielEnAnglais();
+  const d = mkdtempSync(join(tmpdir(), 'pistes-en-evt-'));
+  try {
+    const chemin = join(d, 'e.json');
+    const lancerIci = (contenu) => {
+      writeFileSync(chemin, JSON.stringify(contenu));
+      return execFileSync('node', [SCRIPT, racine, '--evenement', chemin, '--sans-commentaire'], {
+        env: { ...process.env, GITHUB_OUTPUT: '' },
+      }).toString();
+    };
+    const sortie = lancerIci({ issue: { number: 12, labels: etiquettes('piste', 'domaine/facturation') } });
+    vrai(sortie.includes('::warning::#12 — the label `domaine/facturation` designates no domain'), sortie);
+    vrai(/^2 linking gap\(s\)$/m.test(sortie), sortie);
+    egal(lancerIci({ issue: { number: 5, labels: etiquettes('bug') } }),
+      'Issue #5: not a roadmap item.\nno linking gap\n');
+    egal(lancerIci({}), 'No issue in this event: nothing to check.\nno linking gap\n');
+  } finally {
+    rmSync(racine, { recursive: true, force: true });
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+await test("une langue inconnue se signale, et la piste se dit en français", () => {
+  const racine = mkdtempSync(join(tmpdir(), 'pistes-xx-'));
+  try {
+    cpSync(FIXTURE, racine, { recursive: true });
+    appendFileSync(join(racine, 'ssk-canon.yml'), '\nlangue: de\n');
+    const chemin = join(racine, 'e.json');
+    writeFileSync(chemin, JSON.stringify({ issue: { number: 12, labels: etiquettes('piste') } }));
+    const sortie = execFileSync('node', [SCRIPT, racine, '--evenement', chemin, '--sans-commentaire'], {
+      env: { ...process.env, GITHUB_OUTPUT: '' },
+    }).toString();
+    vrai(sortie.includes('::warning::ssk-canon.yml → langue « de »'), sortie);
+    vrai(sortie.includes("la piste n'est rattachée à aucun domaine"), sortie);
+  } finally {
+    rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+await test("en ligne de commande, un dépôt sans langue garde la sortie d'hier, mot pour mot", () => {
+  const sortie = lancer(FIXTURE, '--evenement', fileURLToPath(new URL('./evenements/piste-mal-rattachee.json', import.meta.url)), '--sans-commentaire');
+  egal(sortie,
+    "::warning::#12 — l'étiquette `fonctionnalite/export` ne désigne aucune fonctionnalité du référentiel — " +
+      'fonctionnalités connues : `authentification`, `autorisation`, `consultation-cadrage`, `cycle-vie-cadrage`, ' +
+      '`historique`, `impacts-regles`, `modele-referentiel`, `pieces-jointes`, `redaction-cadrage`, `stockage-git`\n' +
+      '1 écart(s) de rattachement\n');
 });
 
 rmSync(dossier, { recursive: true, force: true });

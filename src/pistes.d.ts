@@ -1,3 +1,5 @@
+import type { Anomalie } from './verifier.js';
+
 /** Une étiquette, telle que la plateforme la donne ou par son seul nom. */
 export type EtiquettePiste = string | { readonly name?: string };
 
@@ -26,17 +28,24 @@ export function lireRattachementsPiste(etiquettes: readonly EtiquettePiste[]): R
 /** Vrai quand les étiquettes font de l'issue une piste. */
 export function estPiste(etiquettes: readonly EtiquettePiste[]): boolean;
 
-/** Vérifie le rattachement d'une piste à un référentiel chargé — RG-piste-rattachee. */
+/**
+ * Vérifie le rattachement d'une piste à un référentiel chargé — RG-piste-rattachee.
+ * Chaque écart est un avertissement codé, dans `anomalies` (codes
+ * `piste-non-rattachee`, `etiquette-piste-sans-identifiant`,
+ * `etiquette-piste-inconnue`) ; `ecarts` en est le texte, dans `langue`
+ * (français par défaut).
+ */
 export function checkPiste(
   etiquettes: readonly EtiquettePiste[],
   repo: {
     readonly domains: ReadonlyMap<string, unknown>;
     readonly features: ReadonlyMap<string, unknown>;
   },
-): { piste: boolean; ecarts: string[] };
+  langue?: string,
+): { piste: boolean; ecarts: string[]; anomalies: Anomalie[] };
 
-/** Le commentaire qui signale des écarts, marqueur en tête. */
-export function corpsCommentairePiste(ecarts: readonly string[]): string;
+/** Le commentaire qui signale des écarts, marqueur en tête, dans `langue` (français par défaut). */
+export function corpsCommentairePiste(ecarts: readonly string[], langue?: string): string;
 
 export interface CommentaireIssue {
   readonly id: number;
@@ -48,6 +57,7 @@ export interface CommentaireIssue {
 export function planifierCommentairePiste(
   commentaires: readonly CommentaireIssue[],
   ecarts: readonly string[],
+  langue?: string,
 ):
   | { action: 'rien' }
   | { action: 'creer'; corps: string }

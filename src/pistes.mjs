@@ -9,6 +9,11 @@
 // La lecture des étiquettes vit ici, à côté de celle du format, pour la même
 // raison : l'Action qui vérifie une piste et l'application qui l'affiche doivent
 // la lire de la même façon, et deux lectures finiraient par diverger.
+//
+// Un écart est une anomalie codée (RG-anomalies-codees) ; sa forme textuelle,
+// `ecarts`, se dit dans la langue qu'on demande, en français par défaut.
+
+import { avertissement, formaterAnomalie, LANGUE_PAR_DEFAUT } from './anomalies.mjs';
 
 /** L'étiquette qui fait d'une issue une piste. */
 export const ETIQUETTE_PISTE = 'piste';
@@ -17,6 +22,9 @@ export const ETIQUETTE_PISTE = 'piste';
  * Les préfixes de rattachement, et ce qu'ils désignent dans un référentiel
  * chargé. Une table, comme les cibles d'un impact : un rattachement ajouté
  * demain hérite des contrôles sans qu'on ait à penser à chacun.
+ *
+ * `libelle` et `connus` restent pour qui les lisait : les messages, eux, se
+ * disent par le catalogue (`messages/pistes.mjs`), dans chaque langue.
  */
 export const RATTACHEMENTS_PISTE = [
   { prefixe: 'domaine/', collection: 'domains', libelle: 'aucun domaine', connus: 'domaines connus' },
@@ -59,47 +67,41 @@ export function estPiste(etiquettes) {
  * désigne rien ne vaut pas rattachement : la piste qui n'a qu'elle n'apparaît
  * nulle part, et cela se dit aussi.
  *
+ * Chaque écart est un avertissement codé, dans `anomalies` ; `ecarts` en est la
+ * forme textuelle, dans `langue`.
+ *
  * @param {ReadonlyArray<string | { name?: string }>} etiquettes
  * @param {{ domains: ReadonlyMap<string, unknown>, features: ReadonlyMap<string, unknown> }} repo
+ * @param {string} [langue]
  */
-export function checkPiste(etiquettes, repo) {
-  if (!estPiste(etiquettes)) return { piste: false, ecarts: [] };
+export function checkPiste(etiquettes, repo, langue = LANGUE_PAR_DEFAUT) {
+  if (!estPiste(etiquettes)) return { piste: false, ecarts: [], anomalies: [] };
 
-  const ecarts = [];
+  const anomalies = [];
   let rattachee = false;
   for (const { etiquette, collection, id } of lireRattachementsPiste(etiquettes)) {
-    const r = RATTACHEMENTS_PISTE.find((r) => r.collection === collection);
-    if (!id) ecarts.push(`l'étiquette \`${etiquette}\` est sans identifiant`);
+    if (!id) anomalies.push(avertissement('etiquette-piste-sans-identifiant', { etiquette }));
     else if (!repo[collection]?.has(id)) {
-      const connus = [...(repo[collection]?.keys() ?? [])].sort().map((k) => `\`${k}\``);
-      ecarts.push(
-        `l'étiquette \`${etiquette}\` ne désigne ${r.libelle} du référentiel` +
-          (connus.length ? ` — ${r.connus} : ${connus.join(', ')}` : ''),
-      );
+      const connus = [...(repo[collection]?.keys() ?? [])].sort();
+      anomalies.push(avertissement('etiquette-piste-inconnue', { etiquette, collection, connus }));
     } else rattachee = true;
   }
 
-  if (!rattachee)
-    ecarts.unshift(
-      `la piste n'est rattachée à aucun domaine ni aucune fonctionnalité du référentiel : ` +
-        `elle n'apparaîtra nulle part — lui ajouter une étiquette \`domaine/<id>\` ou \`fonctionnalite/<id>\``,
-    );
+  if (!rattachee) anomalies.unshift(avertissement('piste-non-rattachee'));
 
-  return { piste: true, ecarts };
+  return { piste: true, ecarts: anomalies.map((a) => formaterAnomalie(a, langue)), anomalies };
 }
 
-/** Le commentaire qui signale des écarts, marqueur en tête. */
-export function corpsCommentairePiste(ecarts) {
+/** Le commentaire qui signale des écarts, marqueur en tête, dans `langue`. */
+export function corpsCommentairePiste(ecarts, langue = LANGUE_PAR_DEFAUT) {
+  const dire = (code) => formaterAnomalie({ code, params: {} }, langue);
   return [
     MARQUEUR_PISTE,
-    '**Cette piste est mal rattachée au référentiel.**',
+    dire('piste-commentaire-titre'),
     '',
     ...ecarts.map((e) => `- ${e}`),
     '',
-    'Une piste se rattache à au moins un domaine ou une fonctionnalité par des étiquettes ' +
-      '`domaine/<id>` et `fonctionnalite/<id>`, où `<id>` est un identifiant de la branche ' +
-      'principale du référentiel — RG-piste-rattachee. Ce commentaire se met à jour à chaque ' +
-      "modification de l'issue, et disparaît quand le rattachement est juste.",
+    dire('piste-commentaire-regle'),
   ].join('\n');
 }
 
@@ -113,16 +115,17 @@ export function corpsCommentairePiste(ecarts) {
  *
  * @param {ReadonlyArray<{ id: number, body?: string, user?: { type?: string } }>} commentaires
  * @param {readonly string[]} ecarts
+ * @param {string} [langue] celle du commentaire, qui est celle du dépôt
  * @returns {{ action: 'rien' } | { action: 'creer', corps: string }
  *   | { action: 'modifier', id: number, corps: string } | { action: 'supprimer', id: number }}
  */
-export function planifierCommentairePiste(commentaires, ecarts) {
+export function planifierCommentairePiste(commentaires, ecarts, langue = LANGUE_PAR_DEFAUT) {
   const existant = commentaires.find(
     (c) => c.user?.type === 'Bot' && (c.body ?? '').startsWith(MARQUEUR_PISTE),
   );
   if (!ecarts.length) return existant ? { action: 'supprimer', id: existant.id } : { action: 'rien' };
 
-  const corps = corpsCommentairePiste(ecarts);
+  const corps = corpsCommentairePiste(ecarts, langue);
   if (!existant) return { action: 'creer', corps };
   if (existant.body === corps) return { action: 'rien' };
   return { action: 'modifier', id: existant.id, corps };
