@@ -7,6 +7,7 @@
 import type { FichierIdentite } from './identite.js';
 
 export * from './identite.js';
+export * from './noms.js';
 
 /** Un référentiel chargé, quelle qu'en soit la provenance. */
 export interface RepoVerifiable {
@@ -16,7 +17,12 @@ export interface RepoVerifiable {
    * Absente, rien de ce qui en dépend n'est contrôlé : un référentiel vérifié
    * hors de son dépôt reste vérifiable.
    */
-  readonly config?: { readonly projet?: { readonly prefixe?: string } } | null;
+  readonly config?: {
+    readonly projet?: { readonly prefixe?: string };
+    /** Les noms déclarés — RG-noms-declares. */
+    readonly dossiers?: unknown;
+    readonly fichiers?: unknown;
+  } | null;
   readonly domains: ReadonlyMap<string, unknown>;
   readonly features: ReadonlyMap<string, unknown>;
   readonly rules: ReadonlyMap<string, unknown>;
@@ -36,6 +42,13 @@ export interface RepoVerifiable {
    * a pas.
    */
   readonly identite?: readonly FichierIdentite[];
+  /**
+   * Les fichiers du dépôt, relatifs à sa racine, séparés par « / ».
+   *
+   * Présents, ils révèlent un dossier déclaré introuvable alors que celui du
+   * nom du format existe encore ; absents, ce contrôle n'a pas lieu.
+   */
+  readonly chemins?: readonly string[];
   /** Erreurs déjà rencontrées au chargement, reprises telles quelles. */
   readonly errors?: readonly string[];
 }

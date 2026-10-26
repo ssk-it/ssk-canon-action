@@ -6,9 +6,13 @@
 //
 //   node src/check.mjs [chemin-du-depot] [--base <ref>] [--sans-immuabilite] [--livraison]
 
+import { load } from 'js-yaml';
 import { loadRepo } from './parse.mjs';
 import { checkRepo } from './verifier.mjs';
+import { resoudreNoms } from './noms.mjs';
 import {
+  lireFichierA,
+  dossierPresentA,
   listCadragesLivres,
   listCadragesPortes,
   listFichiersModifies,
@@ -30,7 +34,9 @@ export function check(root, options = {}) {
   // référentiel vérifié depuis une archive — aucun cadrage n'est tenu pour
   // livré, ce que `checkRepo` traite comme un cas normal.
   const reference = base ?? 'origin/main';
-  const livres = livresFournis ?? listCadragesLivres(root, reference) ?? new Set();
+  const repo = loadRepo(root);
+  const dossier = repo.noms.dossiers.cadrages;
+  const livres = livresFournis ?? listCadragesLivres(root, reference, dossier) ?? new Set();
 
   // Une branche que la référence a déjà fusionnée y trouve son propre cadrage
   // livré, sans la propagation qui suit la fusion : ses index dérivés sont en
@@ -38,7 +44,7 @@ export function check(root, options = {}) {
   // qui n'existe pas — c'est la propagation qui en répond, RG-propagation-verifiee.
   // La fusion se dit, sans rien bloquer — RG-branches-survivantes-signalees.
   const fusion = livresFournis ? null : pointDeFusion(root, reference);
-  const resultat = checkRepo(loadRepo(root), {
+  const resultat = checkRepo(repo, {
     ...reste,
     livres,
     ...(fusion ? { ignorerIndexDerives: true } : {}),
@@ -60,16 +66,57 @@ export function check(root, options = {}) {
   // livrés, faute de quoi il ne peut pas être livré. La suspension se déclare, se
   // relit dans le workflow, et n'a pas à être retirée du code puis remise.
   const erreursImmuabilite =
-    base && immuabilite ? checkImmuabilite(root, base, livres) : [];
+    base && immuabilite ? checkImmuabilite(root, base, livres, dossier) : [];
 
   // Ce que la fusion exigera, réclamé tant qu'il est encore temps de l'écrire —
   // RG-controle-de-livraison.
-  const erreursLivraison = livraison && base ? checkLivraison(root, base, livres, resultat) : [];
+  const erreursLivraison =
+    livraison && base ? checkLivraison(root, base, livres, resultat, dossier) : [];
+
+  const erreursNoms = base ? checkNomsInchanges(root, base, repo.noms) : [];
 
   return {
     ...resultat,
-    errors: [...resultat.errors, ...erreursImmuabilite, ...erreursLivraison],
+    errors: [...resultat.errors, ...erreursNoms, ...erreursImmuabilite, ...erreursLivraison],
   };
+}
+
+/**
+ * Refuse qu'un nom déclaré change, une fois que son dossier existe —
+ * RG-noms-declares, RG-chemins-immuables.
+ *
+ * Le nom se choisit à la création. Le changer laisserait les fichiers sous un
+ * nom que plus rien ne lit, ou les déplacerait en perdant leur historique. La
+ * comparaison se fait avec la configuration de la base : c'est elle qui dit le
+ * nom précédent, que l'état courant a oublié.
+ */
+function checkNomsInchanges(root, base, noms) {
+  let configBase = null;
+  try {
+    configBase = load(lireFichierA(root, base, 'ssk-canon.yml') ?? '');
+  } catch {
+    // une configuration de base illisible ne dit aucun nom précédent
+    return [];
+  }
+  const avant = resoudreNoms(configBase);
+  const cadragesAvant = dossierPresentA(root, base, avant.dossiers.cadrages);
+  const errors = [];
+
+  for (const bloc of ['dossiers', 'fichiers'])
+    for (const [cle, nom] of Object.entries(noms[bloc])) {
+      const ancien = avant[bloc][cle];
+      if (nom === ancien) continue;
+      // Un nom de la racine compte dès que son dossier existe ; un nom interne
+      // à un cadrage, dès qu'un cadrage existe.
+      const interne = bloc === 'fichiers' || cle === 'decisions_cadrage';
+      const existe = interne ? cadragesAvant : dossierPresentA(root, base, ancien);
+      if (existe)
+        errors.push(
+          `ssk-canon.yml → ${bloc}.${cle} : passe de « ${ancien} » à « ${nom} » — ` +
+            `un nom se choisit à la création, et ne change plus`,
+        );
+    }
+  return errors;
 }
 
 /**
@@ -85,8 +132,8 @@ export function check(root, options = {}) {
  * propagation, après la fusion. Les exiger avant reviendrait à réclamer au
  * rédacteur ce que la machine doit produire.
  */
-function checkLivraison(root, base, livres, dejaVu) {
-  const portes = listCadragesPortes(root, base);
+function checkLivraison(root, base, livres, dejaVu, dossier) {
+  const portes = listCadragesPortes(root, base, dossier);
 
   // Ne pas savoir ce que la demande porte n'est pas une demande sans cadrage :
   // le contrôle n'a pas eu lieu, et se taire le rendrait silencieusement
@@ -123,7 +170,7 @@ function checkLivraison(root, base, livres, dejaVu) {
  * construction. Une base hors d'atteinte, en revanche, se signale : le contrôle
  * n'a pas eu lieu, ce qui ne se confond pas avec un référentiel conforme.
  */
-function checkImmuabilite(root, base, livres) {
+function checkImmuabilite(root, base, livres, dossier) {
   const fichiers = listFichiersModifies(root, base);
 
   // Une base hors d'atteinte n'est pas un référentiel conforme : c'est un
@@ -139,7 +186,7 @@ function checkImmuabilite(root, base, livres) {
   if (!fichiers.length) return [];
 
   const errors = [];
-  for (const [id, chemins] of findCadragesLivresModifies(fichiers, livres)) {
+  for (const [id, chemins] of findCadragesLivresModifies(fichiers, livres, dossier)) {
     errors.push(
       `cadrage ${id} : livré, donc figé — ${chemins.join(', ')} ; ` +
         `ce qui doit changer se change par un nouveau cadrage`,

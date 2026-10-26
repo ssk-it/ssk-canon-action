@@ -18,7 +18,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { dump } from 'js-yaml';
-import { loadRepo, splitFrontmatter, extractEnonces } from './parse.mjs';
+import { loadRepo, lireNoms, splitFrontmatter, extractEnonces } from './parse.mjs';
+import { DOSSIER_DE_COLLECTION } from './noms.mjs';
 import { check } from './check.mjs';
 import { cibleDe as natureDe } from './verifier.mjs';
 import { listCadragesLivres, ordreDeLivraison } from './livraison.mjs';
@@ -144,8 +145,8 @@ function ecrireRegle(regle, propres, enonce) {
  * sans cadrage livré, la propagation conclurait que le référentiel entier est
  * de trop.
  */
-function livresDuDepot(root) {
-  const livres = listCadragesLivres(root, 'HEAD');
+function livresDuDepot(root, dossier) {
+  const livres = listCadragesLivres(root, 'HEAD', dossier);
   if (livres === null)
     throw new Error(
       "impossible de lire les cadrages livrés depuis Git — la propagation a besoin d'un dépôt",
@@ -159,10 +160,12 @@ function livresDuDepot(root) {
  */
 export function calculerEcritures(root, livres) {
   const repo = loadRepo(root);
+  const { dossiers, fichiers } = repo.noms;
   const attendu = etatAttendu(
     repo,
-    livres ?? livresDuDepot(root),
-    ordreDeLivraison(root, 'HEAD') ?? new Map(),
+    livres ?? livresDuDepot(root, dossiers.cadrages),
+    ordreDeLivraison(root, 'HEAD', { dossier: dossiers.cadrages, fichier: fichiers.cadrage }) ??
+      new Map(),
   );
   const ecritures = [];
   const problemes = [];
@@ -202,7 +205,7 @@ export function calculerEcritures(root, livres) {
     }
 
     const contenu = ecrireRegle(cible, propres, cible.enonce);
-    const chemin = join(root, collection, `${id}.md`);
+    const chemin = join(root, dossiers[DOSSIER_DE_COLLECTION[collection]], `${id}.md`);
     const actuel = existante ? readFileSync(chemin, 'utf8') : null;
 
     if (actuel !== contenu) {
@@ -229,7 +232,7 @@ export function propager(root, { dryRun = false } = {}) {
   // Lu une seule fois et passé aux deux étapes : deux lectures pourraient
   // différer, et la vérification porterait alors sur un autre référentiel que
   // celui qu'on propage.
-  const livres = livresDuDepot(root);
+  const livres = livresDuDepot(root, lireNoms(root).dossiers.cadrages);
 
   const integrite = check(root, { ignorerIndexDerives: true, livres });
   if (integrite.errors.length) {

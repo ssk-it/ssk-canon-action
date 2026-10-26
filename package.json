@@ -25,6 +25,10 @@
     "./pistes": {
       "types": "./src/pistes.d.ts",
       "default": "./src/pistes.mjs"
+    },
+    "./noms": {
+      "types": "./src/noms.d.ts",
+      "default": "./src/noms.mjs"
     }
   },
   "files": [
@@ -36,6 +40,8 @@
     "src/identite.d.ts",
     "src/pistes.mjs",
     "src/pistes.d.ts",
+    "src/noms.mjs",
+    "src/noms.d.ts",
     "NOTICE"
   ],
   "keywords": [
@@ -46,7 +52,7 @@
   "scripts": {
     "check": "node src/check.mjs test/fixture-repo",
     "propagate:dry": "node src/propagate.mjs test/fixture-repo --dry-run",
-    "test": "node src/propagate.test.mjs && node src/propagation-en-attente.test.mjs && node test/consulter.test.mjs && node test/preparer.test.mjs && node test/skills.test.mjs && node test/identite.test.mjs && node test/pistes.test.mjs"
+    "test": "node src/propagate.test.mjs && node src/propagation-en-attente.test.mjs && node test/consulter.test.mjs && node test/preparer.test.mjs && node test/skills.test.mjs && node test/identite.test.mjs && node test/pistes.test.mjs && node test/noms.test.mjs"
   },
   "dependencies": {
     "js-yaml": "^5.4.1"
