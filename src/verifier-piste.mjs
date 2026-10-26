@@ -10,9 +10,13 @@
 // L'événement est celui que GitHub décrit dans `GITHUB_EVENT_PATH`. Sans
 // `--sans-commentaire`, le script lit l'issue et ses commentaires par l'API, avec
 // `GITHUB_TOKEN`, sur le dépôt `GITHUB_REPOSITORY`.
+//
+// Le journal et le commentaire se disent dans la langue du dépôt, déclarée dans
+// son `ssk-canon.yml` — RG-langue-du-depot.
 
 import { appendFileSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { formaterAnomalie, langueDuDepot } from './anomalies.mjs';
 import { loadRepo } from './parse.mjs';
 import { checkPiste, planifierCommentairePiste } from './pistes.mjs';
 
@@ -33,11 +37,13 @@ import { checkPiste, planifierCommentairePiste } from './pistes.mjs';
  */
 export async function verifierPiste({ racine, api }) {
   const { labels } = await api.lireIssue();
-  const resultat = checkPiste(labels ?? [], loadRepo(racine));
+  const repo = loadRepo(racine);
+  const { langue } = langueDuDepot(repo.config);
+  const resultat = checkPiste(labels ?? [], repo, langue);
 
   // Une issue qui n'est plus une piste n'a plus à porter le signalement : on le
   // retire, comme d'une piste remise en ordre.
-  const plan = planifierCommentairePiste(await api.listerCommentaires(), resultat.ecarts);
+  const plan = planifierCommentairePiste(await api.listerCommentaires(), resultat.ecarts, langue);
   if (plan.action === 'creer') await api.creer(plan.corps);
   else if (plan.action === 'modifier') await api.modifier(plan.id, plan.corps);
   else if (plan.action === 'supprimer') await api.supprimer(plan.id);
@@ -109,8 +115,13 @@ async function main(argv) {
   const evenement = fichierEvenement ? JSON.parse(readFileSync(fichierEvenement, 'utf8')) : {};
   const issue = evenement.issue;
 
+  // La langue du journal, celle du dépôt ; mal déclarée, elle se signale.
+  const { langue, anomalies } = langueDuDepot(loadRepo(racine).config);
+  const dire = (code, params = {}) => formaterAnomalie({ code, params }, langue);
+  for (const a of anomalies) console.log(`::warning::${formaterAnomalie(a, langue)}`);
+
   let ecarts = [];
-  if (!issue) console.log('Aucune issue dans cet événement : rien à vérifier.');
+  if (!issue) console.log(dire('piste-sans-issue'));
   else {
     const api = sansCommentaire
       ? apiHorsLigne(issue)
@@ -121,12 +132,12 @@ async function main(argv) {
         });
     const resultat = await verifierPiste({ racine, api });
     ecarts = resultat.ecarts;
-    if (!resultat.piste) console.log(`Issue #${issue.number} : pas une piste.`);
+    if (!resultat.piste) console.log(dire('piste-pas-une-piste', { numero: issue.number }));
     for (const e of ecarts) console.log(`::warning::#${issue.number} — ${e}`);
-    if (!sansCommentaire) console.log(`Commentaire : ${resultat.action}.`);
+    if (!sansCommentaire) console.log(dire('piste-commentaire-action', { action: resultat.action }));
   }
 
-  console.log(ecarts.length ? `${ecarts.length} écart(s) de rattachement` : 'aucun écart de rattachement');
+  console.log(ecarts.length ? dire('piste-ecarts', { nombre: ecarts.length }) : dire('piste-aucun-ecart'));
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `ecarts=${ecarts.length}\n`);
 }
 

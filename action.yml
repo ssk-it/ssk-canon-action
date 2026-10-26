@@ -97,6 +97,19 @@ runs:
         cd "${RUNNER_TEMP}/ssk-canon-action"
         CIBLE="${GITHUB_WORKSPACE}/${{ inputs.referentiel }}"
 
+        # Ce que l'Action écrit se dit dans la langue du référentiel, et se lit
+        # au catalogue de la bibliothèque, comme le reste — RG-langue-du-depot.
+        LANGUE=$(node --input-type=module -e '
+          const { langueDe } = await import(`${process.env.RUNNER_TEMP}/ssk-canon-action/src/check.mjs`);
+          console.log(langueDe(process.argv[1]));' "$CIBLE")
+        echo "langue=$LANGUE" >> "$GITHUB_OUTPUT"
+        dire() {
+          LANGUE="$LANGUE" node --input-type=module -e '
+            const { formaterAnomalie } = await import(`${process.env.RUNNER_TEMP}/ssk-canon-action/src/anomalies.mjs`);
+            const [code, params = "{}"] = process.argv.slice(1);
+            console.log(formaterAnomalie({ code, params: JSON.parse(params) }, process.env.LANGUE));' "$@"
+        }
+
         if [ "${{ inputs.appliquer }}" = "true" ]; then
           node src/propagate.mjs "$CIBLE" | tee "${RUNNER_TEMP}/propagation.log"
 
@@ -116,7 +129,7 @@ runs:
           SANS_IMMUABILITE=""
           if [ "${{ inputs.immuabilite }}" != "true" ]; then
             SANS_IMMUABILITE="--sans-immuabilite"
-            echo "::warning::Contrôle d'immuabilité suspendu — un cadrage livré peut être modifié."
+            echo "::warning::$(dire action-immuabilite-suspendue)"
           fi
           # Une demande proposée à la relecture annonce sa livraison : on lui
           # réclame dès lors ce que la fusion exigera, tant qu'il est encore
@@ -130,8 +143,9 @@ runs:
             | tee "${RUNNER_TEMP}/propagation.log"
         fi
 
-        # « N règle(s) écrites » ou « rien à propager »
-        N=$(grep -oE '^[0-9]+ règle' "${RUNNER_TEMP}/propagation.log" | grep -oE '^[0-9]+' || echo 0)
+        # « N règle(s) écrites » ou « rien à propager » — « N rule(s) written »
+        # en anglais : le nombre reste en tête de ligne, quelle que soit la langue
+        N=$(grep -oE '^[0-9]+ (règle|rule)' "${RUNNER_TEMP}/propagation.log" | grep -oE '^[0-9]+' || echo 0)
         echo "ecritures=$N" >> "$GITHUB_OUTPUT"
 
     - name: Commiter les écritures
@@ -140,9 +154,18 @@ runs:
       working-directory: ${{ github.workspace }}
       env:
         GH_TOKEN: ${{ github.token }}
+        LANGUE: ${{ steps.propager.outputs.langue }}
       run: |
+        # le même catalogue, dans la langue que l'étape précédente a lue
+        dire() {
+          node --input-type=module -e '
+            const { formaterAnomalie } = await import(`${process.env.RUNNER_TEMP}/ssk-canon-action/src/anomalies.mjs`);
+            const [code, params = "{}"] = process.argv.slice(1);
+            console.log(formaterAnomalie({ code, params: JSON.parse(params) }, process.env.LANGUE));' "$@"
+        }
+
         if git diff --quiet; then
-          echo "Référentiel déjà à jour — rien à commiter."
+          dire action-rien-a-commiter
           exit 0
         fi
         # Le commit de propagation est distinct de celui de la livraison : le
@@ -151,14 +174,14 @@ runs:
         git config user.name  'github-actions[bot]'
         git config user.email 'github-actions[bot]@users.noreply.github.com'
         git add -A
-        git commit -m "${{ inputs.message }}" -m "Écritures calculées à partir des cadrages livrés."
+        git commit -m "${{ inputs.message }}" -m "$(dire action-commit-corps)"
 
         # Une branche protégée exige des contrôles qu'un push direct ne porte
         # jamais : la propagation passe donc par une demande de fusion, qui les
         # déclenche. Le push direct reste tenté d'abord — sur une branche non
         # protégée il aboutit, et n'impose alors aucune relecture inutile.
         if git push 2>/dev/null; then
-          echo "Écritures poussées sur la branche principale."
+          dire action-ecritures-poussees
           exit 0
         fi
 
@@ -169,12 +192,12 @@ runs:
         EN_ATTENTE=$(gh pr list --base "${GITHUB_REF_NAME}" --state open --json headRefName \
           | node "${RUNNER_TEMP}/ssk-canon-action/src/propagation-en-attente.mjs")
         if [ "$EN_ATTENTE" = "oui" ]; then
-          echo "::notice::Une demande de propagation attend déjà sa fusion — pas de seconde demande."
+          echo "::notice::$(dire action-propagation-en-attente)"
           exit 0
         fi
 
         BRANCHE="propagation/$(git rev-parse --short HEAD)"
-        echo "::notice::Push direct refusé — la propagation passe par « $BRANCHE »."
+        echo "::notice::$(dire action-push-refuse "{\"branche\":\"$BRANCHE\"}")"
         git switch -c "$BRANCHE"
         git push -u origin "$BRANCHE"
 
@@ -184,8 +207,5 @@ runs:
           --base "${GITHUB_REF_NAME}" \
           --head "$BRANCHE" \
           --title "${{ inputs.message }}" \
-          --body "Écritures calculées à partir des cadrages livrés, par la propagation.
-
-        La branche principale refuse un push direct : ces écritures passent par
-        une demande de fusion pour que les contrôles requis s'exécutent."
+          --body "$(dire action-demande-corps)"
 

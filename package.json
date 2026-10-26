@@ -1,6 +1,6 @@
 {
   "name": "@ssk-it/canon-check",
-  "version": "1.7.0",
+  "version": "2.0.0",
   "type": "module",
   "license": "Apache-2.0",
   "description": "Vérification d'intégrité d'un référentiel SSK Canon, et propagation des impacts",
@@ -33,6 +33,9 @@
   },
   "files": [
     "src/verifier.mjs",
+    "src/anomalies.mjs",
+    "src/messages.mjs",
+    "src/messages/",
     "src/verifier.d.ts",
     "src/format.mjs",
     "src/format.d.ts",
@@ -52,7 +55,7 @@
   "scripts": {
     "check": "node src/check.mjs test/fixture-repo",
     "propagate:dry": "node src/propagate.mjs test/fixture-repo --dry-run",
-    "test": "node src/propagate.test.mjs && node src/propagation-en-attente.test.mjs && node test/consulter.test.mjs && node test/preparer.test.mjs && node test/skills.test.mjs && node test/identite.test.mjs && node test/pistes.test.mjs && node test/noms.test.mjs && node test/skills-noms.test.mjs"
+    "test": "node src/propagate.test.mjs && node src/propagation-en-attente.test.mjs && node test/consulter.test.mjs && node test/preparer.test.mjs && node test/skills.test.mjs && node test/identite.test.mjs && node test/pistes.test.mjs && node test/noms.test.mjs && node test/lecture.test.mjs && node test/skills-noms.test.mjs && node test/anomalies.test.mjs"
   },
   "dependencies": {
     "js-yaml": "^5.4.1"

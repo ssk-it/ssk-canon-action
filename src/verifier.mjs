@@ -9,6 +9,7 @@
 // Ce qu'il attrape, que le format seul ne peut pas garantir : références
 // croisées, énoncés manquants, cohérence des statuts.
 
+import { erreur, avertissement, versAnomalie, enTexte, langueDuDepot } from './anomalies.mjs';
 import { extractEnonces } from './format.mjs';
 import { checkIdentite } from './identite.mjs';
 import { resoudreNoms, verifierDossiersDeclares } from './noms.mjs';
@@ -17,6 +18,9 @@ import { resoudreNoms, verifierDossiersDeclares } from './noms.mjs';
 // reprend d'ici, sans avoir à connaître le découpage interne du paquet.
 export * from './identite.mjs';
 export * from './noms.mjs';
+// Les anomalies et leurs messages, pour qui les dit dans sa langue —
+// RG-anomalies-codees.
+export { LANGUES, formaterAnomalie, enTexte, langueDuDepot } from './anomalies.mjs';
 
 const OPERATIONS = new Set(['cree', 'modifie', 'abroge', 'touche']);
 const STATUTS_REGLE = new Set(['actif', 'abroge']);
@@ -81,57 +85,62 @@ export function cibleDe(impact) {
  * @param {{ignorerIndexDerives?: boolean, livres?: Set<string>}} [options]
  */
 export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set() } = {}) {
-  const { domains, features, rules, cadrages, errors: problems = [] } = repo;
-  const errors = [...problems];
-  const warnings = [];
+  const { domains, features, rules, cadrages } = repo;
+  // Les erreurs de chargement arrivent codées quand le chargement les code, en
+  // texte sinon : un texte se rend tel quel, faute de pouvoir le dire autrement.
+  const problems = repo.anomalies ?? repo.errors ?? [];
+  const anomalies = problems.map((p) => versAnomalie(p));
+  const signaler = (...a) => anomalies.push(...a.map((x) => versAnomalie(x)));
+  const avertir = (...a) => anomalies.push(...a.map((x) => versAnomalie(x, 'avertissement')));
+
+  // La langue du dépôt — RG-langue-du-depot. Mal déclarée, elle se signale ici.
+  signaler(...langueDuDepot(repo.config).anomalies);
 
   // --- configuration du projet ---
   const prefixe = repo.config?.projet?.prefixe;
   if (prefixe !== undefined && !FORME_PREFIXE.test(String(prefixe)))
-    errors.push(
-      `ssk-canon.yml → prefixe « ${prefixe} » : attendu des lettres, chiffres ou « _ », ` +
-        `commençant par une lettre`,
-    );
+    signaler(erreur('prefixe-invalide', { prefixe: String(prefixe) }));
 
   // Les noms déclarés — RG-noms-declares. Une entrée fautive a déjà été
   // écartée à la lecture ; c'est ici qu'elle se dit. Les chemins, quand
   // l'appelant les connaît, révèlent un dossier renommé sans ses fichiers.
   const noms = resoudreNoms(repo.config);
-  errors.push(...noms.erreurs);
-  if (repo.chemins) errors.push(...verifierDossiersDeclares(noms, repo.chemins));
+  signaler(...noms.erreurs);
+  if (repo.chemins) signaler(...verifierDossiersDeclares(noms, repo.chemins));
 
   /** Un cadrage est livré si la branche principale le porte, et rien d'autre. */
   const estLivre = (id) => livres.has(id);
 
   // --- identifiants et cohérence de forme ---
   for (const [id, d] of domains)
-    if (!id) errors.push(`${d.path} : identifiant manquant`);
+    if (!id) signaler(erreur('identifiant-manquant', { chemin: d.path }));
 
   for (const [id, f] of features) {
-    if (!id) errors.push(`${f.path} : identifiant manquant`);
-    if (!f.domaines?.length) warnings.push(`fonctionnalité ${id} : rattachée à aucun domaine`);
+    if (!id) signaler(erreur('identifiant-manquant', { chemin: f.path }));
+    if (!f.domaines?.length) avertir(avertissement('fonctionnalite-sans-domaine', { id }));
     for (const d of f.domaines ?? [])
-      if (!domains.has(d)) errors.push(`fonctionnalité ${id} → domaine inconnu : ${d}`);
+      if (!domains.has(d))
+        signaler(erreur('domaine-inconnu', { source: 'fonctionnalite', id, domaine: d }));
   }
 
   for (const [id, r] of rules) {
-    if (!id) errors.push(`${r.path} : identifiant manquant`);
-    if (!STATUTS_REGLE.has(r.statut)) errors.push(`règle ${id} : statut invalide « ${r.statut} »`);
+    if (!id) signaler(erreur('identifiant-manquant', { chemin: r.path }));
+    if (!STATUTS_REGLE.has(r.statut))
+      signaler(erreur('statut-regle-invalide', { regle: id, statut: r.statut }));
     // Bloquant, et non un simple avertissement : la navigation du référentiel
     // passe par les domaines puis les fonctionnalités. Une règle rattachée à
     // rien est introuvable — elle est livrée sans exister pour ses lecteurs.
     if (!r.fonctionnalites?.length)
-      errors.push(`règle ${id} : rattachée à aucune fonctionnalité — introuvable dans le référentiel`);
+      signaler(erreur('regle-sans-fonctionnalite', { regle: id }));
     for (const f of r.fonctionnalites ?? [])
-      if (!features.has(f)) errors.push(`règle ${id} → fonctionnalité inconnue : ${f}`);
+      if (!features.has(f)) signaler(erreur('fonctionnalite-inconnue', { regle: id, fonctionnalite: f }));
 
     // les index dérivés doivent pointer des cadrages réels
     if (!ignorerIndexDerives) {
       if (r.cree_par && !cadrages.has(r.cree_par))
-        errors.push(`règle ${id} → cree_par pointe un cadrage inconnu : ${r.cree_par}`);
+        signaler(erreur('cree-par-inconnu', { regle: id, cadrage: r.cree_par }));
       for (const c of r.modifie_par ?? [])
-        if (!cadrages.has(c))
-          errors.push(`règle ${id} → modifie_par pointe un cadrage inconnu : ${c}`);
+        if (!cadrages.has(c)) signaler(erreur('modifie-par-inconnu', { regle: id, cadrage: c }));
     }
   }
 
@@ -140,9 +149,9 @@ export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set(
     // Un statut déclaré dans le fichier serait une seconde source pour un fait
     // que le dépôt établit déjà, et c'est cette duplication qui a divergé.
     if (c.statut !== undefined)
-      errors.push(`cadrage ${id} : le statut ne se déclare pas, il se déduit de l'état du dépôt`);
+      signaler(erreur('statut-declare', { cadrage: id }));
     for (const d of c.domaines ?? [])
-      if (!domains.has(d)) errors.push(`cadrage ${id} → domaine inconnu : ${d}`);
+      if (!domains.has(d)) signaler(erreur('domaine-inconnu', { source: 'cadrage', id, domaine: d }));
 
     // Deux provenances possibles : un cadrage lu depuis un fichier porte son
     // corps brut, un cadrage déjà parsé porte ses énoncés indexés. Accepter les
@@ -157,38 +166,35 @@ export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set(
       // Sans cible, il n'y a rien à contrôler ensuite : signaler et passer,
       // plutôt que de dérouler des messages qui parleraient tous de « undefined ».
       if (!cible) {
-        errors.push(
-          `cadrage ${id} → impact sans cible : attendu l'un de ${CIBLES.map((c) => c.champ).join(', ')}`,
-        );
+        signaler(erreur('impact-sans-cible', { cadrage: id, champs: CIBLES.map((c) => c.champ) }));
         continue;
       }
 
-      const { id: nom, libelle, collection } = cible;
+      const { id: nom, champ: nature, collection } = cible;
       if (!OPERATIONS.has(operation))
-        errors.push(`cadrage ${id} → opération invalide « ${operation} » sur ${nom}`);
-      if (vus.has(nom))
-        errors.push(`cadrage ${id} → impact en double sur la ${libelle} ${nom}`);
+        signaler(erreur('operation-invalide', { cadrage: id, operation, cible: nom }));
+      if (vus.has(nom)) signaler(erreur('impact-en-double', { cadrage: id, nature, cible: nom }));
       vus.add(nom);
 
       // une cible créée par ce cadrage n'existe pas encore si le cadrage n'est
       // pas livré : on ne l'exige dans son répertoire qu'après livraison
       const doitExister = operation !== 'cree' || estLivre(id);
       if (doitExister && !repo[collection]?.has(nom))
-        errors.push(`cadrage ${id} → ${libelle} inconnue : ${nom}`);
+        signaler(erreur('cible-inconnue', { cadrage: id, nature, cible: nom }));
 
       // c'est l'énoncé qui porte le texte à écrire : sans lui, la propagation
       // n'a rien à appliquer
       if ((operation === 'cree' || operation === 'modifie') && !enonces.has(nom))
-        errors.push(`cadrage ${id} → impact « ${operation} » sur ${nom} sans énoncé correspondant dans « ## Énoncés »`);
+        signaler(erreur('enonce-manquant', { cadrage: id, operation, cible: nom }));
     }
 
     for (const nom of enonces.keys())
       if (!vus.has(nom))
-        warnings.push(`cadrage ${id} : énoncé pour ${nom} sans impact déclaré`);
+        avertir(avertissement('enonce-sans-impact', { cadrage: id, cible: nom }));
 
     for (const a of c.attachments ?? []) {
       if (!/^[0-9a-f]{64}$/.test(a.sha256 ?? ''))
-        errors.push(`cadrage ${id} → pièce jointe « ${a.nom} » : sha256 absent ou mal formé`);
+        signaler(erreur('piece-jointe-empreinte', { cadrage: id, nom: a.nom }));
     }
   }
 
@@ -214,23 +220,20 @@ export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set(
 
   // Les trois natures partagent ce contrôle : un index dérivé faux est le même
   // défaut, qu'il porte sur une règle ou sur un document d'architecture.
-  for (const { collection, libelle } of ignorerIndexDerives ? [] : CIBLES)
+  for (const { collection, champ: nature } of ignorerIndexDerives ? [] : CIBLES)
     for (const [id, r] of repo[collection] ?? []) {
       const e = attendu.get(id);
       if (!e) {
-        warnings.push(`${libelle} ${id} : aucun cadrage livré ne la crée`);
+        avertir(avertissement('cible-jamais-creee', { nature, id }));
         continue;
       }
       if ((r.cree_par ?? null) !== e.cree_par)
-        errors.push(
-          `${libelle} ${id} : cree_par vaut « ${r.cree_par ?? '—'} » mais les impacts livrés disent « ${e.cree_par ?? '—'} »`
+        signaler(
+          erreur('cree-par-diverge', { nature, id, declare: r.cree_par ?? null, derive: e.cree_par }),
         );
-      const declare = JSON.stringify(r.modifie_par ?? []);
-      const derive = JSON.stringify(e.modifie_par);
-      if (declare !== derive)
-        errors.push(
-          `${libelle} ${id} : modifie_par vaut ${declare} mais les impacts livrés disent ${derive}`
-        );
+      const declare = r.modifie_par ?? [];
+      if (JSON.stringify(declare) !== JSON.stringify(e.modifie_par))
+        signaler(erreur('modifie-par-diverge', { nature, id, declare, derive: e.modifie_par }));
     }
 
   // --- cohérence des règles abrogées ---
@@ -238,11 +241,11 @@ export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set(
     if (r.statut !== 'abroge') continue;
     const dernier = (r.modifie_par ?? []).at(-1);
     if (!dernier) {
-      warnings.push(`règle ${id} : abrogée sans cadrage responsable`);
+      avertir(avertissement('abrogee-sans-cadrage', { regle: id }));
       continue;
     }
     if (!estLivre(dernier))
-      errors.push(`règle ${id} : abrogée par ${dernier}, qui n'est pas livré`);
+      signaler(erreur('abrogee-par-non-livre', { regle: id, cadrage: dernier }));
   }
 
   // une règle abrogée ne devrait plus être impactée par un cadrage en cours
@@ -253,7 +256,7 @@ export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set(
       if (!cible) continue;
       const r = repo[cible.collection]?.get(cible.id);
       if (r?.statut === 'abroge' && impact.operation !== 'touche')
-        warnings.push(`cadrage ${id} : opère sur ${cible.id}, qui est abrogée`);
+        avertir(avertissement('opere-sur-abrogee', { cadrage: id, cible: cible.id }));
     }
   }
 
@@ -262,13 +265,16 @@ export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set(
   // sans son arborescence reste vérifiable pour le reste.
   if (repo.identite) {
     const identite = checkIdentite(repo.identite, noms.dossiers.identite);
-    errors.push(...identite.errors);
-    warnings.push(...identite.warnings);
+    anomalies.push(...identite.anomalies);
   }
 
+  // La forme textuelle d'hier, en français, mot pour mot : un consommateur qui
+  // ne lit pas encore les codes ne voit rien changer.
+  const { errors, warnings } = enTexte(anomalies);
   return {
     errors,
     warnings,
+    anomalies,
     counts: {
       domaines: domains.size,
       fonctionnalites: features.size,

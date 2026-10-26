@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { load as loadYaml } from 'js-yaml';
 import { resoudreNoms, verifierDossiersDeclares, NOMS_PAR_DEFAUT } from '../src/noms.mjs';
+import { formaterAnomalie } from '../src/anomalies.mjs';
 import { checkRepo } from '../src/verifier.mjs';
 import { loadRepo } from '../src/parse.mjs';
 import { check } from '../src/check.mjs';
@@ -38,7 +39,15 @@ function vrai(condition, message) {
 
 // Le YAML est écrit tel qu'un rédacteur l'écrirait, puis lu comme le chargement
 // le lit : c'est la forme qui arrive à la résolution.
-const declare = (yaml) => resoudreNoms(loadYaml(yaml));
+//
+// Les fautes sont des anomalies codées ; la plupart des cas en lisent le
+// message français, tel que la vérification le rend, et les codes restent à
+// portée dans `anomalies`.
+const fr = (anomalies) => anomalies.map((a) => formaterAnomalie(a, 'fr'));
+const declare = (yaml) => {
+  const r = resoudreNoms(loadYaml(yaml));
+  return { ...r, anomalies: r.erreurs, erreurs: fr(r.erreurs) };
+};
 
 // --- la résolution ---
 
@@ -142,7 +151,7 @@ await test('une entrée fautive n’emporte pas les autres', () => {
 
 await test('un dossier déclaré introuvable alors que l’ancien existe est une erreur', () => {
   const noms = declare('dossiers:\n  regles: besoins\n');
-  const erreurs = verifierDossiersDeclares(noms, ['rules/RG-a.md', 'domains/d.md']);
+  const erreurs = fr(verifierDossiersDeclares(noms, ['rules/RG-a.md', 'domains/d.md']));
   vrai(erreurs.length === 1, erreurs.join(' | '));
   vrai(erreurs[0].includes('besoins/') && erreurs[0].includes('rules/'), erreurs[0]);
 });
@@ -155,12 +164,14 @@ await test('un dossier déclaré qui existe ne dit rien, même si l’ancien exi
 
 await test('un fichier de cadrage resté sous l’ancien nom est une erreur', () => {
   const noms = declare('dossiers:\n  decisions_cadrage: arbitrages\nfichiers:\n  cadrage: evolution.md\n');
-  const erreurs = verifierDossiersDeclares(noms, [
-    'cadrages/2026-001/cadrage.md',
-    'cadrages/2026-001/decisions/01-x.md',
-    'cadrages/2026-002/evolution.md',
-    'cadrages/2026-002/arbitrages/01-x.md',
-  ]);
+  const erreurs = fr(
+    verifierDossiersDeclares(noms, [
+      'cadrages/2026-001/cadrage.md',
+      'cadrages/2026-001/decisions/01-x.md',
+      'cadrages/2026-002/evolution.md',
+      'cadrages/2026-002/arbitrages/01-x.md',
+    ]),
+  );
   vrai(erreurs.length === 2, erreurs.join(' | '));
   vrai(erreurs.some((e) => e.includes('cadrages/2026-001/evolution.md')), erreurs.join(' | '));
   vrai(erreurs.some((e) => e.includes('cadrages/2026-001/arbitrages/')), erreurs.join(' | '));
@@ -189,6 +200,78 @@ await test('la vérification signale un dossier renommé, quand on lui passe les
   };
   const { errors } = checkRepo(repo);
   vrai(errors.some((e) => e.includes('besoins/')), errors.join(' | '));
+});
+
+// --- les anomalies codées — RG-anomalies-codees ---
+
+// Ce qu'une résolution signale, par code, et son message dans une langue.
+const codes = (anomalies) => anomalies.map((a) => a.code);
+const en = (anomalies) => anomalies.map((a) => formaterAnomalie(a, 'en'));
+
+await test('chaque faute d’un nom a son code', () => {
+  const r = declare(
+    "dossiers:\n  regles: ''\n  cadrages: 3\n  domaines: ' d '\n  fonctionnalites: a/b\n  decisions: .adr\n" +
+      'fichiers:\n  cadrage: evolution.txt\n',
+  );
+  vrai(
+    JSON.stringify(codes(r.anomalies)) ===
+      JSON.stringify(['nom-vide', 'nom-non-chaine', 'nom-borde-d-espaces', 'nom-chemin', 'nom-commence-par-point', 'nom-fichier-non-markdown']),
+    codes(r.anomalies).join(' | '),
+  );
+  vrai(r.anomalies.every((a) => a.gravite === 'erreur'), 'gravité');
+  vrai(r.erreurs[0] === 'ssk-canon.yml → dossiers.regles : nom vide — « rules » est retenu', r.erreurs[0]);
+  vrai(
+    JSON.stringify(en(r.anomalies)) ===
+      JSON.stringify([
+        'ssk-canon.yml → dossiers.regles: empty name — “rules” is kept',
+        'ssk-canon.yml → dossiers.cadrages: expected a string — “cadrages” is kept',
+        'ssk-canon.yml → dossiers.domaines: name with leading or trailing spaces — “domains” is kept',
+        'ssk-canon.yml → dossiers.fonctionnalites: a name, not a path: no “/” — “features” is kept',
+        'ssk-canon.yml → dossiers.decisions: must not start with “.” — “decisions” is kept',
+        'ssk-canon.yml → fichiers.cadrage: a Markdown file, ending in “.md” — “cadrage.md” is kept',
+      ]),
+    en(r.anomalies).join(' | '),
+  );
+});
+
+await test('une table attendue, une clé inconnue, un nom en double : un code chacun, en anglais aussi', () => {
+  const table = declare('dossiers: rules\n');
+  vrai(codes(table.anomalies).join() === 'noms-bloc-non-table', codes(table.anomalies).join());
+  vrai(
+    en(table.anomalies)[0] === 'ssk-canon.yml → dossiers: expected a table of names — the format’s names are kept',
+    en(table.anomalies)[0],
+  );
+  const cle = declare('fichiers:\n  piece: a.md\n');
+  vrai(codes(cle.anomalies).join() === 'nom-cle-inconnue', codes(cle.anomalies).join());
+  vrai(
+    en(cle.anomalies)[0] === 'ssk-canon.yml → fichiers.piece: unknown key — expected one of cadrage, pieces_jointes',
+    en(cle.anomalies)[0],
+  );
+  const double = declare('dossiers:\n  regles: exigences\n  domaines: exigences\n');
+  vrai(codes(double.anomalies).join() === 'nom-en-double,nom-en-double', codes(double.anomalies).join());
+  vrai(
+    en(double.anomalies)[0] ===
+      'ssk-canon.yml → dossiers.domaines: “exigences” is also the name of dossiers.regles — “domains” is kept',
+    en(double.anomalies).join(' | '),
+  );
+});
+
+await test('un dossier ou un fichier resté sous l’ancien nom : un code chacun, en anglais aussi', () => {
+  const noms = declare('dossiers:\n  regles: besoins\nfichiers:\n  cadrage: evolution.md\n');
+  const chemins = ['rules/RG-a.md', 'cadrages/2026-001/cadrage.md'];
+  const anomalies = verifierDossiersDeclares(noms, chemins);
+  vrai(codes(anomalies).join() === 'dossier-declare-introuvable,nom-de-cadrage-introuvable', codes(anomalies).join());
+  vrai(anomalies.every((a) => a.gravite === 'erreur'), 'gravité');
+  vrai(
+    JSON.stringify(en(anomalies)) ===
+      JSON.stringify([
+        'ssk-canon.yml → dossiers.regles: “besoins/” not found, while “rules/” exists — ' +
+          'a folder is not renamed, its name is chosen at creation',
+        'cadrages/2026-001/evolution.md: not found, while “cadrages/2026-001/cadrage.md” exists ' +
+          '(ssk-canon.yml → fichiers.cadrage) — a name is chosen at creation',
+      ]),
+    en(anomalies).join(' | '),
+  );
 });
 
 // --- la lecture, la vérification et la propagation sous les noms déclarés ---

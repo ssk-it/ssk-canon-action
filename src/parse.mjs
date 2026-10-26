@@ -10,6 +10,7 @@ import { join, relative, sep } from 'node:path';
 import { load } from 'js-yaml';
 import { splitFrontmatter, extractEnonces } from './format.mjs';
 import { resoudreNoms, DOSSIER_DE_COLLECTION } from './noms.mjs';
+import { erreur, formaterAnomalie } from './anomalies.mjs';
 
 // Réexportés pour ne pas casser les appelants : le découpage entre ce qui
 // touche au disque et ce qui n'y touche pas est une affaire interne.
@@ -74,10 +75,12 @@ export function lireNoms(root) {
 
 /**
  * Charge un dépôt de projet en mémoire.
- * Retourne les entités indexées par identifiant, et les erreurs de forme.
+ * Retourne les entités indexées par identifiant, et les erreurs de forme :
+ * codées dans `anomalies` — RG-anomalies-codees —, et dans `errors` sous leur
+ * forme française d'hier, que des appelants lisent encore en texte.
  */
 export function loadRepo(root) {
-  const errors = [];
+  const anomalies = [];
   const domains = new Map();
   const features = new Map();
   const rules = new Map();
@@ -92,8 +95,13 @@ export function loadRepo(root) {
   try {
     config = load(readFileSync(join(root, 'ssk-canon.yml'), 'utf8'));
   } catch (e) {
-    errors.push(`ssk-canon.yml : ${e.message}`);
+    // Absente ou illisible : deux causes, deux codes ; la raison reste celle
+    // qu'on a reçue.
+    anomalies.push(erreur(e?.code === 'ENOENT' ? 'config-absente' : 'config-illisible', { raison: e.message }));
   }
+
+  /** Un frontmatter illisible, rapporté au fichier qui le porte. */
+  const dansLeFichier = (chemin, anomalie) => ({ ...anomalie, params: { chemin, ...anomalie.params } });
 
   // Les noms que le référentiel déclare — RG-noms-declares. Une déclaration
   // fautive est écartée ici sans bruit : la vérification la signale, et la
@@ -131,14 +139,14 @@ export function loadRepo(root) {
 
     const parsed = splitFrontmatter(readFileSync(file, 'utf8'));
     if (!parsed) {
-      errors.push(`${rel} : frontmatter absent ou mal formé`);
+      anomalies.push(erreur('frontmatter-absent', { chemin: rel, malForme: true }));
       continue;
     }
     // Un fichier illisible est écarté et signalé, sans interrompre les autres :
     // corriger une erreur à la fois quand la vérification s'arrête à la première
     // demande autant d'exécutions qu'il y a de fautes.
     if (parsed.erreur) {
-      errors.push(`${rel} : ${parsed.erreur}`);
+      anomalies.push(dansLeFichier(rel, parsed.anomalie));
       continue;
     }
     const { data, body } = parsed;
@@ -166,8 +174,8 @@ export function loadRepo(root) {
     try {
       for (const f of listMarkdown(join(dir, noms.dossiers.decisions_cadrage)).sort()) {
         const parsed = splitFrontmatter(readFileSync(f, 'utf8'));
-        if (!parsed) errors.push(`${relative(root, f)} : frontmatter absent`);
-        else if (parsed.erreur) errors.push(`${relative(root, f)} : ${parsed.erreur}`);
+        if (!parsed) anomalies.push(erreur('frontmatter-absent', { chemin: relative(root, f), malForme: false }));
+        else if (parsed.erreur) anomalies.push(dansLeFichier(relative(root, f), parsed.anomalie));
         else c.decisions.push({ ...parsed.data, body: parsed.body });
       }
     } catch { /* pas de décisions, cas normal */ }
@@ -175,7 +183,7 @@ export function loadRepo(root) {
     try {
       const parsed = splitFrontmatter(readFileSync(join(dir, noms.fichiers.pieces_jointes), 'utf8'));
       if (parsed?.erreur)
-        errors.push(`${repertoireCadrages}/${id}/${noms.fichiers.pieces_jointes} : ${parsed.erreur}`);
+        anomalies.push(dansLeFichier(`${repertoireCadrages}/${id}/${noms.fichiers.pieces_jointes}`, parsed.anomalie));
       c.attachments = parsed?.data?.attachments ?? [];
     } catch {
       // absence de fichier : cas normal, un cadrage n'a pas toujours de pièces
@@ -194,6 +202,7 @@ export function loadRepo(root) {
     decisions,
     architecture,
     identite,
-    errors,
+    errors: anomalies.map((a) => formaterAnomalie(a, 'fr')),
+    anomalies,
   };
 }

@@ -1,3 +1,5 @@
+import type { Anomalie } from './verifier.js';
+
 /** Un fichier du répertoire `identite/`, tel que la plateforme ou le disque le donne. */
 export interface FichierIdentite {
   /** Chemin relatif au répertoire `identite/`, séparé par « / ». */
@@ -26,11 +28,15 @@ export const POIDS_MAX_IDENTITE: number;
 /** `null` si le fichier n'est pas une image d'identité admise. */
 export function lireNomIdentite(chemin: string): NomIdentite | null;
 
-/** `repertoire` : le nom déclaré du répertoire, `identite` par défaut. */
+/**
+ * `repertoire` : le nom déclaré du répertoire, `identite` par défaut.
+ * `anomalies` : chaque cause, codée ; `errors` et `warnings` en sont la forme française.
+ */
 export function checkIdentite(
   fichiers: readonly FichierIdentite[],
   repertoire?: string,
 ): {
   errors: string[];
   warnings: string[];
+  anomalies: Anomalie[];
 };

@@ -11,6 +11,8 @@
 // L'application en reprend aussi les noms, les formats et leur ordre de
 // préférence : les écrire de son côté garantirait qu'ils divergent.
 
+import { erreur, avertissement, enTexte } from './anomalies.mjs';
+
 /** Le répertoire qui porte l'identité, à la racine du référentiel. */
 export const REPERTOIRE_IDENTITE = 'identite';
 
@@ -63,11 +65,6 @@ export function lireNomIdentite(chemin) {
   return { element: m[1], variante: m[2] ?? null, format: m[3] };
 }
 
-const enumerer = (mots, conjonction) =>
-  mots.length < 2 ? mots.join('') : `${mots.slice(0, -1).join(', ')} ${conjonction} ${mots.at(-1)}`;
-const ou = (mots) => enumerer(mots, 'ou');
-const kio = (octets) => Math.ceil(octets / 1024);
-
 /**
  * Vérifie le répertoire `identite/` d'un référentiel.
  *
@@ -76,14 +73,16 @@ const kio = (octets) => Math.ceil(octets / 1024);
  * sans suffixe ne couvre l'autre fond, sont des avertissements : l'application
  * sait quoi en faire, mais le rédacteur ne l'a sans doute pas voulu.
  *
+ * Chaque cause se dit par une anomalie codée — RG-anomalies-codees — dans
+ * `anomalies` ; `errors` et `warnings` en gardent la forme française.
+ *
  * @param {ReadonlyArray<{ chemin: string, taille: number }>} fichiers
  *   les fichiers du répertoire, chemins relatifs à celui-ci
  * @param {string} [repertoire] le nom du répertoire, tel que le référentiel le
  *   déclare — RG-noms-declares
  */
 export function checkIdentite(fichiers, repertoire = REPERTOIRE_IDENTITE) {
-  const errors = [];
-  const warnings = [];
+  const anomalies = [];
   // chaque nom sans extension, et les formats admis sous lesquels il existe
   const formats = new Map();
 
@@ -91,22 +90,24 @@ export function checkIdentite(fichiers, repertoire = REPERTOIRE_IDENTITE) {
     const ici = `${repertoire}/${chemin}`;
 
     if (taille > POIDS_MAX_IDENTITE)
-      errors.push(
-        `${ici} : ${kio(taille)} Kio, au-delà de la borne de ${kio(POIDS_MAX_IDENTITE)} Kio par fichier`,
-      );
+      anomalies.push(erreur('identite-trop-lourde', { chemin: ici, taille, max: POIDS_MAX_IDENTITE }));
 
     if (chemin === ACCUEIL) continue;
 
     const m = NOM.exec(chemin);
     if (!m) {
-      errors.push(
-        `${ici} : nom non admis — attendu ${ou(ELEMENTS_IDENTITE)}, ` +
-          `suivi ou non de ${ou(VARIANTES_IDENTITE.map((v) => `-${v}`))}, ou ${ACCUEIL}`,
+      anomalies.push(
+        erreur('identite-nom-non-admis', {
+          chemin: ici,
+          elements: ELEMENTS_IDENTITE,
+          variantes: VARIANTES_IDENTITE,
+          accueil: ACCUEIL,
+        }),
       );
       continue;
     }
     if (!FORMATS_IDENTITE.includes(m[3])) {
-      errors.push(`${ici} : format non admis — attendu ${ou(FORMATS_IDENTITE)}`);
+      anomalies.push(erreur('identite-format-non-admis', { chemin: ici, formats: FORMATS_IDENTITE }));
       continue;
     }
 
@@ -118,10 +119,7 @@ export function checkIdentite(fichiers, repertoire = REPERTOIRE_IDENTITE) {
   for (const [nom, presents] of formats) {
     if (presents.length < 2) continue;
     const ordonnes = FORMATS_IDENTITE.filter((f) => presents.includes(f));
-    warnings.push(
-      `${repertoire}/${nom} : présent en ${enumerer(ordonnes, 'et')} — ` +
-        `le ${ordonnes[0]} est employé`,
-    );
+    anomalies.push(avertissement('identite-plusieurs-formats', { chemin: `${repertoire}/${nom}`, formats: ordonnes }));
   }
 
   for (const element of ELEMENTS_IDENTITE) {
@@ -130,11 +128,15 @@ export function checkIdentite(fichiers, repertoire = REPERTOIRE_IDENTITE) {
     if (clair === sombre) continue;
     const present = `${element}-${clair ? 'clair' : 'sombre'}`;
     const manquant = `${element}-${clair ? 'sombre' : 'clair'}`;
-    warnings.push(
-      `${repertoire}/${present} : sans ${manquant} ni ${element} sans suffixe — ` +
-        `sur fond ${clair ? 'sombre' : 'clair'}, l'application montre son repli`,
+    anomalies.push(
+      avertissement('identite-variante-seule', {
+        chemin: `${repertoire}/${present}`,
+        manquant,
+        element,
+        fond: clair ? 'sombre' : 'clair',
+      }),
     );
   }
 
-  return { errors, warnings };
+  return { ...enTexte(anomalies), anomalies };
 }

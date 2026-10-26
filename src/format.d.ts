@@ -1,3 +1,5 @@
+import type { Anomalie } from './verifier.js';
+
 /** Un frontmatter lu, ou la raison pour laquelle il ne l'est pas. */
 export interface FrontmatterLu<T = Record<string, unknown>> {
   readonly data: T;
@@ -5,7 +7,10 @@ export interface FrontmatterLu<T = Record<string, unknown>> {
 }
 
 export interface FrontmatterIllisible {
+  /** La forme française de `anomalie`. */
   readonly erreur: string;
+  /** `frontmatter-illisible`, ou `frontmatter-deux-points` pour un « : » non quoté. */
+  readonly anomalie: Anomalie;
   readonly body: string;
 }
 

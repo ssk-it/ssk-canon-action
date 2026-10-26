@@ -7,6 +7,7 @@
 //
 //   node src/etiquettes-pistes.mjs <chemin-du-referentiel>
 
+import { formaterAnomalie, langueDuDepot } from './anomalies.mjs';
 import { loadRepo } from './parse.mjs';
 import { etiquettesRattachementPiste } from './pistes.mjs';
 
@@ -16,11 +17,13 @@ if (!racine) {
   process.exit(2);
 }
 
-const etiquettes = etiquettesRattachementPiste(loadRepo(racine));
+const repo = loadRepo(racine);
+const etiquettes = etiquettesRattachementPiste(repo);
 // Rien à rattacher : le chemin n'est pas un référentiel, ou il a été mal lu.
 // Le dire plutôt que de laisser croire qu'il n'y a rien à créer.
 if (etiquettes.length === 0) {
-  console.error(`${racine} : ni domaine ni fonctionnalité — est-ce un référentiel ?`);
+  const { langue } = langueDuDepot(repo.config);
+  console.error(formaterAnomalie({ code: 'piste-referentiel-vide', params: { racine } }, langue));
   process.exit(1);
 }
 for (const e of etiquettes) console.log(e);

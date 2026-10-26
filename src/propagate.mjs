@@ -20,7 +20,8 @@ import { join } from 'node:path';
 import { dump } from 'js-yaml';
 import { loadRepo, lireNoms, splitFrontmatter, extractEnonces } from './parse.mjs';
 import { DOSSIER_DE_COLLECTION } from './noms.mjs';
-import { check } from './check.mjs';
+import { check, langueDe } from './check.mjs';
+import { erreur, enTexte, formaterAnomalie } from './anomalies.mjs';
 import { cibleDe as natureDe } from './verifier.mjs';
 import { listCadragesLivres, ordreDeLivraison } from './livraison.mjs';
 
@@ -168,13 +169,11 @@ export function calculerEcritures(root, livres) {
       new Map(),
   );
   const ecritures = [];
-  const problemes = [];
+  const anomalies = [];
 
   for (const [id, cible] of attendu) {
     if (cible.enonce === null) {
-      problemes.push(
-        `${id} : aucun énoncé fourni par les cadrages qui le créent ou le modifient`,
-      );
+      anomalies.push(erreur('enonce-non-fourni', { cible: id }));
       continue;
     }
 
@@ -197,10 +196,7 @@ export function calculerEcritures(root, livres) {
     // par les fonctionnalités. Les cibles d'architecture se consultent par leur
     // répertoire : rien à exiger de ce côté.
     if (collection === 'rules' && !existante && !propres.fonctionnalites.length) {
-      problemes.push(
-        `règle ${id} : créée par un cadrage mais rattachée à aucune fonctionnalité — ` +
-          `créer le fichier avec son rattachement avant de livrer`,
-      );
+      anomalies.push(erreur('regle-creee-sans-rattachement', { regle: id }));
       continue;
     }
 
@@ -218,7 +214,9 @@ export function calculerEcritures(root, livres) {
     }
   }
 
-  return { ecritures, problemes, repo };
+  // `problemes` garde la forme textuelle d'hier, en français ; `anomalies` dit
+  // la même chose par codes, pour qui la rend dans sa langue.
+  return { ecritures, problemes: enTexte(anomalies).errors, anomalies, repo };
 }
 
 /** Applique les écritures calculées. */
@@ -236,22 +234,21 @@ export function propager(root, { dryRun = false } = {}) {
 
   const integrite = check(root, { ignorerIndexDerives: true, livres });
   if (integrite.errors.length) {
-    return {
-      ok: false,
-      ecritures: [],
-      problemes: integrite.errors.map((e) => `intégrité : ${e}`),
-    };
+    const anomalies = integrite.anomalies
+      .filter((a) => a.gravite === 'erreur')
+      .map((anomalie) => erreur('integrite-avant-propagation', { anomalie }));
+    return { ok: false, ecritures: [], problemes: enTexte(anomalies).errors, anomalies };
   }
 
-  const { ecritures, problemes } = calculerEcritures(root, livres);
+  const { ecritures, problemes, anomalies } = calculerEcritures(root, livres);
   if (problemes.length) {
-    return { ok: false, ecritures: [], problemes };
+    return { ok: false, ecritures: [], problemes, anomalies };
   }
 
   if (!dryRun) {
     for (const e of ecritures) writeFileSync(e.chemin, e.contenu, 'utf8');
   }
-  return { ok: true, ecritures, problemes: [] };
+  return { ok: true, ecritures, problemes: [], anomalies: [] };
 }
 
 // exécution directe
@@ -260,20 +257,26 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const dryRun = args.includes('--dry-run');
   const root = args.find((a) => !a.startsWith('--')) ?? '.';
 
-  const { ok, ecritures, problemes } = propager(root, { dryRun });
+  const { ok, ecritures, anomalies } = propager(root, { dryRun });
+
+  // Le rapport se dit dans la langue du dépôt — RG-langue-du-depot. L'Action
+  // y lit le nombre d'écritures, en tête de ligne : il reste le premier mot.
+  const langue = langueDe(root);
+  const dire = (code, params = {}) => formaterAnomalie({ code, params }, langue);
 
   if (!ok) {
-    console.log(`\n${problemes.length} problème(s) — aucune écriture effectuée :`);
-    for (const p of problemes) console.log(`  ✗ ${p}`);
+    const { errors } = enTexte(anomalies, langue);
+    console.log(`\n${dire('rapport-propagation-problemes', { nombre: errors.length })}`);
+    for (const p of errors) console.log(`  ✗ ${p}`);
     process.exit(1);
   }
 
   if (!ecritures.length) {
-    console.log('Référentiel déjà à jour — rien à propager.');
+    console.log(dire('rapport-propagation-a-jour'));
     process.exit(0);
   }
 
-  console.log(`${ecritures.length} règle(s) ${dryRun ? 'à écrire' : 'écrites'} :`);
+  console.log(dire('rapport-propagation-ecritures', { nombre: ecritures.length, simulation: dryRun }));
   for (const e of ecritures) console.log(`  ${e.operation === 'création' ? '+' : '~'} ${e.id}`);
-  if (dryRun) console.log('\n(simulation — aucun fichier modifié)');
+  if (dryRun) console.log(`\n${dire('rapport-propagation-simulation')}`);
 }
