@@ -15,9 +15,10 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { propager, etatAttendu } from './propagate.mjs';
+import { propager, etatAttendu, calculerEcritures } from './propagate.mjs';
 import { check } from './check.mjs';
 import { loadRepo } from './parse.mjs';
+import { formaterAnomalie } from './anomalies.mjs';
 
 let reussis = 0;
 const echecs = [];
@@ -931,6 +932,201 @@ test('le préfixe ne change rien à ce qui est stocké', (racine) => {
   const ecrit = readFileSync(join(racine, 'rules/RG-a.md'), 'utf8');
   assert(ecrit.includes('cree_par: 2026-001'), `index préfixé à tort : ${ecrit}`);
   assert(!ecrit.includes('PRMCO'), 'le préfixe a fui dans le référentiel');
+});
+
+// --- anomalies codées, et langue du dépôt ---
+//
+// RG-anomalies-codees, RG-langue-du-depot : ce que la vérification et la
+// propagation disent d'un dépôt se dit dans sa langue, et le français reste
+// celui d'hier, mot pour mot.
+
+const CLI = new URL('.', import.meta.url).pathname;
+
+/** Lance un outil en ligne de commande ; rend sa sortie et son code. */
+function lancer(outil, args) {
+  try {
+    return { code: 0, sortie: execFileSync('node', [join(CLI, outil), ...args], { encoding: 'utf8' }) };
+  } catch (e) {
+    return { code: e.status, sortie: e.stdout };
+  }
+}
+
+function enAnglais(racine) {
+  writeFileSync(join(racine, 'ssk-canon.yml'), 'schema_version: 1\nlangue: en\n');
+}
+
+const deCode = (anomalies, code) => anomalies.find((a) => a.code === code);
+
+test('une base hors d’atteinte se dit par son code, en anglais', (racine) => {
+  socle(racine);
+  livrer(racine);
+
+  const { anomalies } = check(racine, { base: 'origine/inconnue', livraison: true });
+  const immuabilite = deCode(anomalies, 'immuabilite-hors-d-atteinte');
+  const livraison = deCode(anomalies, 'livraison-hors-d-atteinte');
+  assert(immuabilite && livraison, `codes absents : ${JSON.stringify(anomalies)}`);
+  assert(
+    formaterAnomalie(livraison, 'en') ===
+      'delivery: “origine/inconnue” is out of reach, the check could not run — ' +
+        'fetch the history with “fetch-depth: 0”',
+    formaterAnomalie(livraison, 'en'),
+  );
+  assert(formaterAnomalie(immuabilite, 'en').startsWith('immutability: '), formaterAnomalie(immuabilite, 'en'));
+});
+
+test('le contrôle de livraison enveloppe l’anomalie, sans la redire en texte', (racine) => {
+  socle(racine);
+  livrer(racine);
+  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  ecrireCadrage(racine, '2026-001', false, [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+  livrer(racine);
+
+  const { anomalies, errors } = check(racine, { base, livraison: true });
+  const a = deCode(anomalies, 'a-la-livraison');
+  assert(a && a.params.anomalie.code, `enveloppe absente : ${JSON.stringify(anomalies)}`);
+  assert(errors.includes(formaterAnomalie(a, 'fr')), `le français a changé : ${errors.join(' | ')}`);
+  const en = formaterAnomalie(a, 'en');
+  assert(en.startsWith('at delivery: ') && en.includes('RG-a') && !en.includes('à la'), en);
+});
+
+test('un cadrage livré modifié se dit par son code, en anglais', (racine) => {
+  socle(racine);
+  ecrireRegle(racine, 'RG-a', 'Un énoncé.', { cree_par: '2026-001' });
+  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé repris.',
+  });
+
+  const a = deCode(check(racine, { base }).anomalies, 'cadrage-livre-modifie');
+  assert(a, 'code absent');
+  assert(
+    formaterAnomalie(a, 'en') ===
+      'scoping 2026-001: delivered, hence frozen — cadrages/2026-001/cadrage.md; ' +
+        'what must change is changed by a new scoping',
+    formaterAnomalie(a, 'en'),
+  );
+});
+
+test('un nom changé se dit par son code, en anglais', (racine) => {
+  socle(racine);
+  ecrireRegle(racine, 'RG-a', 'Un énoncé.');
+  livrer(racine);
+  writeFileSync(join(racine, 'ssk-canon.yml'), 'schema_version: 1\ndossiers:\n  regles: exigences\n');
+
+  const a = deCode(check(racine, { base: 'HEAD' }).anomalies, 'nom-change');
+  assert(a, 'code absent');
+  assert(
+    formaterAnomalie(a, 'en') ===
+      'ssk-canon.yml → dossiers.regles: changes from “rules” to “exigences” — ' +
+        'a name is chosen at creation, and never changes',
+    formaterAnomalie(a, 'en'),
+  );
+});
+
+test('une branche déjà fusionnée se dit par son code, en anglais', (racine) => {
+  fusionnerCadrage(racine, '2026-001');
+
+  const { anomalies, warnings } = check(racine, { base: 'main', livraison: true });
+  const a = deCode(anomalies, 'branche-deja-fusionnee');
+  assert(a && a.gravite === 'avertissement', `code absent : ${JSON.stringify(anomalies)}`);
+  assert(warnings[0] === formaterAnomalie(a, 'fr'), `le français a changé : ${warnings.join(' | ')}`);
+  assert(formaterAnomalie(a, 'en').startsWith('branch already merged into “main”'), formaterAnomalie(a, 'en'));
+});
+
+test('la vérification parle anglais à un dépôt qui le déclare', (racine) => {
+  enAnglais(racine);
+  socle(racine);
+  livrer(racine);
+
+  const { code, sortie } = lancer('check.mjs', [racine]);
+  assert(code === 0, sortie);
+  assert(
+    sortie === '1 domains · 1 features · 0 rules · 0 scopings\n\nIntegrity verified.\n',
+    JSON.stringify(sortie),
+  );
+});
+
+test('la vérification dit ses erreurs en anglais, de bout en bout', (racine) => {
+  enAnglais(racine);
+  socle(racine);
+  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+
+  const { code, sortie } = lancer('check.mjs', [racine, '--base', 'origine/inconnue']);
+  assert(code === 1, sortie);
+  assert(sortie.includes('error(s):\n') && sortie.includes('  ✗ immutability: '), sortie);
+  assert(!/erreur|règle|cadrage |vérifiée/.test(sortie), `du français subsiste : ${sortie}`);
+});
+
+test('la vérification parle français à un dépôt qui ne déclare rien', (racine) => {
+  socle(racine);
+  livrer(racine);
+
+  const { sortie } = lancer('check.mjs', [racine]);
+  assert(
+    sortie === '1 domaines · 1 fonctionnalités · 0 règles · 0 cadrages\n\nIntégrité vérifiée.\n',
+    JSON.stringify(sortie),
+  );
+});
+
+test('les problèmes de la propagation se disent par leur code', (racine) => {
+  socle(racine);
+  // une règle créée sans fichier : rattachée à aucune fonctionnalité — la
+  // vérification d'intégrité l'arrête avant, d'où le calcul appelé seul
+  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+
+  const r = calculerEcritures(racine, new Set(['2026-001']));
+  const a = deCode(r.anomalies, 'regle-creee-sans-rattachement');
+  assert(a, `code absent : ${JSON.stringify(r.anomalies)}`);
+  assert(r.problemes[0] === formaterAnomalie(a, 'fr'), r.problemes.join(' | '));
+  assert(formaterAnomalie(a, 'en').startsWith('rule RG-a: created by a scoping'), formaterAnomalie(a, 'en'));
+});
+
+test('l’intégrité refusée avant propagation enveloppe l’anomalie', (racine) => {
+  socle(racine);
+  ecrireRegle(racine, 'RG-a', 'Intact.', { cree_par: '2026-001' });
+  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-inexistante', operation: 'modifie' }], {
+    'RG-inexistante': 'Texte.',
+  });
+
+  const r = propager(racine);
+  const a = deCode(r.anomalies, 'integrite-avant-propagation');
+  assert(!r.ok && a, `code absent : ${JSON.stringify(r)}`);
+  assert(r.problemes.includes(formaterAnomalie(a, 'fr')), r.problemes.join(' | '));
+  assert(formaterAnomalie(a, 'en').startsWith('integrity: '), formaterAnomalie(a, 'en'));
+});
+
+test('la propagation parle anglais à un dépôt qui le déclare', (racine) => {
+  enAnglais(racine);
+  socle(racine);
+  livrer(racine);
+  let r = lancer('propagate.mjs', [racine, '--dry-run']);
+  assert(r.sortie === 'Specification already up to date — nothing to propagate.\n', JSON.stringify(r.sortie));
+
+  ecrireRegle(racine, 'RG-a', 'À propager.');
+  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'Un énoncé.',
+  });
+  r = lancer('propagate.mjs', [racine, '--dry-run']);
+  assert(
+    r.sortie === '1 rule(s) to write:\n  ~ RG-a\n\n(dry run — no file changed)\n',
+    JSON.stringify(r.sortie),
+  );
+
+  ecrireCadrage(racine, '2026-002', 'livree', [{ regle: 'RG-b', operation: 'cree' }], {
+    'RG-b': 'Un énoncé.',
+  });
+  r = lancer('propagate.mjs', [racine, '--dry-run']);
+  assert(r.code === 1, r.sortie);
+  assert(/^\n1 problem\(s\) — nothing written:\n  ✗ integrity: scoping 2026-002 → \S+ rule: RG-b\n$/.test(r.sortie), JSON.stringify(r.sortie));
 });
 
 // --- rapport ---

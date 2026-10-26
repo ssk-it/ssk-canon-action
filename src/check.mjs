@@ -6,9 +6,12 @@
 //
 //   node src/check.mjs [chemin-du-depot] [--base <ref>] [--sans-immuabilite] [--livraison]
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { load } from 'js-yaml';
 import { loadRepo } from './parse.mjs';
 import { checkRepo } from './verifier.mjs';
+import { erreur, avertissement, enTexte, formaterAnomalie, langueDuDepot } from './anomalies.mjs';
 import { resoudreNoms } from './noms.mjs';
 import {
   lireFichierA,
@@ -49,12 +52,9 @@ export function check(root, options = {}) {
     livres,
     ...(fusion ? { ignorerIndexDerives: true } : {}),
   });
-  if (fusion)
-    resultat.warnings.unshift(
-      `branche déjà fusionnée dans « ${reference} », jusqu'à ${fusion} : ses index dérivés ` +
-        `y attendent la propagation et ne sont pas contrôlés ici — repartir de ` +
-        `« ${reference} », et changer un cadrage livré par un nouveau cadrage`,
-    );
+  const avertissementFusion = fusion
+    ? [avertissement('branche-deja-fusionnee', { reference, fusion })]
+    : [];
 
   // L'immuabilité ne se contrôle que face à une base explicite, c'est-à-dire sur
   // une demande de fusion. La propagation, elle, s'exécute après la fusion : son
@@ -75,10 +75,30 @@ export function check(root, options = {}) {
 
   const erreursNoms = base ? checkNomsInchanges(root, base, repo.noms) : [];
 
-  return {
-    ...resultat,
-    errors: [...resultat.errors, ...erreursNoms, ...erreursImmuabilite, ...erreursLivraison],
-  };
+  // Les textes se déduisent des anomalies, en français : la forme textuelle
+  // d'hier, que lisent les consommateurs qui ne connaissent pas encore les codes.
+  const anomalies = [
+    ...avertissementFusion,
+    ...resultat.anomalies,
+    ...erreursNoms,
+    ...erreursImmuabilite,
+    ...erreursLivraison,
+  ];
+  return { ...resultat, anomalies, ...enTexte(anomalies) };
+}
+
+/**
+ * La langue d'un dépôt, lue dans son `ssk-canon.yml` — RG-langue-du-depot.
+ * Une configuration illisible se lit en français : la vérification la signale.
+ */
+export function langueDe(root) {
+  let config = null;
+  try {
+    config = load(readFileSync(join(root, 'ssk-canon.yml'), 'utf8'));
+  } catch {
+    // illisible ou absente : la langue par défaut
+  }
+  return langueDuDepot(config).langue;
 }
 
 /**
@@ -111,10 +131,7 @@ function checkNomsInchanges(root, base, noms) {
       const interne = bloc === 'fichiers' || cle === 'decisions_cadrage';
       const existe = interne ? cadragesAvant : dossierPresentA(root, base, ancien);
       if (existe)
-        errors.push(
-          `ssk-canon.yml → ${bloc}.${cle} : passe de « ${ancien} » à « ${nom} » — ` +
-            `un nom se choisit à la création, et ne change plus`,
-        );
+        errors.push(erreur('nom-change', { bloc, cle, ancien, nom }));
     }
   return errors;
 }
@@ -138,11 +155,7 @@ function checkLivraison(root, base, livres, dejaVu, dossier) {
   // Ne pas savoir ce que la demande porte n'est pas une demande sans cadrage :
   // le contrôle n'a pas eu lieu, et se taire le rendrait silencieusement
   // inapplicable — le même piège que l'immuabilité sans historique.
-  if (portes === null)
-    return [
-      `livraison : « ${base} » est hors d'atteinte, le contrôle n'a pas pu ` +
-        `avoir lieu — récupérer l'historique avec « fetch-depth: 0 »`,
-    ];
+  if (portes === null) return [erreur('livraison-hors-d-atteinte', { base })];
 
   const nouveaux = [...portes].filter((id) => !livres.has(id));
   if (!nouveaux.length) return [];
@@ -152,10 +165,12 @@ function checkLivraison(root, base, livres, dejaVu, dossier) {
     ignorerIndexDerives: true,
   });
 
-  const connues = new Set(dejaVu.errors);
-  return apresFusion.errors
-    .filter((e) => !connues.has(e))
-    .map((e) => `à la livraison : ${e}`);
+  // Une anomalie se reconnaît à son code et à ses paramètres, non à son texte.
+  const cle = (a) => JSON.stringify([a.code, a.params]);
+  const connues = new Set(dejaVu.anomalies.filter((a) => a.gravite === 'erreur').map(cle));
+  return apresFusion.anomalies
+    .filter((a) => a.gravite === 'erreur' && !connues.has(cle(a)))
+    .map((anomalie) => erreur('a-la-livraison', { anomalie }));
 }
 
 /**
@@ -177,20 +192,13 @@ function checkImmuabilite(root, base, livres, dossier) {
   // contrôle qui n'a pas eu lieu. Se taire ici rendait la règle silencieusement
   // inapplicable — un dépôt dont le workflow omet `fetch-depth: 0` croyait
   // protéger ses cadrages livrés alors que rien ne les vérifiait.
-  if (fichiers === null)
-    return [
-      `immuabilité : « ${base} » est hors d'atteinte, le contrôle n'a pas pu ` +
-        `avoir lieu — récupérer l'historique avec « fetch-depth: 0 »`,
-    ];
+  if (fichiers === null) return [erreur('immuabilite-hors-d-atteinte', { base })];
 
   if (!fichiers.length) return [];
 
   const errors = [];
   for (const [id, chemins] of findCadragesLivresModifies(fichiers, livres, dossier)) {
-    errors.push(
-      `cadrage ${id} : livré, donc figé — ${chemins.join(', ')} ; ` +
-        `ce qui doit changer se change par un nouveau cadrage`,
-    );
+    errors.push(erreur('cadrage-livre-modifie', { cadrage: id, chemins }));
   }
   return errors;
 }
@@ -205,27 +213,29 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const iValeur = iBase === -1 ? -1 : iBase + 1;
   const root = args.find((a, i) => !a.startsWith('--') && i !== iValeur) ?? '.';
 
-  const { errors, warnings, counts } = check(root, {
+  const { anomalies, counts } = check(root, {
     ...(base ? { base } : {}),
     immuabilite: !args.includes('--sans-immuabilite'),
     livraison: args.includes('--livraison'),
   });
 
-  console.log(
-    `${counts.domaines} domaines · ${counts.fonctionnalites} fonctionnalités · ` +
-    `${counts.regles} règles · ${counts.cadrages} cadrages`
-  );
+  // Le rapport se dit dans la langue du dépôt — RG-langue-du-depot.
+  const langue = langueDe(root);
+  const dire = (code, params = {}) => formaterAnomalie({ code, params }, langue);
+  const { errors, warnings } = enTexte(anomalies, langue);
+
+  console.log(dire('rapport-comptes', counts));
 
   if (warnings.length) {
-    console.log(`\n${warnings.length} avertissement(s) :`);
+    console.log(`\n${dire('rapport-avertissements', { nombre: warnings.length })}`);
     for (const w of warnings) console.log(`  ~ ${w}`);
   }
 
   if (errors.length) {
-    console.log(`\n${errors.length} erreur(s) :`);
+    console.log(`\n${dire('rapport-erreurs', { nombre: errors.length })}`);
     for (const e of errors) console.log(`  ✗ ${e}`);
     process.exit(1);
   }
 
-  console.log('\nIntégrité vérifiée.');
+  console.log(`\n${dire('rapport-integrite-verifiee')}`);
 }
