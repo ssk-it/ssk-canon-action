@@ -9,6 +9,36 @@ import type { FichierIdentite } from './identite.js';
 export * from './identite.js';
 export * from './noms.js';
 
+/** Les langues dans lesquelles une anomalie se dit — RG-anomalies-codees. */
+export type Langue = 'fr' | 'en';
+export declare const LANGUES: readonly Langue[];
+
+/**
+ * Une anomalie du format : un code stable, une gravité, et des paramètres —
+ * valeurs du référentiel et du format, jamais traduites. Son message se déduit
+ * du code, dans chaque langue, par `formaterAnomalie`.
+ */
+export interface Anomalie {
+  readonly code: string;
+  readonly gravite: 'erreur' | 'avertissement';
+  readonly params: Readonly<Record<string, unknown>>;
+}
+
+/** Le message d'une anomalie dans une langue ; une langue inconnue se lit en français. */
+export function formaterAnomalie(anomalie: Anomalie, langue?: string): string;
+
+/** Les anomalies en textes, erreurs et avertissements séparés. */
+export function enTexte(
+  anomalies: readonly Anomalie[],
+  langue?: string,
+): { errors: string[]; warnings: string[] };
+
+/** La langue que le dépôt déclare dans `ssk-canon.yml` — RG-langue-du-depot. */
+export function langueDuDepot(config: unknown): {
+  langue: Langue;
+  anomalies: Anomalie[];
+};
+
 /** Un référentiel chargé, quelle qu'en soit la provenance. */
 export interface RepoVerifiable {
   /**
@@ -19,6 +49,8 @@ export interface RepoVerifiable {
    */
   readonly config?: {
     readonly projet?: { readonly prefixe?: string };
+    /** La langue du dépôt — RG-langue-du-depot. */
+    readonly langue?: unknown;
     /** Les noms déclarés — RG-noms-declares. */
     readonly dossiers?: unknown;
     readonly fichiers?: unknown;
@@ -49,13 +81,18 @@ export interface RepoVerifiable {
    * nom du format existe encore ; absents, ce contrôle n'a pas lieu.
    */
   readonly chemins?: readonly string[];
-  /** Erreurs déjà rencontrées au chargement, reprises telles quelles. */
-  readonly errors?: readonly string[];
+  /** Erreurs déjà rencontrées au chargement : un texte est repris tel quel, une anomalie codée se dit dans chaque langue. */
+  readonly errors?: readonly (string | Anomalie)[];
+  /** Les mêmes, codées par le chargement : préférées à `errors` quand elles sont là. */
+  readonly anomalies?: readonly Anomalie[];
 }
 
 export interface ResultatVerification {
+  /** En français, mot pour mot la forme d'avant les codes. */
   readonly errors: string[];
   readonly warnings: string[];
+  /** Les mêmes, codées, dans l'ordre : ce qu'une interface dit dans sa langue. */
+  readonly anomalies: Anomalie[];
   readonly counts: {
     readonly domaines: number;
     readonly fonctionnalites: number;
