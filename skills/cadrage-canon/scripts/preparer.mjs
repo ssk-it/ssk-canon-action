@@ -11,8 +11,9 @@
  * Sans identifiant, le prochain libre est calculé.
  */
 import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve, basename } from 'node:path';
+import { lireNoms, nomsDeclares } from './config-noms.mjs';
 
 const racine = resolve(process.argv[2] ?? '.');
 const demande = process.argv[3];
@@ -42,6 +43,23 @@ try {
 }
 
 /**
+ * Les noms que le référentiel déclare — RG-noms-declares —, lus sur la branche
+ * principale distante, comme ce qui est livré : la copie locale peut être en
+ * retard d'une déclaration. Le fichier local sert à défaut.
+ */
+function lireConfiguration() {
+  try {
+    return git(`show origin/${principale}:ssk-canon.yml`);
+  } catch {
+    return readFileSync(join(racine, 'ssk-canon.yml'), 'utf8');
+  }
+}
+const noms = lireNoms(lireConfiguration());
+const dossierCadrages = noms.dossiers.cadrages;
+const fichierDe = (espace, id) => resolve(join(espace, dossierCadrages, id, noms.fichiers.cadrage));
+const declares = nomsDeclares(noms);
+
+/**
  * Les identifiants déjà pris, de toutes provenances.
  *
  * Le dépôt seul ne suffit pas : un cadrage préparé ailleurs n'y est pas encore,
@@ -64,8 +82,8 @@ function identifiantsPris() {
 
   // La branche principale distante dit ce qui est livré ; la copie locale peut
   // être en retard, ou sur une autre branche. Les deux sont lues.
-  essayer(`ls-tree --name-only origin/${principale} cadrages/`);
-  essayer('ls-tree --name-only HEAD cadrages/');
+  essayer(`ls-tree --name-only origin/${principale} ${dossierCadrages}/`);
+  essayer(`ls-tree --name-only HEAD ${dossierCadrages}/`);
   // Le distant fait autorité sur ce que les autres préparent.
   if (!essayer('ls-remote --heads origin')) {
     console.log('AVERTISSEMENT distant injoignable — les cadrages en cours ailleurs sont ignorés');
@@ -89,7 +107,8 @@ if (demande) {
     console.log(`CADRAGE ${demande}`);
     console.log(`ESPACE ${resolve(dejaLa)}`);
     console.log(`BRANCHE cadrage-${demande}`);
-    console.log(`FICHIER ${resolve(join(dejaLa, 'cadrages', demande, 'cadrage.md'))}`);
+    console.log(`FICHIER ${fichierDe(dejaLa, demande)}`);
+    if (declares) console.log(`NOMS ${declares}`);
     console.log('REPRIS un espace existant');
     process.exit(0);
   }
@@ -122,9 +141,11 @@ try {
   process.exit(1);
 }
 
-mkdirSync(join(chemin, 'cadrages', id, 'decisions'), { recursive: true });
+mkdirSync(join(chemin, dossierCadrages, id, noms.dossiers.decisions_cadrage), { recursive: true });
 
 console.log(`CADRAGE ${id}`);
 console.log(`ESPACE ${resolve(chemin)}`);
 console.log(`BRANCHE ${branche}`);
-console.log(`FICHIER ${resolve(join(chemin, 'cadrages', id, 'cadrage.md'))}`);
+console.log(`FICHIER ${fichierDe(chemin, id)}`);
+// Les noms à employer au lieu de ceux du format, que le skill cite.
+if (declares) console.log(`NOMS ${declares}`);

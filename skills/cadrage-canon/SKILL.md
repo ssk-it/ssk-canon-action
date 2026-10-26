@@ -170,6 +170,17 @@ Ce que la sortie donne :
 | `ESPACE <chemin>` | **le répertoire où travailler** — tout ce qui suit s'y passe |
 | `BRANCHE <nom>` | la branche déjà créée, propre à ce cadrage |
 | `FICHIER <chemin>` | où écrire le cadrage |
+| `NOMS <bloc.clé=nom> …` | les dossiers et fichiers que le référentiel nomme autrement — absente s'il garde ceux du format |
+
+**Les noms de ce skill sont ceux du format** : `domains/`, `features/`, `rules/`,
+`cadrages/`, `decisions/`, `architecture/`, et, dans un cadrage, `cadrage.md`,
+`decisions/` et `attachments.md`. Un référentiel peut en déclarer d'autres dans
+les blocs `dossiers` et `fichiers` de son `ssk-canon.yml` (RG-noms-declares) :
+la ligne `NOMS` les dit — `dossiers.regles=exigences` veut dire que ce que ce
+skill écrit dans `rules/` va dans `exigences/`. Les employer partout, chemins de
+`git add` compris : la vérification ne lit que les dossiers déclarés. Ne jamais
+changer un nom déclaré — il se choisit à la création, et la vérification refuse
+qu'il change.
 
 Le script crée une **copie liée** du dépôt : un répertoire et une branche à soi,
 sur le même dépôt Git. Deux sessions n'entrent donc jamais en conflit, et le
