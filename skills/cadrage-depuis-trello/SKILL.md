@@ -222,7 +222,9 @@ d'écrire : `gh issue list --repo <organisation>/<referentiel> --label piste`.
 
 **Les commentaires de la carte** alimentent les décisions. Une discussion où deux
 options ont été pesées est déjà une décision au sens du référentiel : elle mérite
-son fichier dans `decisions/`, avec les options et le motif qui a tranché. C'est
+son fichier dans le dossier des décisions du cadrage — `decisions/`, ou le nom
+que `cadrage-canon` donne sur sa ligne `NOMS` —, avec les options et le motif
+qui a tranché. C'est
 la matière la plus précieuse de la carte, et la plus facile à perdre.
 
 Quand ils contredisent la description, voir l'étape 4 : ce n'est pas de la matière

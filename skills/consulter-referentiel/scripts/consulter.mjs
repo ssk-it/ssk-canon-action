@@ -29,6 +29,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { lireNoms, nomsDeclares } from './config-noms.mjs';
 
 const REF = 'origin/main';
 
@@ -210,16 +211,35 @@ function lireEnLot(objets) {
   return lus;
 }
 
-const DOSSIERS = ['domains', 'features', 'rules', 'decisions', 'architecture'];
+/**
+ * Les noms que le référentiel déclare — RG-noms-declares —, lus sur la même
+ * référence que le reste. Sans configuration lisible, ceux du format.
+ */
+const noms = lireNoms((() => {
+  try {
+    return git('show', `${REF}:ssk-canon.yml`);
+  } catch {
+    return '';
+  }
+})());
+const { domaines: D_DOMAINES, fonctionnalites: D_FONCTIONNALITES, regles: D_REGLES } = noms.dossiers;
+const { decisions: D_DECISIONS, architecture: D_ARCHITECTURE, cadrages: D_CADRAGES } = noms.dossiers;
+const D_DECISIONS_CADRAGE = noms.dossiers.decisions_cadrage;
+const F_CADRAGE = noms.fichiers.cadrage;
+const fichierCadrage = (id) => `${D_CADRAGES}/${id}/${F_CADRAGE}`;
+const echapper = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const DOSSIERS = [D_DOMAINES, D_FONCTIONNALITES, D_REGLES, D_DECISIONS, D_ARCHITECTURE];
 const fichiersDe = (ref) => {
   try {
-    return git('ls-tree', '-r', '--name-only', ref, '--', ...DOSSIERS, 'cadrages').split('\n').filter(Boolean);
+    return git('ls-tree', '-r', '--name-only', ref, '--', ...DOSSIERS, D_CADRAGES).split('\n').filter(Boolean);
   } catch {
     return [];
   }
 };
+const CHEMIN_DE_CADRAGE = new RegExp(`^${echapper(D_CADRAGES)}/(\\d{4}-\\d{3})/${echapper(F_CADRAGE)}$`);
 const idsDeCadrages = (fichiers) => fichiers
-  .map((f) => f.match(/^cadrages\/(\d{4}-\d{3})\/cadrage\.md$/)?.[1])
+  .map((f) => f.match(CHEMIN_DE_CADRAGE)?.[1])
   .filter(Boolean);
 
 /**
@@ -274,7 +294,7 @@ const aLireEnCours = [];
 for (const branche of git('branch', '-r', '--no-merged', REF, '--format=%(refname:short)').split('\n').filter(Boolean)) {
   let ids = [];
   try {
-    ids = git('ls-tree', '--name-only', `${branche}:cadrages`).split('\n').filter((n) => /^\d{4}-\d{3}$/.test(n));
+    ids = git('ls-tree', '--name-only', `${branche}:${D_CADRAGES}`).split('\n').filter((n) => /^\d{4}-\d{3}$/.test(n));
   } catch { /* pas de cadrages sur cette branche */ }
   for (const id of ids) {
     if (!idsLivres.has(id) && !aLireEnCours.some((e) => e.id === id)) aLireEnCours.push({ id, branche });
@@ -289,7 +309,9 @@ for (const branche of git('branch', '-r', '--no-merged', REF, '--format=%(refnam
  * un domaine ou une issue, l'index n'en a pas l'usage.
  */
 const avecDecisions = domaines.length > 0 || issues.length > 0;
-const DECISION_DE_CADRAGE = /^cadrages\/(\d{4}-\d{3})\/decisions\/[^/]+\.md$/;
+const DECISION_DE_CADRAGE = new RegExp(
+  `^${echapper(D_CADRAGES)}/(\\d{4}-\\d{3})/${echapper(D_DECISIONS_CADRAGE)}/[^/]+\\.md$`,
+);
 const decisionsACharger = new Map(); // id du cadrage → objets git de ses décisions
 const noterDecision = (id, objet) => decisionsACharger.set(id, [...(decisionsACharger.get(id) ?? []), objet]);
 if (avecDecisions) {
@@ -299,8 +321,9 @@ if (avecDecisions) {
   }
   for (const { id, branche } of aLireEnCours) {
     try {
-      for (const f of git('ls-tree', '--name-only', `${branche}:cadrages/${id}/decisions`).split('\n')) {
-        if (f.endsWith('.md')) noterDecision(id, `${branche}:cadrages/${id}/decisions/${f}`);
+      const dossier = `${D_CADRAGES}/${id}/${D_DECISIONS_CADRAGE}`;
+      for (const f of git('ls-tree', '--name-only', `${branche}:${dossier}`).split('\n')) {
+        if (f.endsWith('.md')) noterDecision(id, `${branche}:${dossier}/${f}`);
       }
     } catch { /* cadrage sans décisions */ }
   }
@@ -308,12 +331,12 @@ if (avecDecisions) {
 
 const objetsMain = surMain.filter((f) => {
   const [dossier, nom, suite] = f.split('/');
-  if (dossier === 'cadrages') return suite === 'cadrage.md';
+  if (dossier === D_CADRAGES) return suite === F_CADRAGE;
   return DOSSIERS.includes(dossier) && !suite && nom.endsWith('.md') && nom !== 'README.md';
 });
 const lus = lireEnLot([
   ...objetsMain.map((f) => `${REF}:${f}`),
-  ...aLireEnCours.map(({ id, branche }) => `${branche}:cadrages/${id}/cadrage.md`),
+  ...aLireEnCours.map(({ id, branche }) => `${branche}:${fichierCadrage(id)}`),
   ...[...decisionsACharger.values()].flat(),
 ]);
 
@@ -322,15 +345,15 @@ const charger = (dossier) => objetsMain
   .map((f) => analyser(lus.get(`${REF}:${f}`)))
   .filter(Boolean);
 
-const lesDomaines = charger('domains');
-const fonctionnalites = charger('features');
-const regles = charger('rules');
-const decisions = charger('decisions');
-const architecture = charger('architecture');
-const livres = charger('cadrages');
+const lesDomaines = charger(D_DOMAINES);
+const fonctionnalites = charger(D_FONCTIONNALITES);
+const regles = charger(D_REGLES);
+const decisions = charger(D_DECISIONS);
+const architecture = charger(D_ARCHITECTURE);
+const livres = charger(D_CADRAGES);
 const enCours = aLireEnCours
   .map(({ id, branche }) => {
-    const c = analyser(lus.get(`${branche}:cadrages/${id}/cadrage.md`));
+    const c = analyser(lus.get(`${branche}:${fichierCadrage(id)}`));
     return c && { ...c, branche };
   })
   .filter(Boolean);
@@ -373,6 +396,9 @@ if (domaines.length === 0 && issues.length === 0 && motifs.length === 0 && aLire
   bloc();
   dire(`CADRAGES_EN_COURS ${enCours.length}`);
   for (const c of enCours) ligneCadrage(c, 'EN_COURS');
+  // Les noms à employer au lieu de ceux du format, que le skill cite.
+  const declares = nomsDeclares(noms);
+  if (declares) dire(`NOMS ${declares}`);
   dire(`TOTAUX fonctionnalites=${fonctionnalites.length} regles=${regles.length} decisions=${decisions.length} cadrages_livres=${livres.length}`);
 }
 
@@ -436,7 +462,7 @@ for (const issue of issues) {
   for (const c of trouves) {
     bloc();
     dire(`ISSUE ${issue} → CADRAGE ${c.id} | ${c.libelle} | ${c.branche ? `en cours sur ${c.branche}` : 'livré'}`);
-    dire(`  lire : --lire ${c.branche ?? REF}:cadrages/${c.id}/cadrage.md`);
+    dire(`  lire : --lire ${c.branche ?? REF}:${fichierCadrage(c.id)}`);
     direImpacts(c, '  ');
     direDecisions(c, '  ');
   }
@@ -473,8 +499,8 @@ function parFichier(lignes) {
 }
 
 for (const terme of motifs) {
-  const livresTrouves = parFichier(chercher(REF, ['rules', 'decisions', 'architecture', 'cadrages'], terme));
-  const enCoursTrouves = parFichier(enCours.flatMap((c) => chercher(c.branche, [`cadrages/${c.id}`], terme)));
+  const livresTrouves = parFichier(chercher(REF, [D_REGLES, D_DECISIONS, D_ARCHITECTURE, D_CADRAGES], terme));
+  const enCoursTrouves = parFichier(enCours.flatMap((c) => chercher(c.branche, [`${D_CADRAGES}/${c.id}`], terme)));
   bloc();
   dire(`MOTIF ${terme} | fichiers livrés: ${livresTrouves.size} | fichiers en cours: ${enCoursTrouves.size}`);
   for (const [f, { n, premiere }] of livresTrouves) dire(`  LIVRE ${f} (${n}) | ${couper(premiere)}`);
@@ -507,7 +533,7 @@ function sousSections(lignes) {
 }
 
 const paragraphes = (lignes) => lignes.join('\n').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
-const CIBLES = ['rules', 'decisions', 'architecture'];
+const CIBLES = [D_REGLES, D_DECISIONS, D_ARCHITECTURE];
 
 /**
  * Un cadrage livré, sans le texte de ses Énoncés. La livraison les a recopiés
@@ -593,7 +619,7 @@ function condenser(objet, contenu) {
   if (entier) return null;
   const [ref, chemin] = [objet.slice(0, objet.indexOf(':')), objet.slice(objet.indexOf(':') + 1)];
   if (ref !== REF) return null;
-  const cadrage = chemin.match(/^cadrages\/(\d{4}-\d{3})\/cadrage\.md$/)?.[1];
+  const cadrage = chemin.match(CHEMIN_DE_CADRAGE)?.[1];
   if (cadrage) return condenserCadrage(cadrage, contenu);
   if (DECISION_DE_CADRAGE.test(chemin)) return condenserDecision(contenu);
   return null;

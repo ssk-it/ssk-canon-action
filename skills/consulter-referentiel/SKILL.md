@@ -98,6 +98,7 @@ répondent en moins d'une seconde.
 |---|---|
 | `REFERENTIEL <chemin> @ origin/main <sha> <date>` | ce qui est lu, et de quand il date |
 | `DOMAINE <id> \| <libellé>` | les domaines, points d'entrée de l'étape 2 |
+| `NOMS <bloc.clé=nom> …` | les dossiers et fichiers que le référentiel nomme autrement que le format (RG-noms-declares) — `dossiers.regles=exigences` : les règles sont dans `exigences/`, non `rules/`. Absente s'il garde ceux du format. Les chemins que ce skill cite sont ceux du format : les lire sous ces noms |
 | `ARCHITECTURE <id> \| <nature> \| …` | composants, flux et contextes documentés |
 | `EN_COURS <id> \| <titre> \| domaines: … \| <branche>` | un cadrage non fusionné — **à lire avec attention** |
 | `REFERENTIEL_NON_RETENU` | la situation a échoué ; sa sortie est relayée au-dessus |

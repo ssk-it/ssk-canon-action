@@ -284,6 +284,12 @@ fichiers:
 Le nom se choisit à la création : sur une demande de fusion, la vérification
 refuse qu'un nom déclaré change une fois son dossier créé.
 
+Les scripts des skills tournent sans rien d'installé : `cadrage-canon` et
+`consulter-referentiel` portent une copie de `src/noms.mjs` et une lecture de
+`ssk-canon.yml` sans dépendance (`scripts/config-noms.mjs`).
+`test/skills-noms.test.mjs` garde la copie identique et confronte la lecture à
+YAML : après avoir changé `src/noms.mjs`, le recopier dans les deux skills.
+
 ## En ligne de commande
 
 Le propagateur et le vérificateur s'utilisent hors CI :
