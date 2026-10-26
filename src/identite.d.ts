@@ -14,7 +14,7 @@ export interface NomIdentite {
   readonly format: 'svg' | 'webp' | 'png';
 }
 
-/** Le répertoire qui porte l'identité, à la racine du référentiel. */
+/** Le nom du format du répertoire qui porte l'identité, qu'un référentiel peut remplacer. */
 export const REPERTOIRE_IDENTITE: 'identite';
 export const ELEMENTS_IDENTITE: readonly ['symbole', 'logotype'];
 export const VARIANTES_IDENTITE: readonly ['clair', 'sombre'];
@@ -26,7 +26,11 @@ export const POIDS_MAX_IDENTITE: number;
 /** `null` si le fichier n'est pas une image d'identité admise. */
 export function lireNomIdentite(chemin: string): NomIdentite | null;
 
-export function checkIdentite(fichiers: readonly FichierIdentite[]): {
+/** `repertoire` : le nom déclaré du répertoire, `identite` par défaut. */
+export function checkIdentite(
+  fichiers: readonly FichierIdentite[],
+  repertoire?: string,
+): {
   errors: string[];
   warnings: string[];
 };

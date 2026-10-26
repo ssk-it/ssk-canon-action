@@ -257,6 +257,33 @@ répertoire avec leur poids :
 checkRepo({ ...referentiel, identite: [{ chemin: 'symbole-clair.svg', taille: 812 }] });
 ```
 
+`@ssk-it/canon-check/noms` résout les noms qu'un référentiel déclare dans
+`ssk-canon.yml` (RG-noms-declares) : `resoudreNoms(config)` rend ses dossiers et
+ses fichiers convenus, ceux du format pour toute clé absente ou fautive, et les
+erreurs de la déclaration. Les mêmes exports sont repris à la racine du paquet.
+`checkRepo` signale ces erreurs, et, quand le référentiel chargé porte `chemins`
+— la liste de ses fichiers —, un dossier déclaré introuvable alors que celui du
+nom du format existe encore.
+
+```yaml
+# ssk-canon.yml — chaque clé est facultative
+dossiers:
+  domaines: domaines           # domains
+  fonctionnalites: fonctionnalites  # features
+  regles: exigences            # rules
+  cadrages: evolutions         # cadrages
+  decisions: adr               # decisions — les décisions d'architecture
+  architecture: conception     # architecture
+  identite: marque             # identite
+  decisions_cadrage: arbitrages  # decisions — dans chaque cadrage
+fichiers:
+  cadrage: evolution.md        # cadrage.md
+  pieces_jointes: pieces-jointes.md  # attachments.md
+```
+
+Le nom se choisit à la création : sur une demande de fusion, la vérification
+refuse qu'un nom déclaré change une fois son dossier créé.
+
 ## En ligne de commande
 
 Le propagateur et le vérificateur s'utilisent hors CI :

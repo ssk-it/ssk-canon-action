@@ -30,15 +30,16 @@ function git(root, args) {
  *
  * @param {string} root racine du dépôt
  * @param {string} ref référence Git, typiquement `origin/main`
+ * @param {string} [dossier] le dossier des cadrages, sous son nom déclaré
  * @returns {Set<string> | null}
  */
-export function listCadragesLivres(root, ref = 'origin/main') {
+export function listCadragesLivres(root, ref = 'origin/main', dossier = 'cadrages') {
   // Un dépôt sans commit n'a pas de HEAD : rien n'y est livré, ce qui est un
   // état normal — un référentiel qu'on vient d'initialiser — et non une panne.
   if (ref === 'HEAD' && git(root, ['rev-parse', '--verify', '-q', 'HEAD']) === null)
     return new Set();
 
-  const sortie = git(root, ['ls-tree', '-d', '--name-only', `${ref}`, 'cadrages/']);
+  const sortie = git(root, ['ls-tree', '-d', '--name-only', `${ref}`, `${dossier}/`]);
   if (sortie === null) return null;
 
   const ids = new Set();
@@ -47,6 +48,19 @@ export function listCadragesLivres(root, ref = 'origin/main') {
     if (nom) ids.add(nom);
   }
   return ids;
+}
+
+/**
+ * Le contenu d'un fichier sur une référence, ou `null` s'il n'y existe pas ou
+ * que la référence est hors d'atteinte.
+ */
+export function lireFichierA(root, ref, chemin) {
+  return git(root, ['show', `${ref}:${chemin}`]);
+}
+
+/** Vrai si la référence porte au moins un fichier sous ce dossier. */
+export function dossierPresentA(root, ref, dossier) {
+  return Boolean(git(root, ['ls-tree', '--name-only', ref, `${dossier}/`])?.trim());
 }
 
 /**
@@ -59,10 +73,16 @@ export function listCadragesLivres(root, ref = 'origin/main') {
  * fusion, c'est le commit de fusion qui l'introduit, quelle que soit la date à
  * laquelle il a été commité sur sa branche.
  *
+ * @param {{ dossier?: string, fichier?: string }} [noms] le dossier des
+ *   cadrages et le fichier qui porte chacun, sous leurs noms déclarés
  * @returns {Map<string, number> | null} le rang de livraison de chaque cadrage,
  *   ou null si l'historique n'a pas pu être lu
  */
-export function ordreDeLivraison(root, ref = 'HEAD') {
+export function ordreDeLivraison(
+  root,
+  ref = 'HEAD',
+  { dossier = 'cadrages', fichier = 'cadrage.md' } = {},
+) {
   const sortie = git(root, [
     'log',
     '--first-parent',
@@ -73,7 +93,7 @@ export function ordreDeLivraison(root, ref = 'HEAD') {
     '--name-only',
     ref,
     '--',
-    'cadrages',
+    dossier,
   ]);
   if (sortie === null) return null;
 
@@ -84,8 +104,8 @@ export function ordreDeLivraison(root, ref = 'HEAD') {
       rang += 1;
       continue;
     }
-    const trouve = /^cadrages\/([^/]+)\/cadrage\.md$/.exec(ligne.trim());
-    if (trouve && !rangs.has(trouve[1])) rangs.set(trouve[1], rang);
+    const [haut, id, nom, ...reste] = ligne.trim().split('/');
+    if (haut === dossier && nom === fichier && !reste.length && !rangs.has(id)) rangs.set(id, rang);
   }
   return rangs;
 }
@@ -144,16 +164,17 @@ export function pointDeFusion(root, ref = 'origin/main') {
  *
  * @param {string} root racine du dépôt
  * @param {string} ref référence de comparaison, typiquement `origin/main`
+ * @param {string} [dossier] le dossier des cadrages, sous son nom déclaré
  * @returns {Set<string> | null}
  */
-export function listCadragesPortes(root, ref = 'origin/main') {
+export function listCadragesPortes(root, ref = 'origin/main', dossier = 'cadrages') {
   const fichiers = listFichiersModifies(root, ref);
   if (fichiers === null) return null;
 
   const ids = new Set();
   for (const chemin of [...fichiers, ...listFichiersEnCours(root)]) {
     const parts = chemin.split('/');
-    if (parts[0] === 'cadrages' && parts.length > 1) ids.add(parts[1]);
+    if (parts[0] === dossier && parts.length > 1) ids.add(parts[1]);
   }
   return ids;
 }
@@ -192,14 +213,15 @@ function listFichiersEnCours(root) {
  *
  * @param {string[]} fichiers chemins modifiés
  * @param {Set<string>} livres identifiants présents sur la branche principale
+ * @param {string} [dossier] le dossier des cadrages, sous son nom déclaré
  * @returns {Map<string, string[]>} par cadrage, les fichiers en cause
  */
-export function findCadragesLivresModifies(fichiers, livres) {
+export function findCadragesLivresModifies(fichiers, livres, dossier = 'cadrages') {
   const touches = new Map();
 
   for (const chemin of fichiers) {
     const parts = chemin.split('/');
-    if (parts[0] !== 'cadrages' || parts.length < 2) continue;
+    if (parts[0] !== dossier || parts.length < 2) continue;
 
     const id = parts[1];
     if (!livres.has(id)) continue;

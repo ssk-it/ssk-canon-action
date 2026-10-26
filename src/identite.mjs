@@ -78,15 +78,17 @@ const kio = (octets) => Math.ceil(octets / 1024);
  *
  * @param {ReadonlyArray<{ chemin: string, taille: number }>} fichiers
  *   les fichiers du répertoire, chemins relatifs à celui-ci
+ * @param {string} [repertoire] le nom du répertoire, tel que le référentiel le
+ *   déclare — RG-noms-declares
  */
-export function checkIdentite(fichiers) {
+export function checkIdentite(fichiers, repertoire = REPERTOIRE_IDENTITE) {
   const errors = [];
   const warnings = [];
   // chaque nom sans extension, et les formats admis sous lesquels il existe
   const formats = new Map();
 
   for (const { chemin, taille } of fichiers) {
-    const ici = `${REPERTOIRE_IDENTITE}/${chemin}`;
+    const ici = `${repertoire}/${chemin}`;
 
     if (taille > POIDS_MAX_IDENTITE)
       errors.push(
@@ -117,7 +119,7 @@ export function checkIdentite(fichiers) {
     if (presents.length < 2) continue;
     const ordonnes = FORMATS_IDENTITE.filter((f) => presents.includes(f));
     warnings.push(
-      `${REPERTOIRE_IDENTITE}/${nom} : présent en ${enumerer(ordonnes, 'et')} — ` +
+      `${repertoire}/${nom} : présent en ${enumerer(ordonnes, 'et')} — ` +
         `le ${ordonnes[0]} est employé`,
     );
   }
@@ -129,7 +131,7 @@ export function checkIdentite(fichiers) {
     const present = `${element}-${clair ? 'clair' : 'sombre'}`;
     const manquant = `${element}-${clair ? 'sombre' : 'clair'}`;
     warnings.push(
-      `${REPERTOIRE_IDENTITE}/${present} : sans ${manquant} ni ${element} sans suffixe — ` +
+      `${repertoire}/${present} : sans ${manquant} ni ${element} sans suffixe — ` +
         `sur fond ${clair ? 'sombre' : 'clair'}, l'application montre son repli`,
     );
   }

@@ -11,10 +11,12 @@
 
 import { extractEnonces } from './format.mjs';
 import { checkIdentite } from './identite.mjs';
+import { resoudreNoms, verifierDossiersDeclares } from './noms.mjs';
 
 // L'identité visuelle relève des mêmes règles partagées : l'application les
 // reprend d'ici, sans avoir à connaître le découpage interne du paquet.
 export * from './identite.mjs';
+export * from './noms.mjs';
 
 const OPERATIONS = new Set(['cree', 'modifie', 'abroge', 'touche']);
 const STATUTS_REGLE = new Set(['actif', 'abroge']);
@@ -79,7 +81,7 @@ export function cibleDe(impact) {
  * @param {{ignorerIndexDerives?: boolean, livres?: Set<string>}} [options]
  */
 export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set() } = {}) {
-  const { domains, features, rules, cadrages, errors: problems } = repo;
+  const { domains, features, rules, cadrages, errors: problems = [] } = repo;
   const errors = [...problems];
   const warnings = [];
 
@@ -90,6 +92,13 @@ export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set(
       `ssk-canon.yml → prefixe « ${prefixe} » : attendu des lettres, chiffres ou « _ », ` +
         `commençant par une lettre`,
     );
+
+  // Les noms déclarés — RG-noms-declares. Une entrée fautive a déjà été
+  // écartée à la lecture ; c'est ici qu'elle se dit. Les chemins, quand
+  // l'appelant les connaît, révèlent un dossier renommé sans ses fichiers.
+  const noms = resoudreNoms(repo.config);
+  errors.push(...noms.erreurs);
+  if (repo.chemins) errors.push(...verifierDossiersDeclares(noms, repo.chemins));
 
   /** Un cadrage est livré si la branche principale le porte, et rien d'autre. */
   const estLivre = (id) => livres.has(id);
@@ -252,7 +261,7 @@ export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set(
   // Absente de ce qu'on passe, elle n'est pas contrôlée : un référentiel chargé
   // sans son arborescence reste vérifiable pour le reste.
   if (repo.identite) {
-    const identite = checkIdentite(repo.identite);
+    const identite = checkIdentite(repo.identite, noms.dossiers.identite);
     errors.push(...identite.errors);
     warnings.push(...identite.warnings);
   }
