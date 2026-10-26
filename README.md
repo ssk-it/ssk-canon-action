@@ -233,6 +233,36 @@ import { checkRepo } from '@ssk-it/canon-check';
 const { errors, warnings, counts } = checkRepo(referentiel);
 ```
 
+`errors` et `warnings` sont des textes français. Les mêmes anomalies sont
+rendues codées dans `anomalies` (RG-anomalies-codees) : un code stable, une
+gravité — `erreur` ou `avertissement` — et des paramètres, valeurs du
+référentiel et du format qui ne se traduisent jamais. Leur message se déduit du
+code, en français ou en anglais, par la bibliothèque et nulle part ailleurs :
+une interface les dit dans sa langue sans relancer la vérification, et dit
+toujours ce que dit la demande de fusion.
+
+```js
+import { checkRepo, formaterAnomalie, enTexte } from '@ssk-it/canon-check';
+
+const { anomalies } = checkRepo(referentiel);
+anomalies.map((a) => formaterAnomalie(a, 'en'));
+// [ 'scoping 2026-001 → unknown rule: RG-x', … ]
+enTexte(anomalies, 'en'); // { errors: [...], warnings: [...] }
+```
+
+Un code ne change jamais de sens : un nouveau message, c'est un nouveau code.
+
+Un dépôt déclare sa langue dans `ssk-canon.yml` (RG-langue-du-depot) — `fr` par
+défaut, `en` sinon. C'est la langue de tout ce que l'Action écrit pour lui : le
+rapport de vérification, celui de la propagation, la demande de propagation et
+les commentaires sur les pistes. Une langue inconnue se signale, et le dépôt se
+lit en français. `langueDuDepot(config)` la lit comme l'Action.
+
+```yaml
+# ssk-canon.yml
+langue: en
+```
+
 Le paquet ne dépend d'aucun système de fichiers : il prend un référentiel déjà
 chargé, d'où qu'il vienne. C'est ce qui permet aux mêmes règles de s'appliquer
 dans l'intégration continue et dans un navigateur — les dupliquer garantirait
