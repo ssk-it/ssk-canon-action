@@ -59,6 +59,14 @@ inputs:
     required: false
     default: 'true'
 
+  verification:
+    description: >
+      Le workflow de vérification du dépôt cadré, par son nom ou son fichier.
+      La propagation le lance sur la demande de fusion qu'elle ouvre, qui sinon
+      n'en déclencherait aucun. Par son nom par défaut : le modèle d'ici et
+      celui que pose Skanon le partagent, sous deux noms de fichier différents.
+    required: false
+    default: Vérification du référentiel
 outputs:
   ecritures:
     description: Nombre de règles écrites (ou qui le seraient en simulation).
@@ -139,6 +147,12 @@ runs:
              && [ "${{ github.event.pull_request.draft }}" != "true" ]; then
             LIVRAISON="--livraison"
           fi
+          # Lancée à la demande — par la propagation sur la demande qu'elle
+          # ouvre, ou à la main —, elle juge la branche telle qu'elle serait
+          # fusionnée : aucun brouillon ne s'y annonce.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            LIVRAISON="--livraison"
+          fi
           node src/check.mjs "$CIBLE" --base "${{ inputs.base }}" $SANS_IMMUABILITE $LIVRAISON \
             | tee "${RUNNER_TEMP}/propagation.log"
         fi
@@ -177,8 +191,8 @@ runs:
         git commit -m "${{ inputs.message }}" -m "$(dire action-commit-corps)"
 
         # Une branche protégée exige des contrôles qu'un push direct ne porte
-        # jamais : la propagation passe donc par une demande de fusion, qui les
-        # déclenche. Le push direct reste tenté d'abord — sur une branche non
+        # jamais : la propagation passe donc par une demande de fusion, sur
+        # laquelle elle les lance. Le push direct reste tenté d'abord — sur une branche non
         # protégée il aboutit, et n'impose alors aucune relecture inutile.
         if git push 2>/dev/null; then
           dire action-ecritures-poussees
@@ -208,4 +222,17 @@ runs:
           --head "$BRANCHE" \
           --title "${{ inputs.message }}" \
           --body "$(dire action-demande-corps)"
+
+        # Une demande ouverte par le jeton de l'automatisation ne déclenche
+        # aucun workflow : GitHub n'en crée pour aucun événement de ce jeton,
+        # sauf `workflow_dispatch`. La vérification que la branche principale
+        # exige se lance donc d'ici, sur la branche de la demande ; sans elle,
+        # la demande resterait bloquée jusqu'à ce qu'on la ferme et la rouvre.
+        # Un dépôt dont les workflows précèdent ce lancement le refuse : on le
+        # dit, sans faire échouer une propagation déjà poussée.
+        if gh workflow run "${{ inputs.verification }}" --ref "$BRANCHE"; then
+          dire action-verification-lancee
+        else
+          echo "::warning::$(dire action-verification-non-lancee "{\"workflow\":\"${{ inputs.verification }}\"}")"
+        fi
 

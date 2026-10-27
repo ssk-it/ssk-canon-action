@@ -67,6 +67,16 @@ Puis, dans les réglages du dépôt :
    vérification comme contrôle requis. Sans cela, elle signale sans bloquer, et
    un cadrage incohérent peut être livré.
 
+La demande de propagation, ouverte par le jeton de l'automatisation, ne
+déclenche aucun workflow : GitHub n'en crée pour aucun événement de ce jeton,
+sauf `workflow_dispatch`. La propagation lance donc elle-même la vérification
+sur la branche de sa demande — d'où `workflow_dispatch` dans le modèle de
+vérification, et `actions: write` dans celui de la propagation. Un dépôt
+installé avant ce lancement garde des demandes bloquées, faute du contrôle
+requis : la propagation le signale, et reprendre les deux modèles y remédie.
+L'entrée `verification` de l'action désigne le workflow, par son nom —
+« Vérification du référentiel » par défaut — ou par son fichier.
+
 ### Pourquoi `@main` et non un tag de version
 
 Les workflows référencent `ssk-it/ssk-canon-action@main`. Un tag mobile `v1` a
