@@ -22,6 +22,11 @@ export const propagation = {
     'action-propagation-en-attente': () =>
       'Une demande de propagation attend déjà sa fusion — pas de seconde demande.',
     'action-push-refuse': (p) => `Push direct refusé — la propagation passe par « ${p.branche} ».`,
+    'action-verification-lancee': () => 'Vérification lancée sur la demande de propagation.',
+    'action-verification-non-lancee': (p) =>
+      `Vérification non lancée : « ${p.workflow} » doit accepter workflow_dispatch, ` +
+      'et la propagation avoir la permission actions: write — reprendre les modèles. ' +
+      "D'ici là, fermer puis rouvrir la demande la déclenche.",
     'action-commit-corps': () => 'Écritures calculées à partir des cadrages livrés.',
     'action-demande-corps': () =>
       'Écritures calculées à partir des cadrages livrés, par la propagation.\n\n' +
@@ -47,6 +52,11 @@ export const propagation = {
     'action-propagation-en-attente': () =>
       'A propagation pull request is already awaiting merge — no second one.',
     'action-push-refuse': (p) => `Direct push refused — propagation goes through “${p.branche}”.`,
+    'action-verification-lancee': () => 'Verification started on the propagation pull request.',
+    'action-verification-non-lancee': (p) =>
+      `Verification not started: “${p.workflow}” must accept workflow_dispatch, ` +
+      'and the propagation needs the actions: write permission — update from the templates. ' +
+      'Until then, closing and reopening the pull request triggers it.',
     'action-commit-corps': () => 'Writes computed from the delivered scopings.',
     'action-demande-corps': () =>
       'Writes computed from the delivered scopings, by the propagation.\n\n' +

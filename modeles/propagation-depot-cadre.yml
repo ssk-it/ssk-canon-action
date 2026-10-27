@@ -29,8 +29,11 @@ on:
 permissions:
   contents: write
   # Une branche protégée refuse le push direct de la propagation : elle ouvre
-  # alors une demande de fusion, qui déclenche les contrôles requis.
+  # alors une demande de fusion.
   pull-requests: write
+  # Cette demande, ouverte par le jeton de l'automatisation, ne déclenche aucun
+  # workflow : la propagation y lance elle-même la vérification requise.
+  actions: write
 
 # Deux merges rapprochés ne doivent pas propager en parallèle : le second
 # écraserait le premier. On sérialise, sans annuler ce qui est en cours.

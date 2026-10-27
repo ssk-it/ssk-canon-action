@@ -18,6 +18,10 @@ on:
   # suivante, et le contrôle de livraison manquerait le moment qui le déclenche.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  # La propagation la lance sur la demande de fusion qu'elle ouvre : le jeton
+  # de l'automatisation ne déclenche aucun autre événement. Elle se lance aussi
+  # à la main, sur une branche, et la juge alors telle qu'elle serait fusionnée.
+  workflow_dispatch:
 
 # Rien sur la branche principale : la propagation s'y déclenche déjà et vérifie
 # ce qu'elle vient d'écrire. Deux contrôles sur la même poussée se liraient à
