@@ -35,7 +35,13 @@ jobs:
     if: >-
       contains(github.event.issue.labels.*.name, 'piste')
       || (github.event.action == 'unlabeled' && github.event.label.name == 'piste')
-    runs-on: ubuntu-latest
+    # Les Mac auto-hébergés pour un dépôt privé, que la variable d'organisation
+    # SSK_RUNNER_PRIVE désigne (outillage/runner-prive-organisation.sh) : sur les
+    # runners de GitHub, chaque exécution d'un dépôt privé — une par heure pour la
+    # propagation planifiée — se décompte du forfait. Un dépôt public, que le
+    # groupe de runners refuse, et une organisation sans la variable restent sur
+    # ubuntu-latest, gratuit pour eux.
+    runs-on: ${{ vars.SSK_RUNNER_PRIVE && fromJSON(vars.SSK_RUNNER_PRIVE) || 'ubuntu-latest' }}
     steps:
       # Le déclenchement par une issue extrait la branche principale : c'est elle
       # dont les identifiants comptent.

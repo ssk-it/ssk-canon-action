@@ -63,7 +63,13 @@ Puis, dans les réglages du dépôt :
    derrière eux, et un commit poussé après la fusion — jamais livré — s'y perd
    parmi des dizaines d'autres.
 
-2. **Branches → règle de protection sur la branche principale** : ajouter la
+2. **Les runners, pour un dépôt privé.** Les modèles tirent leur runner de la variable d'organisation `SSK_RUNNER_PRIVE`, visible des seuls dépôts privés : sans elle, chaque exécution — une vérification par demande de fusion, une propagation par livraison et sa reprise toutes les heures — tourne sur les runners de GitHub et se décompte du forfait de l'organisation. Un dépôt public, et une organisation sans la variable, restent sur `ubuntu-latest`. Un script la pose, une fois par organisation, et vérifie qu'un runner en ligne porte ses labels :
+
+   ```bash
+   outillage/runner-prive-organisation.sh <organisation>
+   ```
+
+3. **Branches → règle de protection sur la branche principale** : ajouter la
    vérification comme contrôle requis. Sans cela, elle signale sans bloquer, et
    un cadrage incohérent peut être livré.
 

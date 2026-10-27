@@ -50,6 +50,15 @@ test("l'action lance la vérification sur la branche de la demande qu'elle vient
   vrai(lancement > ouverture, "l'action ne lance pas la vérification après avoir ouvert la demande");
 });
 
+const pistes = loadYaml(lire('modeles/pistes-depot-cadre.yml'));
+const RUNNER = "${{ vars.SSK_RUNNER_PRIVE && fromJSON(vars.SSK_RUNNER_PRIVE) || 'ubuntu-latest' }}";
+
+test("chaque job des modèles prend le runner que l'organisation réserve à ses dépôts privés, ubuntu-latest sinon", () => {
+  for (const [nom, modele] of [['vérification', verification], ['propagation', propagation], ['pistes', pistes]])
+    for (const [job, def] of Object.entries(modele.jobs))
+      vrai(def['runs-on'] === RUNNER, `${nom}, job ${job} : runs-on vaut ${JSON.stringify(def['runs-on'])}`);
+});
+
 test("chaque message que dit l'action est au catalogue", () => {
   const dits = [...action.matchAll(/\bdire ([a-z][a-z0-9-]*)/g)].map((m) => m[1]);
   vrai(dits.length > 3, `trop peu de messages trouvés (${dits.length}) : la recherche est-elle juste ?`);
