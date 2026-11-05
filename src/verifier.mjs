@@ -13,11 +13,14 @@ import { erreur, avertissement, versAnomalie, enTexte, langueDuDepot } from './a
 import { extractEnonces } from './format.mjs';
 import { checkIdentite } from './identite.mjs';
 import { resoudreNoms, verifierDossiersDeclares } from './noms.mjs';
+import { FORME_PREFIXE, verifierCitations } from './citations.mjs';
 
 // L'identité visuelle relève des mêmes règles partagées : l'application les
 // reprend d'ici, sans avoir à connaître le découpage interne du paquet.
 export * from './identite.mjs';
 export * from './noms.mjs';
+// La citation d'un autre référentiel — RG-regle-du-socle-citee.
+export * from './citations.mjs';
 // Les anomalies et leurs messages, pour qui les dit dans sa langue —
 // RG-anomalies-codees.
 export { LANGUES, formaterAnomalie, enTexte, langueDuDepot } from './anomalies.mjs';
@@ -42,17 +45,6 @@ export const CIBLES = [
   { champ: 'adr', collection: 'decisions', libelle: "décision d'architecture" },
   { champ: 'architecture', collection: 'architecture', libelle: "document d'architecture" },
 ];
-
-/**
- * Un préfixe de projet, tel qu'il peut précéder un identifiant.
- *
- * Ni tiret ni chiffre en tête, pour une même raison : le préfixe est séparé de
- * l'identifiant par un tiret, et l'identifiant commence par une année. Un
- * préfixe « PRM-CO » ou « 2026 » rendrait « PRM-CO-2026-001 » et
- * « 2026-2026-001 » impossibles à découper sans deviner — et deviner, ici,
- * mènerait au mauvais cadrage.
- */
-const FORME_PREFIXE = /^[A-Za-z][A-Za-z0-9_]*$/;
 
 /**
  * Ce qu'un impact vise, quelle que soit la nature.
@@ -82,9 +74,14 @@ export function cibleDe(impact) {
  * référentiel qu'on vérifie hors de tout dépôt.
  *
  * @param {{domains: Map, features: Map, rules: Map, cadrages: Map, errors: string[]}} repo
- * @param {{ignorerIndexDerives?: boolean, livres?: Set<string>}} [options]
+ * `cites` porte, par préfixe, les référentiels que celui-ci cite, déjà chargés,
+ * ou `null` pour ceux qui n'ont pas pu l'être. Seul l'appelant sait les lire —
+ * un clone pour l'Action, la plateforme pour le navigateur — et ce qu'il n'a pas
+ * lu se signale comme non vérifié.
+ *
+ * @param {{ignorerIndexDerives?: boolean, livres?: Set<string>, cites?: Map<string, object | null>}} [options]
  */
-export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set() } = {}) {
+export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set(), cites = new Map() } = {}) {
   const { domains, features, rules, cadrages } = repo;
   // Les erreurs de chargement arrivent codées quand le chargement les code, en
   // texte sinon : un texte se rend tel quel, faute de pouvoir le dire autrement.
@@ -107,6 +104,11 @@ export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set(
   const noms = resoudreNoms(repo.config);
   signaler(...noms.erreurs);
   if (repo.chemins) signaler(...verifierDossiersDeclares(noms, repo.chemins));
+
+  // Les citations d'autres référentiels — RG-citation-signalee-chez-le-citant.
+  // Des avertissements seulement : une cible change dans un autre dépôt, et
+  // bloquer ferait échouer ici des demandes qui n'y sont pour rien.
+  anomalies.push(...verifierCitations(repo, { cites }));
 
   /** Un cadrage est livré si la branche principale le porte, et rien d'autre. */
   const estLivre = (id) => livres.has(id);

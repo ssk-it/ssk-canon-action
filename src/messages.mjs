@@ -13,8 +13,9 @@ import { lecture } from './messages/lecture.mjs';
 import { livraison } from './messages/livraison.mjs';
 import { propagation } from './messages/propagation.mjs';
 import { pistes } from './messages/pistes.mjs';
+import { citations } from './messages/citations.mjs';
 
-const CATALOGUES = [commun, verification, lecture, livraison, propagation, pistes];
+const CATALOGUES = [commun, verification, lecture, livraison, propagation, pistes, citations];
 
 function fusionner(langue) {
   const tout = {};

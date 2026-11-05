@@ -59,6 +59,25 @@ test("chaque job des modèles prend le runner que l'organisation réserve à ses
       vrai(def['runs-on'] === RUNNER, `${nom}, job ${job} : runs-on vaut ${JSON.stringify(def['runs-on'])}`);
 });
 
+test("l'action lit les référentiels cités avec le jeton qu'on lui donne, et les modèles le lui passent", () => {
+  const entrees = loadYaml(action).inputs;
+  vrai('jeton-referentiels-cites' in entrees, "l'action ne déclare pas l'entrée `jeton-referentiels-cites`");
+  vrai(entrees['jeton-referentiels-cites'].required === false, 'le jeton doit rester facultatif : un dépôt public se lit sans');
+  vrai(
+    /SSK_CANON_JETON_CITES: \$\{\{ inputs\.jeton-referentiels-cites \}\}/.test(action),
+    "l'action ne passe pas le jeton à la vérification sous SSK_CANON_JETON_CITES",
+  );
+  for (const [nom, modele] of [['vérification', verification], ['propagation', propagation]]) {
+    const pas = Object.values(modele.jobs).flatMap((j) => j.steps).filter((s) => s.uses?.startsWith('ssk-it/ssk-canon-action'));
+    vrai(pas.length > 0, `${nom} : l'action n'est plus appelée`);
+    for (const p of pas)
+      vrai(
+        p.with?.['jeton-referentiels-cites'] === '${{ secrets.SSK_CANON_JETON_CITES }}',
+        `${nom} : l'action ne reçoit pas le secret SSK_CANON_JETON_CITES`,
+      );
+  }
+});
+
 test("chaque message que dit l'action est au catalogue", () => {
   const dits = [...action.matchAll(/\bdire ([a-z][a-z0-9-]*)/g)].map((m) => m[1]);
   vrai(dits.length > 3, `trop peu de messages trouvés (${dits.length}) : la recherche est-elle juste ?`);

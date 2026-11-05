@@ -5,9 +5,11 @@
 // paquet qui n'en a aucune. Sa surface est étroite et stable.
 
 import type { FichierIdentite } from './identite.js';
+import type { ReferentielCite } from './citations.js';
 
 export * from './identite.js';
 export * from './noms.js';
+export * from './citations.js';
 
 /** Les langues dans lesquelles une anomalie se dit — RG-anomalies-codees. */
 export type Langue = 'fr' | 'en';
@@ -54,6 +56,8 @@ export interface RepoVerifiable {
     /** Les noms déclarés — RG-noms-declares. */
     readonly dossiers?: unknown;
     readonly fichiers?: unknown;
+    /** Les référentiels cités, `{ prefixe, repo }` — RG-regle-du-socle-citee. */
+    readonly referentiels_cites?: unknown;
   } | null;
   readonly domains: ReadonlyMap<string, unknown>;
   readonly features: ReadonlyMap<string, unknown>;
@@ -117,6 +121,12 @@ export interface OptionsVerification {
    * plateforme pour le navigateur.
    */
   readonly livres?: ReadonlySet<string>;
+  /**
+   * Les référentiels cités, par préfixe, déjà chargés — ou `null` pour ceux qui
+   * n'ont pas pu l'être. Ce que l'appelant n'a pas lu rend ses citations non
+   * vérifiées : des avertissements, jamais des erreurs.
+   */
+  readonly cites?: ReadonlyMap<string, ReferentielCite | null>;
 }
 
 export function checkRepo(

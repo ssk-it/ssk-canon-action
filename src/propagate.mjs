@@ -31,6 +31,7 @@ const ORDRE_CLES = [
   'fonctionnalites',
   'nature',
   'composants',
+  'applique',
   'statut',
   'cree_par',
   'modifie_par',
@@ -182,15 +183,19 @@ export function calculerEcritures(root, livres) {
 
     // Ce que le référentiel décide et que le cadrage ne dicte pas. Pour une
     // règle, le rattachement aux fonctionnalités ; pour un document
-    // d'architecture, sa nature et les composants qu'il relie. La propagation
-    // les préserve, elle ne les choisit jamais.
-    const propres =
-      collection === 'rules'
+    // d'architecture, sa nature et les composants qu'il relie ; pour une règle
+    // ou une décision, ce qu'elle applique d'un autre référentiel —
+    // RG-regle-du-socle-citee. La propagation les préserve, elle ne les
+    // choisit jamais.
+    const propres = {
+      ...(collection === 'rules'
         ? { fonctionnalites: existante?.fonctionnalites ?? [] }
         : {
             ...(existante?.nature !== undefined ? { nature: existante.nature } : {}),
             ...(existante?.composants !== undefined ? { composants: existante.composants } : {}),
-          };
+          }),
+      ...(existante?.applique !== undefined ? { applique: existante.applique } : {}),
+    };
 
     // Une règle doit être trouvable par la navigation du référentiel, qui passe
     // par les fonctionnalités. Les cibles d'architecture se consultent par leur
