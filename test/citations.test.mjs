@@ -19,6 +19,7 @@ import {
   resoudrePrefixe,
   comparerCadrages,
   etatDesCitations,
+  etatDeCible,
   verifierCitations,
 } from '../src/citations.mjs';
 import { checkRepo } from '../src/verifier.mjs';
@@ -289,6 +290,15 @@ await test('le préfixe du projet cite le référentiel lui-même', () => {
   egal(formaterAnomalie(a, 'en').includes('in this repo'), true);
 });
 
+await test('l’état d’une citation se calcule aussi contre sa seule cible, pour qui l’a lue ailleurs', () => {
+  const c = lireCitation('socle:RG-x@2026-003');
+  egal(etatDeCible(c, { statut: 'actif', modifie_par: [] }), { etat: 'a-jour' });
+  egal(etatDeCible(c, { statut: 'actif', modifie_par: ['2026-002', '2026-010'] }), { etat: 'perimee', recents: ['2026-010'] });
+  egal(etatDeCible(c, { statut: 'abroge', modifie_par: ['2026-011'] }), { etat: 'abrogee', cadrage: '2026-011' });
+  egal(etatDeCible(c, null), { etat: 'absente' });
+  egal(etatDeCible(c, undefined, { lu: false }), { etat: 'non-verifiee' });
+});
+
 // --- dans la vérification ---
 
 await test('la vérification porte les citations en avertissements, et jamais en erreurs', () => {
@@ -310,7 +320,7 @@ await test('sans référentiels cités fournis, la vérification dit ses citatio
 });
 
 await test('la bibliothèque expose la citation à qui la lit, comme le reste du format', () => {
-  for (const nom of ['lireCitation', 'referentielsCites', 'resoudrePrefixe', 'comparerCadrages', 'etatDesCitations', 'verifierCitations'])
+  for (const nom of ['lireCitation', 'referentielsCites', 'resoudrePrefixe', 'comparerCadrages', 'etatDesCitations', 'etatDeCible', 'verifierCitations'])
     vrai(typeof bibliotheque[nom] === 'function', `${nom} n'est pas exporté par verifier.mjs`);
 });
 

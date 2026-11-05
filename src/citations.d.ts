@@ -81,6 +81,20 @@ export function etatDesCitations(
   options?: OptionsCitations,
 ): EtatDeCitation[];
 
+/**
+ * L'état d'une citation face à sa seule cible, lue dans le référentiel cité :
+ * `null` si elle est introuvable, `lu: false` si le référentiel n'a pas pu être lu.
+ */
+export function etatDeCible(
+  citation: Pick<Citation, 'cadrage'>,
+  cible: { readonly statut?: string; readonly modifie_par?: readonly string[] } | null | undefined,
+  options?: { readonly lu?: boolean },
+): {
+  etat: 'a-jour' | 'perimee' | 'abrogee' | 'absente' | 'non-verifiee';
+  recents?: string[];
+  cadrage?: string | null;
+};
+
 /** Les avertissements des citations, et de la déclaration des référentiels cités. Jamais une erreur. */
 export function verifierCitations(
   repo: { readonly config?: unknown; readonly rules: ReadonlyMap<string, unknown>; readonly decisions?: ReadonlyMap<string, unknown> },

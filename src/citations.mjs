@@ -162,17 +162,31 @@ export function etatDesCitations(repo, { cites = new Map() } = {}) {
 
     const depot = adresse.nature === 'projet' ? null : adresse.repo;
     const referentiel = adresse.nature === 'projet' ? repo : cites.get(citation.prefixe);
-    if (!estLu(referentiel)) return { citation, repo: depot, etat: 'non-verifiee' };
-
-    const cible = trouver(referentiel, citation.id);
-    if (!cible) return { citation, repo: depot, etat: 'absente' };
-    const modifie_par = Array.isArray(cible.modifie_par) ? cible.modifie_par : [];
-    if (cible.statut === 'abroge')
-      return { citation, repo: depot, etat: 'abrogee', cadrage: modifie_par.at(-1) ?? null };
-    const recents = modifie_par.filter((c) => comparerCadrages(c, citation.cadrage) > 0);
-    if (recents.length) return { citation, repo: depot, etat: 'perimee', recents };
-    return { citation, repo: depot, etat: 'a-jour' };
+    const lu = estLu(referentiel);
+    return { citation, repo: depot, ...etatDeCible(citation, lu ? trouver(referentiel, citation.id) : undefined, { lu }) };
   }
+}
+
+/**
+ * L'état d'une citation face à sa seule cible, telle que lue dans le
+ * référentiel cité — pour qui a lu la cible lui-même, une interface par
+ * exemple, et doit dire ce que dit la vérification.
+ *
+ * `cible` est la règle ou la décision citée, `null` si elle est introuvable ;
+ * `lu: false` dit que le référentiel cité n'a pas pu être lu.
+ *
+ * @param {{ cadrage: string }} citation une citation lue par `lireCitation`
+ * @param {{ statut?: string, modifie_par?: string[] } | null | undefined} cible
+ * @param {{ lu?: boolean }} [options]
+ * @returns {{ etat: 'a-jour' | 'perimee' | 'abrogee' | 'absente' | 'non-verifiee', recents?: string[], cadrage?: string | null }}
+ */
+export function etatDeCible(citation, cible, { lu = true } = {}) {
+  if (!lu) return { etat: 'non-verifiee' };
+  if (!cible) return { etat: 'absente' };
+  const modifie_par = Array.isArray(cible.modifie_par) ? cible.modifie_par : [];
+  if (cible.statut === 'abroge') return { etat: 'abrogee', cadrage: modifie_par.at(-1) ?? null };
+  const recents = modifie_par.filter((c) => comparerCadrages(c, citation.cadrage) > 0);
+  return recents.length ? { etat: 'perimee', recents } : { etat: 'a-jour' };
 }
 
 /**
