@@ -782,6 +782,31 @@ test('propage un énoncé vers une décision d’architecture', (racine) => {
   assert(ecrit.includes('cree_par: 2026-001'), 'index cree_par non renseigné sur la décision');
 });
 
+// Une citation d'un autre référentiel se décide dans le fichier de la règle,
+// comme son rattachement : la propagation la garde, sans jamais la choisir —
+// RG-regle-du-socle-citee. La perdre à la réécriture effacerait ce que le
+// citant applique, au moment même où un cadrage modifie sa règle.
+test('la propagation garde ce qu’une règle ou une décision applique d’un autre référentiel', (racine) => {
+  socle(racine);
+  ecrireRegle(racine, 'RG-a', 'Périmé.', { applique: "['socle:RG-nommage@2026-012']" });
+  ecrireCible(racine, 'decisions', 'ADR-b', 'Périmé.', { applique: "['socle:ADR-runners@2026-003']" });
+  ecrireCadrageCible(
+    racine,
+    '2026-001',
+    'livree',
+    [{ regle: 'RG-a', operation: 'cree' }, { adr: 'ADR-b', operation: 'cree' }],
+    { 'RG-a': 'À jour.', 'ADR-b': 'À jour.' },
+  );
+
+  const r = propager(racine);
+  assert(r.ok, `échec inattendu : ${r.problemes.join(', ')}`);
+  const regle = readFileSync(join(racine, 'rules/RG-a.md'), 'utf8');
+  const decision = readFileSync(join(racine, 'decisions/ADR-b.md'), 'utf8');
+  assert(regle.includes('applique: [socle:RG-nommage@2026-012]'), `citation perdue sur la règle :\n${regle}`);
+  assert(decision.includes('applique: [socle:ADR-runners@2026-003]'), `citation perdue sur la décision :\n${decision}`);
+  assert(propager(racine).ecritures.length === 0, 'la citation rend la propagation non idempotente');
+});
+
 test('propage un énoncé vers un document d’architecture', (racine) => {
   socle(racine);
   ecrireCible(racine, 'architecture', 'FLX-export', 'À propager.', { nature: 'flux' });

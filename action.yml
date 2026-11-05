@@ -67,6 +67,16 @@ inputs:
       celui que pose Skanon le partagent, sous deux noms de fichier différents.
     required: false
     default: Vérification du référentiel
+
+  jeton-referentiels-cites:
+    description: >
+      Un jeton qui lit, en lecture seule, les référentiels que celui-ci cite dans
+      `referentiels_cites` — RG-citation-signalee-chez-le-citant. Le jeton du
+      workflow ne lit que son propre dépôt : sans celui-ci, un référentiel cité
+      privé ne se lit pas, et ses citations se disent non vérifiées, sans
+      échouer. Un référentiel cité public se lit sans jeton.
+    required: false
+    default: ''
 outputs:
   ecritures:
     description: Nombre de règles écrites (ou qui le seraient en simulation).
@@ -101,6 +111,10 @@ runs:
     - name: Vérifier et propager
       id: propager
       shell: bash
+      env:
+        # Lu par la vérification pour cloner les référentiels cités ; jamais
+        # affiché, la sortie de Git étant tue.
+        SSK_CANON_JETON_CITES: ${{ inputs.jeton-referentiels-cites }}
       run: |
         cd "${RUNNER_TEMP}/ssk-canon-action"
         CIBLE="${GITHUB_WORKSPACE}/${{ inputs.referentiel }}"

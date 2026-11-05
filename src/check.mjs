@@ -4,15 +4,18 @@
 // système de fichiers et s'exécute aussi dans un navigateur. Ce module ne fait
 // que charger le dépôt et lui passer le relais.
 //
-//   node src/check.mjs [chemin-du-depot] [--base <ref>] [--sans-immuabilite] [--livraison]
+//   node src/check.mjs [chemin-du-depot] [--base <ref>] [--sans-immuabilite] [--livraison] [--cites <dossier>]
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { load } from 'js-yaml';
 import { loadRepo } from './parse.mjs';
 import { checkRepo } from './verifier.mjs';
 import { erreur, avertissement, enTexte, formaterAnomalie, langueDuDepot } from './anomalies.mjs';
 import { resoudreNoms } from './noms.mjs';
+import { referentielsCites } from './citations.mjs';
 import {
   lireFichierA,
   dossierPresentA,
@@ -27,10 +30,18 @@ export { checkRepo };
 
 /**
  * @param {string} root
- * @param {{ ignorerIndexDerives?: boolean, livres?: Set<string>, base?: string, immuabilite?: boolean, livraison?: boolean }} [options]
+ * @param {{ ignorerIndexDerives?: boolean, livres?: Set<string>, base?: string, immuabilite?: boolean, livraison?: boolean, dossierCites?: string, cloner?: boolean }} [options]
  */
 export function check(root, options = {}) {
-  const { base, livres: livresFournis, immuabilite = true, livraison = false, ...reste } = options;
+  const {
+    base,
+    livres: livresFournis,
+    immuabilite = true,
+    livraison = false,
+    dossierCites,
+    cloner = true,
+    ...reste
+  } = options;
 
   // Le statut d'un cadrage n'est pas déclaré : il se déduit du dépôt, et la
   // branche principale est ce qui établit la livraison. Hors dépôt Git — un
@@ -47,9 +58,23 @@ export function check(root, options = {}) {
   // qui n'existe pas — c'est la propagation qui en répond, RG-propagation-verifiee.
   // La fusion se dit, sans rien bloquer — RG-branches-survivantes-signalees.
   const fusion = livresFournis ? null : pointDeFusion(root, reference);
+
+  // Les référentiels cités, lus sur leur branche principale : ce qui n'a pas
+  // pu l'être se dit non vérifié — RG-citation-signalee-chez-le-citant.
+  const clones = [];
+  let cites;
+  try {
+    cites = chargerReferentielsCites(repo.config, {
+      obtenir: obtenirReferentielCite({ dossierCites, cloner, clones }),
+    });
+  } finally {
+    for (const c of clones) rmSync(c, { recursive: true, force: true });
+  }
+
   const resultat = checkRepo(repo, {
     ...reste,
     livres,
+    cites,
     ...(fusion ? { ignorerIndexDerives: true } : {}),
   });
   const avertissementFusion = fusion
@@ -85,6 +110,66 @@ export function check(root, options = {}) {
     ...erreursLivraison,
   ];
   return { ...resultat, anomalies, ...enTexte(anomalies) };
+}
+
+/**
+ * Charge les référentiels que `config` déclare dans `referentiels_cites`.
+ *
+ * `obtenir(repo)` rend le répertoire où le dépôt cité se lit, ou `null` s'il
+ * n'a pas pu être obtenu — faute d'accès, le plus souvent. Le résultat associe
+ * à chaque préfixe le référentiel chargé, ou `null`.
+ *
+ * @param {object | null} config
+ * @param {{ obtenir: (repo: string) => string | null }} options
+ * @returns {Map<string, object | null>}
+ */
+export function chargerReferentielsCites(config, { obtenir }) {
+  const cites = new Map();
+  for (const [prefixe, repo] of referentielsCites(config).cites) {
+    const chemin = obtenir(repo);
+    cites.set(prefixe, chemin ? loadRepo(chemin) : null);
+  }
+  return cites;
+}
+
+/**
+ * Où lire un dépôt cité : sous `dossierCites/<propriétaire>/<nom>` s'il y est
+ * — un workflow qui l'a récupéré lui-même, un test —, sinon par un clone
+ * superficiel de sa branche par défaut.
+ *
+ * Le clone passe par le jeton de `SSK_CANON_JETON_CITES` quand il est fourni :
+ * le jeton d'un workflow ne lit que son propre dépôt, et un référentiel cité
+ * privé en demande un autre, en lecture seule. Sans jeton, seul un dépôt public
+ * se lit. Un échec, quel qu'il soit, rend `null` sans rien afficher : la sortie
+ * de Git pourrait porter l'adresse, et l'adresse le jeton.
+ */
+function obtenirReferentielCite({ dossierCites, cloner, clones }) {
+  return (repo) => {
+    if (dossierCites) {
+      const chemin = join(dossierCites, ...repo.split('/'));
+      if (existsSync(chemin)) return chemin;
+    }
+    if (!cloner) return null;
+    const jeton = process.env.SSK_CANON_JETON_CITES;
+    const serveur = new URL(process.env.GITHUB_SERVER_URL ?? 'https://github.com');
+    if (jeton) {
+      serveur.username = 'x-access-token';
+      serveur.password = jeton;
+    }
+    const destination = mkdtempSync(join(tmpdir(), 'canon-cite-'));
+    clones.push(destination);
+    try {
+      execFileSync('git', ['clone', '--quiet', '--depth', '1', new URL(`${repo}.git`, serveur).href, destination], {
+        stdio: 'ignore',
+        timeout: 120_000,
+        // jamais d'invite : sans accès, la vérification doit le dire, non attendre
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      });
+      return destination;
+    } catch {
+      return null;
+    }
+  };
 }
 
 /**
@@ -206,15 +291,21 @@ function checkImmuabilite(root, base, livres, dossier) {
 // exécution directe
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = process.argv.slice(2);
-  const iBase = args.indexOf('--base');
-  const base = iBase === -1 ? undefined : args[iBase + 1];
-  // sans `--base`, aucun indice n'est à sauter : -1 + 1 vaut 0, qui est le
-  // chemin lui-même
-  const iValeur = iBase === -1 ? -1 : iBase + 1;
-  const root = args.find((a, i) => !a.startsWith('--') && i !== iValeur) ?? '.';
+  // les options qui prennent une valeur, et l'indice de cette valeur, à sauter
+  // pour trouver le chemin
+  const valeurs = new Map();
+  for (const option of ['--base', '--cites']) {
+    const i = args.indexOf(option);
+    if (i !== -1) valeurs.set(i + 1, option);
+  }
+  const valeurDe = (option) => args[[...valeurs].find(([, o]) => o === option)?.[0]];
+  const base = valeurDe('--base');
+  const dossierCites = valeurDe('--cites');
+  const root = args.find((a, i) => !a.startsWith('--') && !valeurs.has(i)) ?? '.';
 
   const { anomalies, counts } = check(root, {
     ...(base ? { base } : {}),
+    ...(dossierCites ? { dossierCites } : {}),
     immuabilite: !args.includes('--sans-immuabilite'),
     livraison: args.includes('--livraison'),
   });
