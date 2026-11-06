@@ -25,10 +25,11 @@
  * présenterait comme l'état du produit ce qu'il était des semaines plus tôt —
  * sans que rien ne le signale.
  */
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { lireNoms, nomsDeclares } from './config-noms.mjs';
 
 const REF = 'origin/main';
@@ -212,6 +213,25 @@ function lireEnLot(objets) {
 }
 
 /**
+ * L'identifiant de chaque objet `<ref>:<chemin>`, en un seul processus : de quoi
+ * comparer deux versions d'un fichier sans le lire. Un objet absent n'en a pas.
+ */
+function empreintesEnLot(objets) {
+  const empreintes = new Map();
+  if (objets.length === 0) return empreintes;
+  const sortie = execFileSync('git', ['-C', racine, 'cat-file', '--batch-check=%(objectname)'], {
+    input: `${objets.join('\n')}\n`,
+    encoding: 'utf8',
+    stdio: ['pipe', 'pipe', 'ignore'],
+    maxBuffer: 64 * 1024 * 1024,
+  }).split('\n');
+  objets.forEach((objet, i) => {
+    if (/^[0-9a-f]{40,64}$/.test(sortie[i])) empreintes.set(objet, sortie[i]);
+  });
+  return empreintes;
+}
+
+/**
  * Les noms que le référentiel déclare — RG-noms-declares —, lus sur la même
  * référence que le reste. Sans configuration lisible, ceux du format.
  */
@@ -290,15 +310,43 @@ const idsLivres = new Set(idsDeCadrages(surMain));
  * règles, un chantier en cours n'est visible nulle part ailleurs — et c'est
  * celui qu'on risque de refaire, ou de contredire.
  */
-const aLireEnCours = [];
-for (const branche of git('branch', '-r', '--no-merged', REF, '--format=%(refname:short)').split('\n').filter(Boolean)) {
+const branchesEnCours = git('branch', '-r', '--no-merged', REF, '--format=%(refname:short)').split('\n').filter(Boolean);
+const surBranche = []; // { id, branche } : chaque cadrage non livré, sur chaque branche qui le porte
+for (const branche of branchesEnCours) {
   let ids = [];
   try {
     ids = git('ls-tree', '--name-only', `${branche}:${D_CADRAGES}`).split('\n').filter((n) => /^\d{4}-\d{3}$/.test(n));
   } catch { /* pas de cadrages sur cette branche */ }
-  for (const id of ids) {
-    if (!idsLivres.has(id) && !aLireEnCours.some((e) => e.id === id)) aLireEnCours.push({ id, branche });
+  for (const id of ids) if (!idsLivres.has(id)) surBranche.push({ id, branche });
+}
+
+/**
+ * Deux branches empilées portent le même cadrage. Leur nom ne départage rien
+ * (2026-025/01) : seul le contenu dit s'il y a deux versions, et la date du
+ * dernier commit qui touche le dossier du cadrage dit laquelle est la plus
+ * récente — celle qu'on lit. Les autres versions se signalent, sans se perdre.
+ */
+const arbres = empreintesEnLot(surBranche.map(({ id, branche }) => `${branche}:${D_CADRAGES}/${id}`));
+const aLireEnCours = [];
+for (const id of new Set(surBranche.map((e) => e.id))) {
+  const versions = new Map(); // arbre du dossier → branches qui le portent
+  for (const { branche } of surBranche.filter((e) => e.id === id)) {
+    const arbre = arbres.get(`${branche}:${D_CADRAGES}/${id}`);
+    if (arbre) versions.set(arbre, [...(versions.get(arbre) ?? []), branche]);
   }
+  if (versions.size === 1) {
+    aLireEnCours.push({ id, branche: [...versions.values()][0][0], divergentes: [] });
+    continue;
+  }
+  // Plusieurs versions : on ne date que dans ce cas, un appel par branche.
+  const datees = [...versions.values()].map((branches) => branches
+    .map((branche) => {
+      const [date, ct] = git('log', '-1', '--format=%cs %ct', branche, '--', `${D_CADRAGES}/${id}`).trim().split(' ');
+      return { branche, date, ct: Number(ct) };
+    })
+    .sort((a, b) => b.ct - a.ct)[0]);
+  const [retenue, ...autres] = datees.sort((a, b) => b.ct - a.ct);
+  aLireEnCours.push({ id, branche: retenue.branche, date: retenue.date, divergentes: autres });
 }
 
 /**
@@ -336,7 +384,8 @@ const objetsMain = surMain.filter((f) => {
 });
 const lus = lireEnLot([
   ...objetsMain.map((f) => `${REF}:${f}`),
-  ...aLireEnCours.map(({ id, branche }) => `${branche}:${fichierCadrage(id)}`),
+  // Chaque version, non la seule retenue : ses impacts disent ce que sa branche a le droit de changer.
+  ...surBranche.map(({ id, branche }) => `${branche}:${fichierCadrage(id)}`),
   ...[...decisionsACharger.values()].flat(),
 ]);
 
@@ -352,19 +401,80 @@ const decisions = charger(D_DECISIONS);
 const architecture = charger(D_ARCHITECTURE);
 const livres = charger(D_CADRAGES);
 const enCours = aLireEnCours
-  .map(({ id, branche }) => {
+  .map(({ id, branche, date, divergentes }) => {
     const c = analyser(lus.get(`${branche}:${fichierCadrage(id)}`));
-    return c && { ...c, branche };
+    return c && { ...c, branche, date, divergentes };
   })
   .filter(Boolean);
+
+/**
+ * Ce qu'une branche change à ce qui est livré — une règle, une fonctionnalité,
+ * un cadrage livré — n'apparaît nulle part avant sa fusion. On le compare à main
+ * autant qu'au départ de la branche : ce que main a déjà repris, après une
+ * fusion par squash par exemple, n'est plus une modification. Les fichiers que
+ * le cadrage de la branche déclare dans ses impacts sont à leur place sur elle
+ * (RG-referentiel-projection) : seuls les autres se listent.
+ *
+ * Ce sont des propositions, non l'état du référentiel (2026-025/02) : elles se
+ * disent sur leur branche. Une lecture seule de fichiers n'en a pas l'usage.
+ */
+const surMainEnsemble = new Set(surMain);
+const CHEMIN_LIVRE = new RegExp(`^(?:(?:${DOSSIERS.map(echapper).join('|')})/[^/]+\\.md|${echapper(D_CADRAGES)}/(\\d{4}-\\d{3})/.+)$`);
+const modifications = [];
+if (domaines.length > 0 || motifs.length > 0 || (issues.length === 0 && aLire.length === 0)) {
+  // Un diff par branche, tous ensemble : l'un après l'autre, ils coûtaient une
+  // demi-seconde sur un référentiel d'une quinzaine de branches.
+  const diff = promisify(execFile);
+  const diffs = await Promise.all(branchesEnCours.map((branche) =>
+    // Les trois points comparent au point de départ de la branche.
+    diff('git', ['-C', racine, 'diff', '--name-status', '--no-renames', `${REF}...${branche}`, '--', ...DOSSIERS, D_CADRAGES], { maxBuffer: 64 * 1024 * 1024 })
+      .then(({ stdout }) => stdout)
+      .catch(() => null))); // une branche illisible n'emporte pas les autres
+  const candidats = [];
+  for (const [k, branche] of branchesEnCours.entries()) {
+    const depuisDepart = diffs[k];
+    if (depuisDepart === null) continue;
+    const siens = surBranche.filter((e) => e.branche === branche).map((e) => e.id);
+    const declares = new Set(siens
+      .flatMap((id) => analyser(lus.get(`${branche}:${fichierCadrage(id)}`))?.impacts ?? [])
+      .map((i) => i.split(' ')[1]));
+    for (const ligne of depuisDepart.split('\n').filter(Boolean)) {
+      const [statut, chemin] = ligne.split('\t');
+      const m = chemin.match(CHEMIN_LIVRE);
+      if (!m || chemin.endsWith('/README.md') || !surMainEnsemble.has(chemin)) continue;
+      if (!m[1] && declares.has(chemin.split('/').pop().replace(/\.md$/, ''))) continue;
+      candidats.push({ branche, chemin, operation: statut === 'D' ? 'supprime' : 'modifie', cadrages: siens });
+    }
+  }
+  // Ce que main porte déjà à l'identique n'est plus une modification.
+  const empreintes = empreintesEnLot(candidats.flatMap(({ branche, chemin }) => [`${branche}:${chemin}`, `${REF}:${chemin}`]));
+  for (const c of candidats) {
+    if (empreintes.get(`${c.branche}:${c.chemin}`) === empreintes.get(`${REF}:${c.chemin}`)) continue;
+    modifications.push({ ...c, date: git('log', '-1', '--format=%cs', c.branche, '--', c.chemin).trim() });
+  }
+}
+/** Les branches qui modifient ce fichier livré, à dire sur sa ligne. */
+const modifieeSur = (chemin) => {
+  const branches = modifications.filter((m) => m.chemin === chemin).map((m) => m.branche);
+  return branches.length ? ` | MODIFIEE_SUR ${branches.join(', ')}` : '';
+};
 const decisionsDe = (id) => (decisionsACharger.get(id) ?? [])
   .map((objet) => ({ objet, d: analyser(lus.get(objet)) }))
   .filter(({ d }) => d);
 
 // ── Restitution ──────────────────────────────────────────────────────────────
 
-const ligneCadrage = (c, etiquette) =>
+function ligneCadrage(c, etiquette) {
   dire(`  ${etiquette} ${c.id} | ${c.libelle} | domaines: ${(c.domaines ?? []).join(', ')}${c.branche ? ` | ${c.branche}` : ''}`);
+  direVersions(c, '    ');
+}
+
+/** Les autres versions d'un cadrage en cours, plus anciennes que celle qu'on lit. */
+function direVersions(c, retrait) {
+  for (const v of c.divergentes ?? []) {
+    dire(`${retrait}VERSION_DIVERGENTE ${v.branche} (${v.date}), plus ancienne que ${c.branche} (${c.date}) — --lire ${v.branche}:${fichierCadrage(c.id)}`);
+  }
+}
 
 /**
  * Ce qu'un cadrage en cours changerait aux règles n'apparaît nulle part
@@ -396,6 +506,11 @@ if (domaines.length === 0 && issues.length === 0 && motifs.length === 0 && aLire
   bloc();
   dire(`CADRAGES_EN_COURS ${enCours.length}`);
   for (const c of enCours) ligneCadrage(c, 'EN_COURS');
+  bloc();
+  dire(`MODIFICATIONS_EN_COURS ${modifications.length}`);
+  for (const m of modifications) {
+    dire(`  MODIFIE_EN_COURS ${m.branche}:${m.chemin} [${m.operation}] | ${m.date} | cadrage de la branche : ${m.cadrages.join(', ') || 'aucun'}`);
+  }
   // Les noms à employer au lieu de ceux du format, que le skill cite.
   const declares = nomsDeclares(noms);
   if (declares) dire(`NOMS ${declares}`);
@@ -419,9 +534,9 @@ for (const id of domaines) {
   const siennes = fonctionnalites.filter((f) => (f.domaines ?? []).includes(id));
   for (const f of siennes) {
     bloc({ contexte: [titre] });
-    dire(`  FONCTIONNALITE ${f.id} | ${f.libelle}`);
+    dire(`  FONCTIONNALITE ${f.id} | ${f.libelle}${modifieeSur(`${D_FONCTIONNALITES}/${f.id}.md`)}`);
     for (const r of regles.filter((r) => (r.fonctionnalites ?? []).includes(f.id))) {
-      dire(`    REGLE ${r.id} [${r.statut ?? '?'}] | ${r.enonce}`);
+      dire(`    REGLE ${r.id} [${r.statut ?? '?'}] | ${r.enonce}${modifieeSur(`${D_REGLES}/${r.id}.md`)}`);
     }
   }
 
@@ -431,7 +546,7 @@ for (const id of domaines) {
   const cadragesDuDomaine = new Set(livres.filter((c) => (c.domaines ?? []).includes(id)).map((c) => c.id));
   for (const d of decisions) {
     const auteurs = [d.cree_par, ...(d.modifie_par ?? [])].filter(Boolean);
-    if (auteurs.some((a) => cadragesDuDomaine.has(a))) dire(`  DECISION ${d.id} [${d.statut ?? '?'}] | ${d.enonce}`);
+    if (auteurs.some((a) => cadragesDuDomaine.has(a))) dire(`  DECISION ${d.id} [${d.statut ?? '?'}] | ${d.enonce}${modifieeSur(`${D_DECISIONS}/${d.id}.md`)}`);
   }
 
   for (const [etiquette, liste] of [['CADRAGE_LIVRE', livres], ['CADRAGE_EN_COURS', enCours]]) {
@@ -463,22 +578,52 @@ for (const issue of issues) {
     bloc();
     dire(`ISSUE ${issue} → CADRAGE ${c.id} | ${c.libelle} | ${c.branche ? `en cours sur ${c.branche}` : 'livré'}`);
     dire(`  lire : --lire ${c.branche ?? REF}:${fichierCadrage(c.id)}`);
+    direVersions(c, '  ');
     direImpacts(c, '  ');
     direDecisions(c, '  ');
   }
 }
 
 /**
- * Une branche de cadrage porte aussi les cadrages livrés avant qu'elle ne
- * parte : n'y chercher que dans son propre cadrage, sans quoi chaque cadrage
- * livré reviendrait une fois par branche ouverte depuis.
+ * Un terme se cherche sans ses accents ni sa casse, et par sa racine : la
+ * consultation ne doit pas dépendre du mot que l'agent choisit. « supprimer »
+ * trouve « supprimé », « depot » trouve « dépôt », « archiver » trouve
+ * « archivage ». La racine retire une terminaison courante, sans descendre
+ * sous quatre lettres : « pose » ne doit pas trouver « possible ».
  */
-function chercher(ref, chemins, terme) {
-  try {
-    return git('grep', '-i', '-n', '-F', '-e', terme, ref, '--', ...chemins).split('\n').filter(Boolean);
-  } catch {
-    return []; // git grep sort en erreur quand il ne trouve rien
+const sansAccents = (t) => t.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+const TERMINAISONS = ['issements', 'issement', 'ements', 'ement', 'ations', 'ation', 'euses', 'euse', 'eurs', 'eur', 'ages', 'age', 'ees', 'ee', 'es', 'er', 'ez', 'e', 's', 'x'];
+function racineDuMot(mot) {
+  const t = TERMINAISONS.find((f) => mot.endsWith(f) && mot.length - f.length >= 4);
+  return t ? mot.slice(0, -t.length) : mot;
+}
+function motifEnExpression(terme) {
+  const mots = sansAccents(terme).split(/[^\p{L}\p{N}]+/u).filter(Boolean).map((m) => echapper(racineDuMot(m)));
+  return new RegExp(`(?<![\\p{L}\\p{N}])${mots.join('[\\p{L}\\p{N}]*[^\\p{L}\\p{N}]+')}`, 'u');
+}
+
+/**
+ * Où chercher. Sur main : les règles, les décisions, l'architecture, les
+ * fonctionnalités, les domaines et les cadrages. Sur une branche : son seul
+ * cadrage — elle porte aussi les cadrages livrés avant qu'elle ne parte, qui
+ * reviendraient sinon une fois par branche ouverte depuis —, ses versions plus
+ * anciennes, et les fichiers livrés qu'elle modifie.
+ */
+function objetsOuChercher() {
+  const dossiers = [D_REGLES, D_DECISIONS, D_ARCHITECTURE, D_FONCTIONNALITES, D_DOMAINES, D_CADRAGES];
+  const livres = surMain.filter((f) => f.endsWith('.md') && dossiers.includes(f.split('/')[0])).map((f) => `${REF}:${f}`);
+  const enCoursObjets = [];
+  for (const c of enCours) {
+    for (const branche of [c.branche, ...c.divergentes.map((v) => v.branche)]) {
+      try {
+        for (const f of git('ls-tree', '-r', '--name-only', branche, '--', `${D_CADRAGES}/${c.id}`).split('\n')) {
+          if (f.endsWith('.md')) enCoursObjets.push(`${branche}:${f}`);
+        }
+      } catch { /* branche illisible */ }
+    }
   }
+  for (const m of modifications) if (m.operation !== 'supprime') enCoursObjets.push(`${m.branche}:${m.chemin}`);
+  return { livres, enCours: enCoursObjets };
 }
 const couper = (l) => (l.length > 200 ? `${l.slice(0, 199)}…` : l);
 
@@ -486,25 +631,32 @@ const couper = (l) => (l.length > 200 ? `${l.slice(0, 199)}…` : l);
  * Regroupé par fichier : un terme courant revient des dizaines de fois dans un
  * même cadrage, et c'est le fichier qu'il faut ouvrir, non chaque ligne.
  */
-function parFichier(lignes) {
+function chercher(objets, textes, expression) {
   const fichiers = new Map();
-  for (const l of lignes) {
-    const m = l.match(/^([^:]+:[^:]+):(\d+):(.*)$/);
-    if (!m) continue;
-    const f = fichiers.get(m[1]) ?? { n: 0, premiere: `${m[2]}: ${m[3].trim()}` };
-    f.n++;
-    fichiers.set(m[1], f);
+  for (const objet of objets) {
+    const lignesDuFichier = (textes.get(objet) ?? '').split('\n');
+    lignesDuFichier.forEach((l, k) => {
+      if (!expression.test(sansAccents(l))) return;
+      const f = fichiers.get(objet) ?? { n: 0, premiere: `${k + 1}: ${l.trim()}` };
+      f.n++;
+      fichiers.set(objet, f);
+    });
   }
   return fichiers;
 }
 
-for (const terme of motifs) {
-  const livresTrouves = parFichier(chercher(REF, [D_REGLES, D_DECISIONS, D_ARCHITECTURE, D_CADRAGES], terme));
-  const enCoursTrouves = parFichier(enCours.flatMap((c) => chercher(c.branche, [`${D_CADRAGES}/${c.id}`], terme)));
-  bloc();
-  dire(`MOTIF ${terme} | fichiers livrés: ${livresTrouves.size} | fichiers en cours: ${enCoursTrouves.size}`);
-  for (const [f, { n, premiere }] of livresTrouves) dire(`  LIVRE ${f} (${n}) | ${couper(premiere)}`);
-  for (const [f, { n, premiere }] of enCoursTrouves) dire(`  EN_COURS ${f} (${n}) | ${couper(premiere)}`);
+if (motifs.length > 0) {
+  const ou = objetsOuChercher();
+  const textes = lireEnLot([...ou.livres, ...ou.enCours]);
+  for (const terme of motifs) {
+    const expression = motifEnExpression(terme);
+    const livresTrouves = chercher(ou.livres, textes, expression);
+    const enCoursTrouves = chercher(ou.enCours, textes, expression);
+    bloc();
+    dire(`MOTIF ${terme} | fichiers livrés: ${livresTrouves.size} | fichiers en cours: ${enCoursTrouves.size}`);
+    for (const [f, { n, premiere }] of livresTrouves) dire(`  LIVRE ${f} (${n}) | ${couper(premiere)}`);
+    for (const [f, { n, premiere }] of enCoursTrouves) dire(`  EN_COURS ${f} (${n}) | ${couper(premiere)}`);
+  }
 }
 
 // ── Lecture condensée ────────────────────────────────────────────────────────

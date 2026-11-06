@@ -606,6 +606,14 @@ livraisons de retard.
 
 **Une branche fusionnée qui reste sur l'origine trompe la consultation.** Le skill tient chaque branche distante pour un travail en cours : il ne peut pas savoir qu'une fusion par squash a déjà porté son contenu sur `main`. Une branche laissée derrière une demande fusionnée annonce donc comme en cours des modifications que `main` a déjà absorbées, puis dépassées, et la synthèse remonte ces faux recouvrements à l'appelant, qui les soumet à l'utilisateur. Le 6 novembre 2026, sur 84 fichiers livrés que la consultation disait modifiés sur une branche, 62 venaient de telles branches ; 244 traînaient dans 22 référentiels. Le seul remède durable est la suppression de la branche à la fusion, que `outillage/preparer-depot-cadre.sh` règle (« Installation dans un dépôt cadré ») : un référentiel sans ce réglage voit ses consultations se dégrader à chaque cadrage livré.
 
+Sur les branches, il voit aussi ce qui ne se lit pas dans le dossier d'un
+cadrage neuf. Quand deux branches empilées portent un même cadrage en deux
+versions, il lit la plus récente — celle du dernier commit qui touche son
+dossier — et nomme l'autre. Il liste les fichiers livrés qu'une branche
+réécrit hors des impacts de son cadrage. Et `--motif` cherche sans tenir compte
+des accents ni des terminaisons courantes, jusque dans les fonctionnalités et
+les domaines.
+
 Il s'exécute dans un sous-agent (`context: fork`) : une consultation lit une
 quinzaine de milliers de tokens de cadrages et de règles, dont l'appelant ne
 reçoit que la synthèse. Il faut donc lui passer en argument le texte de la
