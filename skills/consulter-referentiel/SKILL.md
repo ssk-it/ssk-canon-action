@@ -101,8 +101,7 @@ répondent en moins d'une seconde.
 | `NOMS <bloc.clé=nom> …` | les dossiers et fichiers que le référentiel nomme autrement que le format (RG-noms-declares) — `dossiers.regles=exigences` : les règles sont dans `exigences/`, non `rules/`. Absente s'il garde ceux du format. Les chemins que ce skill cite sont ceux du format : les lire sous ces noms |
 | `ARCHITECTURE <id> \| <nature> \| …` | composants, flux et contextes documentés |
 | `EN_COURS <id> \| <titre> \| domaines: … \| <branche>` | un cadrage non fusionné — **à lire avec attention** |
-| `VERSION_DIVERGENTE <branche> (<date>), plus ancienne que …` | sous un cadrage en cours : une autre branche en porte une version différente, plus ancienne. La branche de la ligne `EN_COURS` est celle du dernier commit qui touche le dossier du cadrage |
-| `MODIFIE_EN_COURS <branche>:<chemin> [modifie\|supprime] \| <date> \| cadrage de la branche : …` | un fichier livré — règle, fonctionnalité, décision, cadrage livré — qu'une branche réécrit hors des impacts de son cadrage. Une proposition, non l'état du référentiel |
+| `VERSION_CONCURRENTE <branche> (<date>) — ni elle ni <branche> (<date>) ne contient l’autre` | sous un cadrage en cours : une autre branche en porte une version que celle de la ligne `EN_COURS` ne contient pas, et qui ne la contient pas non plus. Chacune porte ce que l'autre n'a pas : les lire toutes deux (§4). La ligne `EN_COURS` nomme la plus récente par la date, ce qui ne la rend pas plus juste. Une version que l'autre contient — une branche empilée restée en arrière — ne se signale pas : le script lit la plus avancée |
 | `REFERENTIEL_NON_RETENU` | la situation a échoué ; sa sortie est relayée au-dessus |
 | `DEPOT_COURANT (inconnu) — <cause>` | git n'a pas dit quel est le dépôt courant ; sa réponse suit |
 | `REFERENTIEL_ILLISIBLE <chemin> — <cause>` | git refuse de lire le référentiel ; sa réponse suit |
@@ -183,10 +182,6 @@ La question et l'option retenue servent à **choisir** les décisions à lire,
 jamais à s'en passer : ce qu'une décision a écarté, et pourquoi, n'est que dans
 son fichier. Le `<ref>:<chemin>` en tête de ligne se passe tel quel à `--lire`.
 
-Une règle, une fonctionnalité ou une ADR qu'une branche réécrit finit par
-`| MODIFIEE_SUR <branche>` : sa version sur cette branche se lit par `--lire
-<branche>:<chemin>`, et se cite comme une proposition.
-
 Sous un cadrage en cours, une ligne `IMPACTS` dit ce qu'il changerait au
 référentiel — `cree`, `modifie`, `abroge` ou `touche`, règle par règle et ADR par
 ADR. Une règle qui contraint la demande et qu'un cadrage en cours abroge ou
@@ -212,9 +207,9 @@ Le script cherche dans l'état livré — règles, décisions, architecture,
 fonctionnalités, domaines, cadrages —, puis dans chaque cadrage en cours, sur sa
 branche et **dans son seul dossier** : une branche porte aussi les cadrages
 livrés avant qu'elle ne parte, qui reviendraient sinon une fois par branche
-ouverte. Il cherche aussi dans les versions plus anciennes d'un cadrage en cours
-et dans les fichiers livrés que des branches réécrivent. Les résultats sont
-regroupés par fichier, avec leur nombre de lignes trouvées et la première.
+ouverte. Il cherche aussi dans les versions concurrentes d'un cadrage en cours.
+Les résultats sont regroupés par fichier, avec leur nombre de lignes trouvées et
+la première.
 
 La recherche ignore la casse, les accents et les terminaisons courantes :
 « supprimer » trouve « supprimé », « depot » trouve « dépôt », « archiver »
@@ -268,7 +263,10 @@ script fait de lui-même sur une branche — son `cadrage.md` et chacune de ses
 décisions, dans le même appel. C'est le chantier qu'on risque de refaire ou de
 contredire : ses énoncés et ses options sont sa proposition, qu'aucun autre
 fichier ne porte encore, et ni ses premiers paragraphes ni sa ligne `IMPACTS` ne
-disent ce qu'il change à la demande présente.
+disent ce qu'il change à la demande présente. **Ses versions concurrentes se
+lisent aussi**, chacune par la commande que donne sa ligne `VERSION_CONCURRENTE` :
+aucune n'est la bonne d'office, et la synthèse dit ce que chacune porte que
+l'autre n'a pas.
 
 ## 5. Restituer
 
@@ -281,7 +279,6 @@ Référentiel <nom> @ origin/main <sha> — domaines consultés : <ids> — term
 - **Règles qui contraignent** — RG-… : ce qu'elle impose à la demande
 - **Décisions à ne pas rouvrir** — ADR-… ou <cadrage>/decisions/… : ce qui est tranché, et le motif
 - **Cadrages en cours qui recouvrent** — <id> (<branche>) : ce qu'il couvre, et le recouvrement
-- **Fichiers livrés modifiés sur une branche** — <chemin> (<branche>) : ce que la branche y change
 - **Contradictions** — ce que la demande dit, ce que le référentiel dit
 ```
 

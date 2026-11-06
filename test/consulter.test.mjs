@@ -129,13 +129,11 @@ Un jeton d'organisation ouvre tous ses dépôts, y compris ceux qui n'ont rien �
 
 **Un dépôt.**
 `);
-// La règle que le cadrage déclare modifier : sa place est sur cette branche.
-writeFileSync(join(travail, 'rules/RG-connexion-optionnelle.md'), `${readFileSync(join(travail, 'rules/RG-connexion-optionnelle.md'), 'utf8')}\nUn jeton d’organisation suffit.\n`);
 git(travail, 'add', '.');
 git(travail, 'commit', '-q', '-m', 'cadrage 2026-016');
 git(travail, 'push', '-q', 'origin', 'cadrage-2026-016');
 
-/** Un commit à une date donnée : c'est elle qui départage deux versions d'un cadrage. */
+/** Un commit à une date donnée : de quoi vérifier que la date ne départage rien. */
 function commitDate(date, message) {
   execFileSync('git', ['-C', travail, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-q', '-m', message], {
     env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date },
@@ -161,14 +159,16 @@ git(travail, 'add', '.');
 git(travail, 'commit', '-q', '-m', 'note');
 git(travail, 'push', '-q', 'origin', 'cadrage-2026-016-empile');
 
-// Deux versions d'un même cadrage sur deux branches empilées : la plus ancienne
-// est la première par ordre alphabétique, la plus récente porte une décision de plus.
+// Deux versions d'un même cadrage sur deux branches empilées. La première est la
+// première par ordre alphabétique ; la suite la contient et porte une décision de
+// plus. Ses commits sont pourtant datés d'avant, comme après un rebase qui garde
+// les dates : c'est l'ascendance qui départage, non la date.
 git(travail, 'checkout', '-q', 'main');
 git(travail, 'checkout', '-q', '-b', 'cadrage-2026-017');
 mkdirSync(join(travail, 'cadrages/2026-017/decisions'), { recursive: true });
 writeFileSync(join(travail, 'cadrages/2026-017/cadrage.md'), cadrage2026017('Révoquer un jeton'));
 git(travail, 'add', '.');
-commitDate('2026-10-01T10:00:00Z', 'cadrage 2026-017');
+commitDate('2026-10-05T10:00:00Z', 'cadrage 2026-017');
 git(travail, 'push', '-q', 'origin', 'cadrage-2026-017');
 git(travail, 'checkout', '-q', '-b', 'cadrage-2026-017-suite');
 writeFileSync(join(travail, 'cadrages/2026-017/cadrage.md'), cadrage2026017('Révoquer un jeton, et le dire à son porteur'));
@@ -184,31 +184,33 @@ option_retenue: par-courriel
 Un jeton révoqué sans prévenir laisse son porteur chercher la panne.
 `);
 git(travail, 'add', '.');
-commitDate('2026-10-05T10:00:00Z', 'cadrage 2026-017 : prévenir le porteur');
+commitDate('2026-10-01T10:00:00Z', 'cadrage 2026-017 : prévenir le porteur');
 git(travail, 'push', '-q', 'origin', 'cadrage-2026-017-suite');
 
-// Une branche qui réécrit une règle livrée sans cadrage pour la porter.
-git(travail, 'checkout', '-q', 'main');
-git(travail, 'checkout', '-q', '-b', 'correction-regle');
-writeFileSync(join(travail, 'rules/RG-pj-retention.md'), `${readFileSync(join(travail, 'rules/RG-pj-retention.md'), 'utf8')}\nUne pièce jointe orpheline part au xylophage.\n`);
-git(travail, 'add', '.');
-git(travail, 'commit', '-q', '-m', 'correction');
-git(travail, 'push', '-q', 'origin', 'correction-regle');
+// Deux versions d'un même cadrage parties chacune de main : aucune ne contient
+// l'autre. Chacune porte ce que l'autre n'a pas.
+const cadrage2026018 = (objectif) => `---
+id: 2026-018
+titre: Expirer les jetons inutilisés
+domaines: [acces]
+---
 
-// Une branche dont main a repris le contenu, comme après une fusion par squash :
-// elle ne change plus rien.
-git(travail, 'checkout', '-q', 'main');
-git(travail, 'checkout', '-q', '-b', 'reprise-identique');
-const repris = `${readFileSync(join(travail, 'rules/RG-chemins-immuables.md'), 'utf8')}\nReprise.\n`;
-writeFileSync(join(travail, 'rules/RG-chemins-immuables.md'), repris);
-git(travail, 'add', '.');
-git(travail, 'commit', '-q', '-m', 'reprise');
-git(travail, 'push', '-q', 'origin', 'reprise-identique');
-git(travail, 'checkout', '-q', 'main');
-writeFileSync(join(travail, 'rules/RG-chemins-immuables.md'), repris);
-git(travail, 'add', '.');
-git(travail, 'commit', '-q', '-m', 'reprise sur main');
-git(travail, 'push', '-q', 'origin', 'main');
+## Objectif
+
+${objectif}
+`;
+for (const [branche, date, objectif] of [
+  ['cadrage-2026-018-a', '2026-10-02T10:00:00Z', 'Expirer un jeton resté inutilisé trente jours.'],
+  ['cadrage-2026-018-b', '2026-10-03T10:00:00Z', 'Expirer un jeton resté inutilisé, et le dire à son porteur.'],
+]) {
+  git(travail, 'checkout', '-q', 'main');
+  git(travail, 'checkout', '-q', '-b', branche);
+  mkdirSync(join(travail, 'cadrages/2026-018'), { recursive: true });
+  writeFileSync(join(travail, 'cadrages/2026-018/cadrage.md'), cadrage2026018(objectif));
+  git(travail, 'add', '.');
+  commitDate(date, `cadrage 2026-018 (${branche})`);
+  git(travail, 'push', '-q', 'origin', branche);
+}
 execFileSync('git', ['clone', '-q', origine, REFERENTIEL]);
 
 const SANS_LIMITE = { CONSULTER_MAX_CARACTERES: '10000000' };
@@ -296,53 +298,41 @@ test('rend, pour une issue, son cadrage, ses décisions et la façon de le lire'
 
 // ── Versions d'un cadrage en cours ───────────────────────────────────────────
 
-// Ce qu'ils protègent : deux branches empilées portaient le même cadrage, et le
-// script gardait la première par ordre alphabétique — souvent la plus ancienne.
-// Ce que la plus récente ajoutait, une décision par exemple, restait invisible.
+// Ce qu'ils protègent : deux branches portaient le même cadrage, et le script
+// gardait la première par ordre alphabétique — souvent la plus ancienne. Ce que
+// l'autre ajoutait, une décision par exemple, restait invisible. Ni le nom ni la
+// date ne départagent : la date d'un commit, un rebase la réécrit, et deux
+// versions réécrites chacune de leur côté ne sont pas l'une plus ancienne que
+// l'autre. Une version qui contient l'autre se lit seule ; deux versions dont
+// aucune ne contient l'autre se nomment toutes deux.
 
-test('lit un cadrage en cours sur la branche qui l’a modifié le plus récemment', () => {
+test('lit la version qui contient l’autre, quelle que soit la date de ses commits', () => {
   const tout = lignes(lancer([]));
   const i = tout.findIndex((l) => l.startsWith('  EN_COURS 2026-017 '));
   vrai(i >= 0, `2026-017 absent :\n${tout.join('\n')}`);
   vrai(tout[i].endsWith('| origin/cadrage-2026-017-suite'), tout[i]);
-  egal(
-    tout[i + 1],
-    '    VERSION_DIVERGENTE origin/cadrage-2026-017 (2026-10-01), plus ancienne que origin/cadrage-2026-017-suite (2026-10-05) — --lire origin/cadrage-2026-017:cadrages/2026-017/cadrage.md',
-  );
+  vrai(!tout[i + 1].startsWith('    VERSION_'), `version contenue signalée : ${tout[i + 1]}`);
 });
 
-test('liste les décisions de la version la plus récente', () => {
+test('liste les décisions de la version qui contient l’autre', () => {
   const sortie = lancer(['--domaine', 'acces']);
   vrai(sortie.includes('DECISION_DE_CADRAGE origin/cadrage-2026-017-suite:cadrages/2026-017/decisions/02-prevenir-le-porteur.md [retenue → par-courriel]'), sortie);
 });
 
-test('ne dit pas divergente une branche empilée qui n’a pas touché au cadrage', () => {
-  const sortie = lancer([]);
-  vrai(!sortie.includes('VERSION_DIVERGENTE origin/cadrage-2026-016'), sortie);
-  vrai(!sortie.includes('cadrage-2026-016-empile'), sortie);
-});
-
-// ── Fichiers livrés modifiés sur une branche ─────────────────────────────────
-
-// Ce qu'ils protègent : seul le dossier d'un cadrage nouveau était lu sur une
-// branche. Une règle livrée qu'une branche réécrit — hors des impacts de son
-// cadrage — n'apparaissait nulle part avant sa fusion.
-
-test('liste une règle livrée qu’une branche réécrit hors de tout cadrage', () => {
+test('nomme concurrentes deux versions dont aucune ne contient l’autre', () => {
   const tout = lignes(lancer([]));
-  const ligne = tout.find((l) => l.includes('origin/correction-regle:rules/RG-pj-retention.md'));
-  vrai(ligne?.startsWith('  MODIFIE_EN_COURS origin/correction-regle:rules/RG-pj-retention.md [modifie] | '), `ligne inattendue : ${ligne}\n${tout.join('\n')}`);
+  const i = tout.findIndex((l) => l.startsWith('  EN_COURS 2026-018 '));
+  vrai(i >= 0, `2026-018 absent :\n${tout.join('\n')}`);
+  vrai(tout[i].endsWith('| origin/cadrage-2026-018-b'), tout[i]);
+  egal(
+    tout[i + 1],
+    '    VERSION_CONCURRENTE origin/cadrage-2026-018-a (2026-10-02) — ni elle ni origin/cadrage-2026-018-b (2026-10-03) ne contient l’autre — --lire origin/cadrage-2026-018-a:cadrages/2026-018/cadrage.md',
+  );
 });
 
-test('ne liste ni ce que le cadrage de la branche déclare, ni ce que main a déjà repris', () => {
+test('ne nomme pas une branche empilée qui n’a pas touché au cadrage', () => {
   const sortie = lancer([]);
-  vrai(!sortie.includes('rules/RG-connexion-optionnelle.md'), 'règle déclarée dans les impacts de 2026-016');
-  vrai(!sortie.includes('reprise-identique'), 'branche dont main a repris le contenu');
-});
-
-test('signale, sous son domaine, une règle qu’une branche modifie', () => {
-  const ligne = lignes(lancer(['--domaine', 'persistance'])).find((l) => l.startsWith('    REGLE RG-pj-retention '));
-  vrai(ligne?.endsWith(' | MODIFIEE_SUR origin/correction-regle'), `ligne inattendue : ${ligne}`);
+  vrai(!sortie.includes('cadrage-2026-016-empile'), sortie);
 });
 
 // ── Recherche par motif ──────────────────────────────────────────────────────
@@ -367,8 +357,8 @@ test('--motif cherche aussi dans les fonctionnalités', () => {
   vrai(lancer(['--motif', 'photocomposition']).includes('  LIVRE origin/main:features/vocabulaire.md (1) | '), 'fonctionnalité non parcourue');
 });
 
-test('--motif cherche dans une règle livrée que modifie une branche', () => {
-  vrai(lancer(['--motif', 'xylophage']).includes('  EN_COURS origin/correction-regle:rules/RG-pj-retention.md (1) | '), 'version en cours non parcourue');
+test('--motif cherche aussi dans une version concurrente', () => {
+  vrai(lancer(['--motif', 'trente']).includes('  EN_COURS origin/cadrage-2026-018-a:cadrages/2026-018/cadrage.md (1) | '), 'version concurrente non parcourue');
 });
 
 // ── Lecture en lot ───────────────────────────────────────────────────────────
