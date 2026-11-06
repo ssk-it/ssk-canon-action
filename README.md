@@ -61,7 +61,15 @@ Puis, dans les réglages du dépôt :
    Le même script règle **General → Pull Requests → Automatically delete head
    branches** : chaque cadrage et chaque propagation laissent sinon leur branche
    derrière eux, et un commit poussé après la fusion — jamais livré — s'y perd
-   parmi des dizaines d'autres.
+   parmi des dizaines d'autres. Surtout, la consultation du référentiel les prend
+   pour des cadrages en cours, et signale de faux recouvrements : voir « Consulter
+   le référentiel avant de cadrer ou de développer ».
+
+   Un réglage ajouté au script n'atteint que les dépôts sur lesquels on le relance. Un second script le passe sur chaque référentiel que déclare `~/.claude/cadrage-canon.json`, avec les mêmes confirmations, et nomme à la fin ceux qui restent à régler :
+
+   ```bash
+   outillage/preparer-depots-cadres.sh
+   ```
 
 2. **Les runners, pour un dépôt privé.** Les modèles tirent leur runner de la variable d'organisation `SSK_RUNNER_PRIVE`, visible des seuls dépôts privés : sans elle, chaque exécution — une vérification par demande de fusion, une propagation par livraison et sa reprise toutes les heures — tourne sur les runners de GitHub et se décompte du forfait de l'organisation. Un dépôt public, et une organisation sans la variable, restent sur `ubuntu-latest`. Un script la pose, une fois par organisation, et vérifie qu'un runner en ligne porte ses labels :
 
@@ -595,6 +603,8 @@ renvoient d'une ligne, plutôt que d'en recopier chacun la méthode.
 Il lit `origin/main` et les branches distantes, jamais la copie de travail : un
 clone de référentiel ouvert une fois et jamais tiré a vite des dizaines de
 livraisons de retard.
+
+**Une branche fusionnée qui reste sur l'origine trompe la consultation.** Le skill tient chaque branche distante pour un travail en cours : il ne peut pas savoir qu'une fusion par squash a déjà porté son contenu sur `main`. Une branche laissée derrière une demande fusionnée annonce donc comme en cours des modifications que `main` a déjà absorbées, puis dépassées, et la synthèse remonte ces faux recouvrements à l'appelant, qui les soumet à l'utilisateur. Le 6 novembre 2026, sur 84 fichiers livrés que la consultation disait modifiés sur une branche, 62 venaient de telles branches ; 244 traînaient dans 22 référentiels. Le seul remède durable est la suppression de la branche à la fusion, que `outillage/preparer-depot-cadre.sh` règle (« Installation dans un dépôt cadré ») : un référentiel sans ce réglage voit ses consultations se dégrader à chaque cadrage livré.
 
 Il s'exécute dans un sous-agent (`context: fork`) : une consultation lit une
 quinzaine de milliers de tokens de cadrages et de règles, dont l'appelant ne
