@@ -1,3 +1,8 @@
+/**
+ * La résolution des noms qu'un référentiel déclare dans `ssk-canon.yml` (RG-noms-declares). Repris à la racine du paquet.
+ *
+ * @module @ssk-it/canon-check/noms
+ */
 import type { Anomalie } from './verifier.js';
 
 /** Les clés du bloc `dossiers` de `ssk-canon.yml`. */

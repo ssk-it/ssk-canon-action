@@ -4,6 +4,11 @@
 // faire compiler depuis TypeScript ajouterait une étape de construction à un
 // paquet qui n'en a aucune. Sa surface est étroite et stable.
 
+/**
+ * La vérification d'intégrité d'un référentiel chargé, et la mise en texte de ses anomalies, en français ou en anglais.
+ *
+ * @module @ssk-it/canon-check
+ */
 import type { FichierIdentite } from './identite.js';
 import type { ReferentielCite } from './citations.js';
 

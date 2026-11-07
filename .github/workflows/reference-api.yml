@@ -1,0 +1,79 @@
+# Génère la référence de l'API de @ssk-it/canon-check depuis les déclarations
+# de types, la passe au contrôle d'accessibilité, et la publie sur GitHub Pages
+# à chaque fusion sur main.
+#
+# Générée plutôt qu'écrite à la main : une référence rédigée à côté du code
+# prend du retard sans que rien ne le signale. Ici, une déclaration qui change
+# change la page au prochain passage sur main, et un lien de documentation
+# cassé fait échouer la demande de fusion (treatWarningsAsErrors).
+#
+# Dépôt public : runners de GitHub.
+name: Référence de l'API
+
+on:
+  pull_request:
+    paths:
+      - 'src/*.d.ts'
+      - 'reference-api/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/reference-api.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/*.d.ts'
+      - 'reference-api/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/reference-api.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Deux publications ne se doublent pas ; celle en cours va à son terme, la
+# suivante part de l'état le plus récent de main.
+concurrency:
+  group: reference-api-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  construire:
+    runs-on: ubuntu-latest
+    steps:
+      # L'historique complet n'est pas utile, mais un vrai dépôt git l'est :
+      # TypeDoc y lit le commit pour lier chaque déclaration à sa source.
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      - name: Générer la référence
+        run: npm run reference-api
+
+      # WCAG 2.2 AA, en clair et en sombre, sur chaque page : une page qui
+      # régresse ne part pas en ligne.
+      - name: Contrôler l'accessibilité
+        run: |
+          npx playwright install --with-deps --only-shell chromium
+          npm run reference-api:accessibilite
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: reference-api/site
+
+  publier:
+    needs: construire
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
+      - id: deploiement
+        uses: actions/deploy-pages@v5

@@ -1,3 +1,8 @@
+/**
+ * La règle de l'identité visuelle : les noms, les variantes et les formats admis, la borne de poids, la lecture d'un nom et le contrôle du répertoire. Repris à la racine du paquet.
+ *
+ * @module @ssk-it/canon-check/identite
+ */
 import type { Anomalie } from './verifier.js';
 
 /** Un fichier du répertoire `identite/`, tel que la plateforme ou le disque le donne. */

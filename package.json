@@ -61,7 +61,9 @@
   "scripts": {
     "check": "node src/check.mjs test/fixture-repo",
     "propagate:dry": "node src/propagate.mjs test/fixture-repo --dry-run",
-    "test": "node src/propagate.test.mjs && node src/propagation-en-attente.test.mjs && node test/consulter.test.mjs && node test/preparer.test.mjs && node test/skills.test.mjs && node test/identite.test.mjs && node test/pistes.test.mjs && node test/noms.test.mjs && node test/lecture.test.mjs && node test/skills-noms.test.mjs && node test/anomalies.test.mjs && node test/modeles.test.mjs && node test/citations.test.mjs && node test/docs.test.mjs"
+    "test": "node src/propagate.test.mjs && node src/propagation-en-attente.test.mjs && node test/consulter.test.mjs && node test/preparer.test.mjs && node test/skills.test.mjs && node test/identite.test.mjs && node test/pistes.test.mjs && node test/noms.test.mjs && node test/lecture.test.mjs && node test/skills-noms.test.mjs && node test/anomalies.test.mjs && node test/modeles.test.mjs && node test/citations.test.mjs && node test/docs.test.mjs",
+    "reference-api": "typedoc --options reference-api/typedoc.json",
+    "reference-api:accessibilite": "node reference-api/accessibilite.mjs"
   },
   "dependencies": {
     "js-yaml": "^5.4.1"
@@ -69,5 +71,11 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/verifier.d.ts"
+  "types": "./src/verifier.d.ts",
+  "devDependencies": {
+    "axe-core": "^4.14.0",
+    "playwright": "^1.65.0",
+    "typedoc": "^0.28.20",
+    "typescript": "~6.0.3"
+  }
 }

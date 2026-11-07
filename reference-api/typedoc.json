@@ -1,0 +1,37 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "Référence de @ssk-it/canon-check",
+  "entryPoints": [
+    "../src/verifier.d.ts",
+    "../src/format.d.ts",
+    "../src/identite.d.ts",
+    "../src/pistes.d.ts",
+    "../src/noms.d.ts",
+    "../src/citations.d.ts"
+  ],
+  "tsconfig": "./tsconfig.json",
+  "readme": "./accueil.md",
+  "out": "./site",
+  "lang": "fr",
+  "plugin": [
+    "./extension.mjs"
+  ],
+  "customCss": "./theme.css",
+  "navigation": {
+    "includeFolders": false
+  },
+  "navigationLeaves": [
+    "@ssk-it/canon-check",
+    "@ssk-it/canon-check/format",
+    "@ssk-it/canon-check/pistes",
+    "@ssk-it/canon-check/identite",
+    "@ssk-it/canon-check/noms",
+    "@ssk-it/canon-check/citations"
+  ],
+  "hostedBaseUrl": "https://ssk-it.github.io/ssk-canon-action/",
+  "navigationLinks": {
+    "GitHub": "https://github.com/ssk-it/ssk-canon-action",
+    "npm": "https://www.npmjs.com/package/@ssk-it/canon-check"
+  },
+  "treatWarningsAsErrors": true
+}
