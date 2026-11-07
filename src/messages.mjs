@@ -1,31 +1,31 @@
-// Le catalogue des messages, par langue : un message par code d'anomalie —
+// The message catalogue, per language: one message per anomaly code —
 // RG-anomalies-codees.
 //
-// Chaque message est une fonction de ses paramètres, et d'une fonction qui dit
-// une anomalie enveloppée dans la même langue. Le français reprend mot pour mot
-// les messages d'avant les codes : la forme textuelle ne doit rien changer pour
-// les consommateurs qui ne lisent pas encore les codes. Un catalogue par module,
-// pour qu'un module et ses messages se relisent ensemble.
+// Each message is a function of its parameters, and of a function that tells
+// a wrapped anomaly in the same language. The French repeats word for word
+// the messages from before the codes: the text form must change nothing for
+// consumers that do not read the codes yet. One catalogue per module, so that
+// a module and its messages are read together.
 
-import { commun } from './messages/commun.mjs';
+import { common } from './messages/common.mjs';
 import { verification } from './messages/verification.mjs';
-import { lecture } from './messages/lecture.mjs';
-import { livraison } from './messages/livraison.mjs';
+import { reading } from './messages/reading.mjs';
+import { delivery } from './messages/delivery.mjs';
 import { propagation } from './messages/propagation.mjs';
-import { pistes } from './messages/pistes.mjs';
+import { roadmapItems } from './messages/roadmap-items.mjs';
 import { citations } from './messages/citations.mjs';
 
-const CATALOGUES = [commun, verification, lecture, livraison, propagation, pistes, citations];
+const CATALOGUES = [common, verification, reading, delivery, propagation, roadmapItems, citations];
 
-function fusionner(langue) {
-  const tout = {};
+function mergeCatalogues(language) {
+  const all = {};
   for (const c of CATALOGUES)
-    for (const [code, message] of Object.entries(c[langue])) {
-      // Deux modules qui prendraient le même code lui feraient dire deux choses.
-      if (code in tout) throw new Error(`code d'anomalie en double : ${code}`);
-      tout[code] = message;
+    for (const [code, message] of Object.entries(c[language])) {
+      // Two modules taking the same code would make it say two things.
+      if (code in all) throw new Error(`duplicate anomaly code: ${code}`);
+      all[code] = message;
     }
-  return tout;
+  return all;
 }
 
-export const MESSAGES = { fr: fusionner('fr'), en: fusionner('en') };
+export const MESSAGES = { fr: mergeCatalogues('fr'), en: mergeCatalogues('en') };

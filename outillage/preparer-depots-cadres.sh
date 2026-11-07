@@ -1,47 +1,47 @@
 #!/bin/bash
 #
-# Passe outillage/preparer-depot-cadre.sh sur chaque référentiel que déclare
+# Runs outillage/preparer-depot-cadre.sh on each specification declared by
 # ~/.claude/cadrage-canon.json — README, « Installation dans un dépôt cadré ».
 #
-# Un réglage ajouté à preparer-depot-cadre.sh ne s'applique qu'aux dépôts sur lesquels on
-# le relance : la suppression des branches à la fusion y est entrée après l'installation
-# de la plupart des référentiels, et dix-sept d'entre eux l'avaient encore désactivée le
-# 6 novembre 2026 — 244 branches fusionnées s'y étaient accumulées, que la consultation
-# du référentiel prenait pour des modifications en cours.
+# A setting added to preparer-depot-cadre.sh only applies to the repos it is run
+# again on: deleting branches on merge entered it after most specifications were
+# installed, and seventeen of them still had it disabled on 6 November 2026 — 244
+# merged branches had piled up there, which the specification consultation took
+# for in-progress changes.
 #
-# Usage : outillage/preparer-depots-cadres.sh [<configuration>]
-#         (par défaut ~/.claude/cadrage-canon.json, dont seule la liste « projets » est lue)
+# Usage: outillage/preparer-depots-cadres.sh [<configuration>]
+#        (by default ~/.claude/cadrage-canon.json, of which only the « projets » list is read)
 #
-# Aucun identifiant n'est demandé : chaque dépôt passe par la session de gh, comme avec
-# preparer-depot-cadre.sh, qui annonce et fait confirmer chaque écriture. Un dépôt déjà
-# réglé est laissé tel quel ; le script peut donc être relancé. Un clone absent ou sans
-# origine GitHub est signalé et passé.
+# No credential is asked for: each repo goes through the gh session, as with
+# preparer-depot-cadre.sh, which announces and has each write confirmed. A repo
+# already set is left as is; the script can therefore be run again. A missing clone,
+# or one without a GitHub origin, is reported and skipped.
 #
-# Prérequis : gh, jq, et les droits d'administration de chaque dépôt.
+# Requirements: gh, jq, and admin rights on each repo.
 
 set -euo pipefail
 
 ok()  { echo "  ✓ $*"; }
 ko()  { echo "  ✗ $*" >&2; exit 1; }
-dit() { echo "  · $*"; }
+say() { echo "  · $*"; }
 
-for outil in gh jq git; do
-    command -v "${outil}" >/dev/null || ko "${outil} introuvable"
+for tool in gh jq git; do
+    command -v "${tool}" >/dev/null || ko "${tool} introuvable"
 done
 
-PREPARER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/preparer-depot-cadre.sh"
+PREPARE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/preparer-depot-cadre.sh"
 CONFIGURATION="${1:-${HOME}/.claude/cadrage-canon.json}"
 [ -r "${CONFIGURATION}" ] || ko "configuration illisible : ${CONFIGURATION}"
 
-# Lu avant la boucle : preparer-depot-cadre.sh pose ses questions sur l'entrée standard,
-# qui doit rester le terminal.
-PROJETS=()
-while IFS= read -r projet; do
-    PROJETS+=("${projet}")
+# Read before the loop: preparer-depot-cadre.sh asks its questions on standard input,
+# which must stay the terminal.
+PROJECTS=()
+while IFS= read -r project; do
+    PROJECTS+=("${project}")
 done < <(jq -r '.projets // [] | .[]' "${CONFIGURATION}")
-[ "${#PROJETS[@]}" -gt 0 ] || ko "aucun référentiel dans ${CONFIGURATION} (liste « projets »)"
+[ "${#PROJECTS[@]}" -gt 0 ] || ko "aucun référentiel dans ${CONFIGURATION} (liste « projets »)"
 
-depot_de() {
+repo_of() {
     local url
     url="$(git -C "$1" remote get-url origin 2>/dev/null)" || return 1
     url="${url%.git}"
@@ -49,29 +49,29 @@ depot_de() {
     echo "${BASH_REMATCH[1]}"
 }
 
-PASSES=()
-ECHECS=()
-REGLES=0
-for projet in "${PROJETS[@]}"; do
-    clone="${projet/#\~/${HOME}}"
-    if ! depot="$(depot_de "${clone}")"; then
-        PASSES+=("${projet}")
+SKIPPED=()
+FAILURES=()
+SET_UP=0
+for project in "${PROJECTS[@]}"; do
+    clone="${project/#\~/${HOME}}"
+    if ! repo="$(repo_of "${clone}")"; then
+        SKIPPED+=("${project}")
         continue
     fi
-    echo "━━ ${depot}"
-    if "${PREPARER}" "${depot}"; then
-        REGLES=$((REGLES + 1))
+    echo "━━ ${repo}"
+    if "${PREPARE}" "${repo}"; then
+        SET_UP=$((SET_UP + 1))
     else
-        ECHECS+=("${depot}")
+        FAILURES+=("${repo}")
     fi
 done
 
 echo "━━ Bilan"
-ok "${REGLES} référentiel(s) en place"
-for projet in ${PASSES[@]+"${PASSES[@]}"}; do
-    dit "passé, pas de clone avec une origine GitHub : ${projet}"
+ok "${SET_UP} référentiel(s) en place"
+for project in ${SKIPPED[@]+"${SKIPPED[@]}"}; do
+    say "passé, pas de clone avec une origine GitHub : ${project}"
 done
-for depot in ${ECHECS[@]+"${ECHECS[@]}"}; do
-    echo "  ✗ réglage absent ou illisible : ${depot}" >&2
+for repo in ${FAILURES[@]+"${FAILURES[@]}"}; do
+    echo "  ✗ réglage absent ou illisible : ${repo}" >&2
 done
-[ "${#ECHECS[@]}" = 0 ] || exit 1
+[ "${#FAILURES[@]}" = 0 ] || exit 1

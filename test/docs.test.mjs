@@ -1,9 +1,9 @@
-// Tests de la documentation : les liens relatifs et les deux langues.
+// Tests of the documentation: relative links and the two languages.
 //
-// Ce qu'ils protègent : une page déplacée ou un titre reformulé casse en
-// silence les liens qui y menaient — GitHub affiche un 404 ou reste en haut de
-// la page, et rien ne le signale. La version anglaise, elle, ne vaut que si
-// elle suit la française : une page ajoutée d'un seul côté doit se voir.
+// What they protect: a moved page or a reworded heading silently breaks the
+// links that led to it — GitHub shows a 404 or stays at the top of the page,
+// and nothing reports it. The English version, for its part, is only worth
+// something if it follows the French one: a page added on one side only must show.
 //
 //   node test/docs.test.mjs
 
@@ -11,42 +11,42 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-let reussis = 0;
-const echecs = [];
+let passed = 0;
+const failures = [];
 
-function test(nom, fn) {
+function test(name, fn) {
   try {
     fn();
-    reussis += 1;
+    passed += 1;
   } catch (e) {
-    echecs.push(`${nom} : ${e.message}`);
+    failures.push(`${name}: ${e.message}`);
   }
 }
 
-function vrai(condition, message) {
+function isTrue(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-const racine = fileURLToPath(new URL('..', import.meta.url));
-const lire = (chemin) => readFileSync(join(racine, chemin), 'utf8');
-const pagesDe = (dossier) =>
-  readdirSync(join(racine, dossier)).filter((nom) => nom.endsWith('.md')).sort();
+const root = fileURLToPath(new URL('..', import.meta.url));
+const read = (path) => readFileSync(join(root, path), 'utf8');
+const pagesOf = (folder) =>
+  readdirSync(join(root, folder)).filter((name) => name.endsWith('.md')).sort();
 
 const PAGES = [
   'README.md',
   'README.en.md',
-  ...pagesDe('docs').map((nom) => `docs/${nom}`),
-  ...pagesDe('docs/en').map((nom) => `docs/en/${nom}`),
-  ...readdirSync(join(racine, 'skills')).map((skill) => `skills/${skill}/SKILL.md`),
+  ...pagesOf('docs').map((name) => `docs/${name}`),
+  ...pagesOf('docs/en').map((name) => `docs/en/${name}`),
+  ...readdirSync(join(root, 'skills')).map((skill) => `skills/${skill}/SKILL.md`),
 ];
 
-// Le texte hors des blocs de code : un lien d'exemple n'y est pas un lien.
-const horsCode = (texte) => texte.replace(/^```[\s\S]*?^```/gm, '').replace(/`[^`\n]*`/g, '');
+// The text outside code blocks: an example link there is not a link.
+const outsideCode = (text) => text.replace(/^```[\s\S]*?^```/gm, '').replace(/`[^`\n]*`/g, '');
 
-// L'ancre que GitHub donne à un titre : en minuscules, sans ponctuation, les
-// espaces changés en tirets ; les lettres accentuées restent.
-function ancre(titre) {
-  return titre
+// The anchor GitHub gives a heading: lowercase, without punctuation, spaces
+// turned into hyphens; accented letters remain.
+function anchor(heading) {
+  return heading
     .replace(/`/g, '')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .toLowerCase()
@@ -54,79 +54,79 @@ function ancre(titre) {
     .replace(/\s/g, '-');
 }
 
-function ancresDe(chemin) {
-  const vues = new Map();
-  const ancres = new Set();
-  for (const [, titre] of lire(chemin).replace(/^```[\s\S]*?^```/gm, '').matchAll(/^#{1,6} +(.+?) *$/gm)) {
-    const base = ancre(titre);
-    const n = vues.get(base) ?? 0;
-    vues.set(base, n + 1);
-    ancres.add(n ? `${base}-${n}` : base);
+function anchorsOf(path) {
+  const seen = new Map();
+  const anchors = new Set();
+  for (const [, heading] of read(path).replace(/^```[\s\S]*?^```/gm, '').matchAll(/^#{1,6} +(.+?) *$/gm)) {
+    const base = anchor(heading);
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    anchors.add(n ? `${base}-${n}` : base);
   }
-  return ancres;
+  return anchors;
 }
 
 for (const page of PAGES) {
-  test(`${page} : chaque lien relatif mène à un fichier, et à un titre quand il porte une ancre`, () => {
-    const casses = [];
-    for (const [, cible] of horsCode(lire(page)).matchAll(/\]\(([^)\s]+)\)/g)) {
-      if (/^[a-z][a-z+.-]*:/i.test(cible)) continue;
-      const [chemin, fragment] = cible.split('#');
-      const fichier = chemin ? relative(racine, join(racine, dirname(page), chemin)) : page;
-      if (!existsSync(join(racine, fichier))) {
-        casses.push(`${cible} (fichier absent)`);
+  test(`${page}: each relative link leads to a file, and to a heading when it carries an anchor`, () => {
+    const broken = [];
+    for (const [, target] of outsideCode(read(page)).matchAll(/\]\(([^)\s]+)\)/g)) {
+      if (/^[a-z][a-z+.-]*:/i.test(target)) continue;
+      const [path, fragment] = target.split('#');
+      const file = path ? relative(root, join(root, dirname(page), path)) : page;
+      if (!existsSync(join(root, file))) {
+        broken.push(`${target} (missing file)`);
         continue;
       }
-      if (fragment && fichier.endsWith('.md') && !ancresDe(fichier).has(decodeURIComponent(fragment)))
-        casses.push(`${cible} (aucun titre n'a cette ancre)`);
+      if (fragment && file.endsWith('.md') && !anchorsOf(file).has(decodeURIComponent(fragment)))
+        broken.push(`${target} (no heading has this anchor)`);
     }
-    vrai(!casses.length, casses.join(' | '));
+    isTrue(!broken.length, broken.join(' | '));
   });
 }
 
-test('chaque page de docs/ a sa traduction sous docs/en/, et réciproquement', () => {
-  const fr = pagesDe('docs');
-  const en = pagesDe('docs/en');
-  const seules = [
-    ...fr.filter((nom) => !en.includes(nom)).map((nom) => `docs/${nom} sans docs/en/${nom}`),
-    ...en.filter((nom) => !fr.includes(nom)).map((nom) => `docs/en/${nom} sans docs/${nom}`),
+test('each page of docs/ has its translation under docs/en/, and vice versa', () => {
+  const fr = pagesOf('docs');
+  const en = pagesOf('docs/en');
+  const alone = [
+    ...fr.filter((name) => !en.includes(name)).map((name) => `docs/${name} without docs/en/${name}`),
+    ...en.filter((name) => !fr.includes(name)).map((name) => `docs/en/${name} without docs/${name}`),
   ];
-  vrai(!seules.length, seules.join(' | '));
+  isTrue(!alone.length, alone.join(' | '));
 });
 
-test('chaque page renvoie en tête à sa traduction', () => {
-  const paires = [
+test('each page links to its translation at the top', () => {
+  const pairs = [
     ['README.md', 'README.en.md', 'README.en.md'],
     ['README.en.md', 'README.md', 'README.md'],
-    ...pagesDe('docs').flatMap((nom) => [
-      [`docs/${nom}`, `en/${nom}`],
-      [`docs/en/${nom}`, `../${nom}`],
+    ...pagesOf('docs').flatMap((name) => [
+      [`docs/${name}`, `en/${name}`],
+      [`docs/en/${name}`, `../${name}`],
     ]),
   ];
-  const sans = paires
-    .filter(([page, lien]) => !lire(page).split('\n')[0].includes(`](${lien})`))
-    .map(([page, lien]) => `${page} ne renvoie pas à ${lien} sur sa première ligne`);
-  vrai(!sans.length, sans.join(' | '));
+  const without = pairs
+    .filter(([page, link]) => !read(page).split('\n')[0].includes(`](${link})`))
+    .map(([page, link]) => `${page} does not link to ${link} on its first line`);
+  isTrue(!without.length, without.join(' | '));
 });
 
-test('les deux sommaires listent les mêmes pages', () => {
-  const liens = (chemin) =>
-    [...lire(chemin).matchAll(/\]\(docs\/(?:en\/)?([^)#]+\.md)/g)].map(([, nom]) => nom);
-  const fr = [...new Set(liens('README.md'))];
-  const en = [...new Set(liens('README.en.md'))];
-  vrai(JSON.stringify(fr) === JSON.stringify(en), `README.md : ${fr.join(', ')} ; README.en.md : ${en.join(', ')}`);
-  const absentes = pagesDe('docs').filter((nom) => !fr.includes(nom));
-  vrai(!absentes.length, `pages absentes du sommaire : ${absentes.join(', ')}`);
+test('the two tables of contents list the same pages', () => {
+  const links = (path) =>
+    [...read(path).matchAll(/\]\(docs\/(?:en\/)?([^)#]+\.md)/g)].map(([, name]) => name);
+  const fr = [...new Set(links('README.md'))];
+  const en = [...new Set(links('README.en.md'))];
+  isTrue(JSON.stringify(fr) === JSON.stringify(en), `README.md: ${fr.join(', ')}; README.en.md: ${en.join(', ')}`);
+  const missing = pagesOf('docs').filter((name) => !fr.includes(name));
+  isTrue(!missing.length, `pages missing from the table of contents: ${missing.join(', ')}`);
 });
 
-// Les ancres du README que d'autres dépôts citent : ssk-it/ssk-canon renvoie
-// à `#le-skill-de-cadrage`. Aucun test d'ici ne verrait ce lien casser.
-test('les ancres du README citées par d’autres dépôts existent toujours', () => {
-  const ancres = ancresDe('README.md');
-  const manquantes = ['le-skill-de-cadrage', 'installation-dans-un-dépôt-cadré'].filter((a) => !ancres.has(a));
-  vrai(!manquantes.length, `ancres disparues : ${manquantes.join(', ')}`);
+// The README anchors that other repos cite: ssk-it/ssk-canon links to
+// `#le-skill-de-cadrage`. No test here would see that link break.
+test('the README anchors cited by other repos still exist', () => {
+  const anchors = anchorsOf('README.md');
+  const missing = ['le-skill-de-cadrage', 'installation-dans-un-dépôt-cadré'].filter((a) => !anchors.has(a));
+  isTrue(!missing.length, `anchors gone: ${missing.join(', ')}`);
 });
 
-console.log(`${reussis} réussi(s), ${echecs.length} échec(s)`);
-for (const e of echecs) console.error(`  ✗ ${e}`);
-process.exit(echecs.length ? 1 : 0);
+console.log(`${passed} passed, ${failures.length} failure(s)`);
+for (const e of failures) console.error(`  ✗ ${e}`);
+process.exit(failures.length ? 1 : 0);

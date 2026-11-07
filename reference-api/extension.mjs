@@ -1,23 +1,23 @@
-// Corrige, dans les pages produites par le thème par défaut de TypeDoc, ce qui
-// les écarte de WCAG 2.2 AA ou du français, sans remplacer le thème.
+// Fixes, in the pages produced by TypeDoc's default theme, what keeps them from
+// WCAG 2.2 AA or from French, without replacing the theme.
 
 import { PageEvent } from 'typedoc';
 
-// Le thème place un lien de permalien dans le <summary> de chaque section
-// dépliable : un élément interactif dans un autre, que les lecteurs d'écran
-// annoncent mal et qu'axe signale (nested-interactive). Le titre garde son
-// identifiant, et le sommaire de la page y mène toujours.
-const SOMMAIRE = /(<summary\b[^>]*>)([\s\S]*?)(<\/summary>)/g;
-const PERMALIEN = /<a href="#[^"]*" aria-label="[^"]*" class="tsd-anchor-icon">[\s\S]*?<\/a>/g;
+// The theme puts a permalink in the <summary> of each collapsible section: an
+// interactive element inside another, which screen readers announce badly and
+// which axe reports (nested-interactive). The heading keeps its identifier, and
+// the page's table of contents still leads to it.
+const SUMMARY = /(<summary\b[^>]*>)([\s\S]*?)(<\/summary>)/g;
+const PERMALINK = /<a href="#[^"]*" aria-label="[^"]*" class="tsd-anchor-icon">[\s\S]*?<\/a>/g;
 
-// `--lang fr` traduit l'interface, mais pas la description de chaque page.
+// `--lang fr` translates the interface, but not each page's description.
 const DESCRIPTION = '<meta name="description" content="Documentation for ';
 
 export function load(app) {
   app.renderer.on(PageEvent.END, (page) => {
     if (!page.contents) return;
     page.contents = page.contents
-      .replace(SOMMAIRE, (_, ouverture, corps, fermeture) => ouverture + corps.replace(PERMALIEN, '') + fermeture)
+      .replace(SUMMARY, (_, opening, body, closing) => opening + body.replace(PERMALINK, '') + closing)
       .replace(DESCRIPTION, '<meta name="description" content="Référence de l’API de ');
   });
 }

@@ -35,7 +35,7 @@ le commentaire est le signal, à l'endroit où le rédacteur corrige.
 La sortie `ecarts` donne le nombre d'écarts trouvés. En ligne de commande :
 
 ```bash
-node src/verifier-piste.mjs /chemin/du/depot --evenement evenement.json --sans-commentaire
+node src/check-roadmap-item.mjs /chemin/du/depot --evenement evenement.json --sans-commentaire
 ```
 
 ## Préparer les étiquettes et les jalons
@@ -47,6 +47,6 @@ npm ci
 outillage/preparer-pistes.sh <organisation>/<depot>
 ```
 
-Les identifiants sont lus sur un clone superficiel de la branche principale, par le chargeur que la vérification utilise (`src/etiquettes-pistes.mjs`) : ceux du frontmatter, et non les noms de fichiers.
+Les identifiants sont lus sur un clone superficiel de la branche principale, par le chargeur que la vérification utilise (`src/roadmap-item-labels.mjs`) : ceux du frontmatter, et non les noms de fichiers.
 
 Chaque groupe d'écritures est annoncé et confirmé ; ce qui existe est laissé tel quel. Le relancer après l'ajout d'un domaine ou d'une fonctionnalité crée les étiquettes qui manquent. Une étiquette qui ne désigne plus rien est signalée, jamais supprimée : des pistes la portent peut-être encore.

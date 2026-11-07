@@ -1,6 +1,6 @@
-// Les messages du contrôle de livraison et de l'Action (`check.mjs`, `livraison.mjs`).
+// The messages of the delivery check and of the Action (`check.mjs`, `delivery.mjs`).
 
-export const livraison = {
+export const delivery = {
   fr: {
     'branche-deja-fusionnee': (p) =>
       `branche déjà fusionnée dans « ${p.reference} », jusqu'à ${p.fusion} : ses index dérivés ` +
@@ -19,7 +19,7 @@ export const livraison = {
       `cadrage ${p.cadrage} : livré, donc figé — ${p.chemins.join(', ')} ; ` +
       `ce qui doit changer se change par un nouveau cadrage`,
 
-    // le rapport de la vérification en ligne de commande
+    // the command-line check report
     'rapport-comptes': (p) =>
       `${p.domaines} domaines · ${p.fonctionnalites} fonctionnalités · ` +
       `${p.regles} règles · ${p.cadrages} cadrages`,
@@ -27,7 +27,7 @@ export const livraison = {
     'rapport-erreurs': (p) => `${p.nombre} erreur(s) :`,
     'rapport-integrite-verifiee': () => 'Intégrité vérifiée.',
 
-    // ce que l'Action écrit elle-même
+    // what the Action writes itself
     'action-immuabilite-suspendue': () =>
       "Contrôle d'immuabilité suspendu — un cadrage livré peut être modifié.",
   },

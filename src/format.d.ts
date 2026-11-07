@@ -1,31 +1,31 @@
 /**
- * Le découpage du frontmatter et l'extraction des énoncés, pour construire un référentiel depuis des fichiers Markdown.
+ * Splitting the frontmatter and extracting the statements, to build a specification from Markdown files.
  *
  * @module @ssk-it/canon-check/format
  */
 import type { Anomalie } from './verifier.js';
 
-/** Un frontmatter lu, ou la raison pour laquelle il ne l'est pas. */
+/** A frontmatter that was read, or the reason it could not be. */
 export interface FrontmatterLu<T = Record<string, unknown>> {
   readonly data: T;
   readonly body: string;
 }
 
 export interface FrontmatterIllisible {
-  /** La forme française de `anomalie`. */
+  /** The French form of `anomalie`. */
   readonly erreur: string;
-  /** `frontmatter-illisible`, ou `frontmatter-deux-points` pour un « : » non quoté. */
+  /** `frontmatter-illisible`, or `frontmatter-deux-points` for an unquoted “:”. */
   readonly anomalie: Anomalie;
   readonly body: string;
 }
 
 /**
- * Retourne `null` si le bloc est absent, `{ erreur }` s'il est présent mais
- * illisible, sans quoi le frontmatter et le corps.
+ * Returns `null` if the block is missing, `{ erreur }` if it is present but
+ * unreadable, otherwise the frontmatter and the body.
  */
 export function splitFrontmatter<T = Record<string, unknown>>(
-  texte: string,
+  text: string,
 ): FrontmatterLu<T> | FrontmatterIllisible | null;
 
-/** Énoncés titrés dans la section `## Énoncés`, indexés par identifiant. */
-export function extractEnonces(corps: string): Map<string, string>;
+/** Statements titled in the `## Énoncés` section, keyed by identifier. */
+export function extractEnonces(body: string): Map<string, string>;

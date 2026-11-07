@@ -1,11 +1,11 @@
-// Tests de la forme des skills distribués.
+// Tests of the shape of the distributed skills.
 //
-// Ce qu'ils protègent : un frontmatter que YAML refuse ne fait échouer ni le
-// chargement du skill ni rien d'autre. Claude Code charge alors son corps avec
-// des métadonnées vides — sans `context: fork`, sans `allowed-tools`, et avec
-// son titre pour toute description. Le skill tourne dans la conversation
-// principale au lieu d'un sous-agent, et se déclenche mal. Constaté le
-// 13 octobre 2026 : une description non citée qui contient « : » suffisait.
+// What they protect: a frontmatter that YAML rejects makes neither the loading
+// of the skill nor anything else fail. Claude Code then loads its body with
+// empty metadata — without `context: fork`, without `allowed-tools`, and with
+// its title as the whole description. The skill runs in the main conversation
+// instead of a subagent, and triggers badly. Observed on
+// 13 October 2026: an unquoted description containing “:” was enough.
 //
 //   node test/skills.test.mjs
 
@@ -16,50 +16,50 @@ import { load } from 'js-yaml';
 
 const SKILLS = fileURLToPath(new URL('../skills', import.meta.url));
 
-let reussis = 0;
-const echecs = [];
+let passed = 0;
+const failures = [];
 
-function test(nom, fn) {
+function test(name, fn) {
   try {
     fn();
-    reussis += 1;
-  } catch (erreur) {
-    echecs.push(`${nom} : ${erreur.message}`);
+    passed += 1;
+  } catch (error) {
+    failures.push(`${name}: ${error.message}`);
   }
 }
 
-function vrai(condition, message) {
+function isTrue(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-const noms = readdirSync(SKILLS, { withFileTypes: true })
+const names = readdirSync(SKILLS, { withFileTypes: true })
   .filter((e) => e.isDirectory() && existsSync(join(SKILLS, e.name, 'SKILL.md')))
   .map((e) => e.name)
   .sort();
 
-test('trouve les skills à vérifier', () => {
-  vrai(noms.length > 0, `aucun SKILL.md sous ${SKILLS}`);
+test('finds the skills to check', () => {
+  isTrue(names.length > 0, `no SKILL.md under ${SKILLS}`);
 });
 
-for (const nom of noms) {
-  test(`le frontmatter de ${nom} est un YAML que Claude Code lit`, () => {
-    // Les fins de ligne d'un dépôt extrait sous Windows ne doivent pas décider
-    // du résultat : Claude Code lit le fichier tel qu'il est installé.
-    const texte = readFileSync(join(SKILLS, nom, 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n');
-    const bloc = texte.match(/^---\n([\s\S]*?)\n---\n/);
-    vrai(bloc, 'le fichier doit commencer par un frontmatter entre deux lignes ---');
+for (const name of names) {
+  test(`the frontmatter of ${name} is YAML that Claude Code reads`, () => {
+    // The line endings of a repo checked out under Windows must not decide
+    // the result: Claude Code reads the file as it is installed.
+    const text = readFileSync(join(SKILLS, name, 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n');
+    const block = text.match(/^---\n([\s\S]*?)\n---\n/);
+    isTrue(block, 'the file must start with a frontmatter between two --- lines');
 
-    let champs;
+    let fields;
     try {
-      champs = load(bloc[1]);
-    } catch (erreur) {
-      throw new Error(`YAML refusé — ${erreur.reason}, ligne ${erreur.mark.line + 1}, colonne ${erreur.mark.column + 1}`);
+      fields = load(block[1]);
+    } catch (error) {
+      throw new Error(`YAML rejected — ${error.reason}, line ${error.mark.line + 1}, column ${error.mark.column + 1}`);
     }
-    vrai(champs?.name === nom, `name doit valoir ${nom}, obtenu ${JSON.stringify(champs?.name)}`);
-    vrai(typeof champs.description === 'string' && champs.description.trim() !== '', 'description absente ou vide');
+    isTrue(fields?.name === name, `name must be ${name}, got ${JSON.stringify(fields?.name)}`);
+    isTrue(typeof fields.description === 'string' && fields.description.trim() !== '', 'description missing or empty');
   });
 }
 
-console.log(`${reussis} réussi(s), ${echecs.length} échec(s)`);
-for (const echec of echecs) console.error(`  ✗ ${echec}`);
-if (echecs.length > 0) process.exit(1);
+console.log(`${passed} passed, ${failures.length} failure(s)`);
+for (const failure of failures) console.error(`  ✗ ${failure}`);
+if (failures.length > 0) process.exit(1);

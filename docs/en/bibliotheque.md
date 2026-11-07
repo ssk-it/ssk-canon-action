@@ -73,4 +73,4 @@ The name is chosen at creation: on a pull request, the verification refuses that
 checkRepo(referentiel, { cites: new Map([['socle', referentielDuSocle], ['autre', null]]) });
 ```
 
-The skills' scripts run with nothing installed: `cadrage-canon` and `consulter-referentiel` carry a copy of `src/noms.mjs` and a dependency-free reading of `ssk-canon.yml` (`scripts/config-noms.mjs`). `test/skills-noms.test.mjs` keeps the copy identical and checks the reading against YAML: after changing `src/noms.mjs`, copy it again into both skills.
+The skills' scripts run with nothing installed: `cadrage-canon` and `consulter-referentiel` carry a copy of `src/noms.mjs` and a dependency-free reading of `ssk-canon.yml` (`scripts/config-noms.mjs`). `test/skills-names.test.mjs` keeps the copy identical and checks the reading against YAML: after changing `src/noms.mjs`, copy it again into both skills.

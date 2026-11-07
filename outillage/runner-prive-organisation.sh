@@ -1,144 +1,144 @@
 #!/bin/bash
 #
-# Pose sur une organisation la variable SSK_RUNNER_PRIVE, que les workflows modèles
-# lisent pour choisir leur runner — README, « Installation dans un dépôt cadré ».
+# Sets on an organisation the SSK_RUNNER_PRIVE variable, which the template workflows
+# read to choose their runner — README, « Installation dans un dépôt cadré ».
 #
-#   1. la variable, visible des seuls dépôts privés de l'organisation, désigne ses
-#      runners auto-hébergés par leurs labels ;
-#   2. en lecture seule : au moins un runner en ligne porte ces labels, et son groupe
-#      refuse les dépôts publics ;
-#   3. en lecture seule : la variable est en place.
+#   1. the variable, visible to the organisation's private repos only, designates its
+#      self-hosted runners by their labels;
+#   2. read-only: at least one online runner carries these labels, and its group
+#      refuses public repos;
+#   3. read-only: the variable is in place.
 #
-# Sans elle, chaque exécution d'un dépôt privé — la vérification de chaque demande de
-# fusion, la propagation de chaque livraison et sa reprise planifiée toutes les heures —
-# tourne sur les runners de GitHub et se décompte du forfait de l'organisation. Le
-# 27 octobre 2026, ssk-it en avait épuisé les 3 000 minutes, et plus aucun job ne
-# démarrait. Visible des seuls dépôts privés, elle laisse un dépôt public sur
-# ubuntu-latest, gratuit pour lui, et que le groupe de runners refuse de toute façon.
+# Without it, every run of a private repo — the check of every pull request, the
+# propagation of every delivery and its hourly scheduled retry — runs on GitHub's
+# runners and is counted against the organisation's plan. On 27 October 2026,
+# ssk-it had used up its 3,000 minutes, and no job started any more. Visible to
+# private repos only, it leaves a public repo on ubuntu-latest, free for it, and
+# which the runner group refuses anyway.
 #
-# Usage : outillage/runner-prive-organisation.sh <organisation> ['["self-hosted","macOS","ARM64"]']
+# Usage: outillage/runner-prive-organisation.sh <organisation> ['["self-hosted","macOS","ARM64"]']
 #
-# Aucun identifiant n'est demandé : le script passe par la session de gh, qui doit avoir
-# les droits d'administration de l'organisation (`gh auth status`, portée admin:org).
-# Rien de secret n'est lu ni affiché ; le corps des écritures passe à gh par son entrée
-# standard.
+# No credential is asked for: the script goes through the gh session, which must have
+# admin rights on the organisation (`gh auth status`, admin:org scope).
+# Nothing secret is read or displayed; the body of the writes goes to gh through its
+# standard input.
 #
-# Chaque écriture est annoncée et confirmée avant d'être faite ; une variable déjà en
-# place avec la bonne valeur est laissée telle quelle, et la remplacer est une écriture
-# à part. Le script peut donc être relancé.
+# Each write is announced and confirmed before being made; a variable already in
+# place with the right value is left as is, and replacing it is a separate write.
+# The script can therefore be run again.
 #
-# Prérequis : gh, jq.
+# Requirements: gh, jq.
 
 set -euo pipefail
 
 ok()  { echo "  ✓ $*"; }
 ko()  { echo "  ✗ $*" >&2; exit 1; }
-dit() { echo "  · $*"; }
+say() { echo "  · $*"; }
 
-confirmer() {
-    local reponse
-    read -r -p "  → $* [o/N] " reponse
-    [ "${reponse}" = "o" ] || [ "${reponse}" = "O" ]
+confirm() {
+    local answer
+    read -r -p "  → $* [o/N] " answer
+    [ "${answer}" = "o" ] || [ "${answer}" = "O" ]
 }
 
-for outil in gh jq; do
-    command -v "${outil}" >/dev/null || ko "${outil} introuvable"
+for tool in gh jq; do
+    command -v "${tool}" >/dev/null || ko "${tool} introuvable"
 done
 
 ORGANISATION="${1:-}"
 LABELS="${2:-[\"self-hosted\",\"macOS\",\"ARM64\"]}"
-NOM=SSK_RUNNER_PRIVE
+NAME=SSK_RUNNER_PRIVE
 [[ "${ORGANISATION}" =~ ^[A-Za-z0-9_.-]+$ ]] \
     || ko "usage : $0 <organisation> ['[\"self-hosted\",\"macOS\",\"ARM64\"]']"
-# Les workflows en font `fromJSON(...)` : une valeur qui n'est pas un tableau de labels
-# ferait échouer chaque job au démarrage, sans dire pourquoi.
+# The workflows apply `fromJSON(...)` to it: a value that is not an array of labels
+# would make every job fail at start, without saying why.
 jq -e 'type == "array" and length > 0 and all(type == "string")' <<< "${LABELS}" >/dev/null 2>&1 \
     || ko "labels : un tableau JSON de chaînes est attendu, reçu ${LABELS}"
 LABELS="$(jq -c . <<< "${LABELS}")"
 
 gh auth status >/dev/null 2>&1 || ko "gh n'est pas connecté — gh auth login"
 
-# Rend la variable telle quelle, ou rien si elle n'existe pas ; s'arrête sur toute autre
-# erreur, qu'un test confondrait avec une absence.
-lire() {
-    local sortie
-    if sortie="$(gh api "orgs/${ORGANISATION}/actions/variables/${NOM}" 2>&1)"; then
-        echo "${sortie}"
-    elif grep -q "HTTP 404" <<< "${sortie}"; then
+# Returns the variable as is, or nothing if it does not exist; stops on any other
+# error, which a test would mistake for an absence.
+read_variable() {
+    local output
+    if output="$(gh api "orgs/${ORGANISATION}/actions/variables/${NAME}" 2>&1)"; then
+        echo "${output}"
+    elif grep -q "HTTP 404" <<< "${output}"; then
         echo ""
     else
-        ko "variables de ${ORGANISATION} illisibles — droits d'administration manquants ? (${sortie})"
+        ko "variables de ${ORGANISATION} illisibles — droits d'administration manquants ? (${output})"
     fi
 }
 
-ecrire() {
-    local methode="$1" chemin="$2"
-    jq -n --arg nom "${NOM}" --arg valeur "${LABELS}" \
-        '{ name: $nom, value: $valeur, visibility: "private" }' \
-        | gh api -X "${methode}" "${chemin}" --input - >/dev/null \
+write_variable() {
+    local method="$1" path="$2"
+    jq -n --arg name "${NAME}" --arg value "${LABELS}" \
+        '{ name: $name, value: $value, visibility: "private" }' \
+        | gh api -X "${method}" "${path}" --input - >/dev/null \
         || ko "écriture refusée — droits d'administration de ${ORGANISATION} manquants ?"
 }
 
-# --- 1. La variable ---------------------------------------------------------------------
+# --- 1. The variable --------------------------------------------------------------------
 
-echo "1. Variable ${NOM} de ${ORGANISATION}"
-ACTUELLE="$(lire)"
-if [ -z "${ACTUELLE}" ]; then
-    dit "absente"
-    dit "à créer : ${NOM} = ${LABELS}, visible des seuls dépôts privés"
-    if confirmer "créer ${NOM} ainsi ?"; then
-        ecrire POST "orgs/${ORGANISATION}/actions/variables"
+echo "1. Variable ${NAME} de ${ORGANISATION}"
+CURRENT="$(read_variable)"
+if [ -z "${CURRENT}" ]; then
+    say "absente"
+    say "à créer : ${NAME} = ${LABELS}, visible des seuls dépôts privés"
+    if confirm "créer ${NAME} ainsi ?"; then
+        write_variable POST "orgs/${ORGANISATION}/actions/variables"
         ok "créée"
     else
-        dit "laissée absente"
+        say "laissée absente"
     fi
 else
-    VALEUR="$(jq -r .value <<< "${ACTUELLE}")"
-    VISIBILITE="$(jq -r .visibility <<< "${ACTUELLE}")"
-    dit "en place : ${VALEUR}, visibilité ${VISIBILITE}"
-    if [ "$(jq -c . <<< "${VALEUR}" 2>/dev/null || true)" = "${LABELS}" ] && [ "${VISIBILITE}" = private ]; then
+    VALUE="$(jq -r .value <<< "${CURRENT}")"
+    VISIBILITY="$(jq -r .visibility <<< "${CURRENT}")"
+    say "en place : ${VALUE}, visibilité ${VISIBILITY}"
+    if [ "$(jq -c . <<< "${VALUE}" 2>/dev/null || true)" = "${LABELS}" ] && [ "${VISIBILITY}" = private ]; then
         ok "déjà en place : laissée telle quelle"
     else
-        dit "à remplacer par : ${LABELS}, visible des seuls dépôts privés"
-        if confirmer "remplacer ${NOM} ?"; then
-            ecrire PATCH "orgs/${ORGANISATION}/actions/variables/${NOM}"
+        say "à remplacer par : ${LABELS}, visible des seuls dépôts privés"
+        if confirm "remplacer ${NAME} ?"; then
+            write_variable PATCH "orgs/${ORGANISATION}/actions/variables/${NAME}"
             ok "remplacée"
         else
-            dit "laissée telle quelle"
+            say "laissée telle quelle"
         fi
     fi
 fi
 echo
 
-# --- 2. Les runners ---------------------------------------------------------------------
+# --- 2. The runners ---------------------------------------------------------------------
 
 echo "2. Runners portant ${LABELS}"
 RUNNERS="$(gh api --paginate "orgs/${ORGANISATION}/actions/runners" -q '.runners[]' 2>/dev/null)" \
     || ko "runners de ${ORGANISATION} illisibles"
-EN_LIGNE="$(jq -s --argjson labels "${LABELS}" \
+ONLINE="$(jq -s --argjson labels "${LABELS}" \
     '[ .[] | select(.status == "online") | select([.labels[].name] as $l | all($labels[]; . as $x | $l | index($x))) ] | length' \
     <<< "${RUNNERS}")"
-if [ "${EN_LIGNE}" -gt 0 ]; then
-    ok "${EN_LIGNE} runner(s) en ligne"
+if [ "${ONLINE}" -gt 0 ]; then
+    ok "${ONLINE} runner(s) en ligne"
 else
     echo "  ✗ aucun runner en ligne ne porte ces labels : les jobs des dépôts privés attendront" >&2
 fi
-PUBLICS="$(gh api "orgs/${ORGANISATION}/actions/runner-groups" \
+PUBLIC_GROUPS="$(gh api "orgs/${ORGANISATION}/actions/runner-groups" \
     -q '[.runner_groups[] | select(.allows_public_repositories)] | length' 2>/dev/null || echo "?")"
-if [ "${PUBLICS}" = 0 ]; then
+if [ "${PUBLIC_GROUPS}" = 0 ]; then
     ok "aucun groupe de runners n'accepte de dépôt public"
 else
-    dit "groupes acceptant des dépôts publics : ${PUBLICS} — un dépôt public exécuterait le code de ses contributeurs sur ces machines"
+    say "groupes acceptant des dépôts publics : ${PUBLIC_GROUPS} — un dépôt public exécuterait le code de ses contributeurs sur ces machines"
 fi
 echo
 
-# --- 3. Contrôle en lecture seule -------------------------------------------------------
+# --- 3. Read-only check -----------------------------------------------------------------
 
 echo "3. Vérification"
-APRES="$(lire)"
-if [ -n "${APRES}" ] \
-    && [ "$(jq -r .value <<< "${APRES}" | jq -c . 2>/dev/null || true)" = "${LABELS}" ] \
-    && [ "$(jq -r .visibility <<< "${APRES}")" = private ]; then
+AFTER="$(read_variable)"
+if [ -n "${AFTER}" ] \
+    && [ "$(jq -r .value <<< "${AFTER}" | jq -c . 2>/dev/null || true)" = "${LABELS}" ] \
+    && [ "$(jq -r .visibility <<< "${AFTER}")" = private ]; then
     ok "les dépôts privés de ${ORGANISATION} prennent leurs runners auto-hébergés"
 else
     echo "  ✗ variable absente ou différente : les dépôts privés restent sur les runners de GitHub" >&2

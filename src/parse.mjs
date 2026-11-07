@@ -1,22 +1,22 @@
-// Découpage frontmatter / corps, et chargement d'un dépôt de projet.
+// Frontmatter / body split, and loading of a project repo.
 //
-// Ce module est le pendant Node de ce que fait la PWA côté navigateur. Les deux
-// doivent rester d'accord sur le format — voir l'invariant correspondant dans
-// CLAUDE.md. `gray-matter` n'est volontairement pas utilisé : le découpage tient
-// en quelques lignes et le paquet se comporte mal dans un navigateur.
+// This module is the Node counterpart of what the PWA does in the browser. The
+// two must stay in agreement on the format — see the corresponding invariant in
+// CLAUDE.md. `gray-matter` is deliberately not used: the split fits in a few
+// lines and the package behaves badly in a browser.
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { load } from 'js-yaml';
 import { splitFrontmatter, extractEnonces } from './format.mjs';
 import { resoudreNoms, DOSSIER_DE_COLLECTION } from './noms.mjs';
-import { erreur, formaterAnomalie } from './anomalies.mjs';
+import { createError, formaterAnomalie } from './anomalies.mjs';
 
-// Réexportés pour ne pas casser les appelants : le découpage entre ce qui
-// touche au disque et ce qui n'y touche pas est une affaire interne.
+// Re-exported so as not to break callers: the split between what touches the
+// disk and what does not is an internal matter.
 export { splitFrontmatter, extractEnonces };
 
-/** Liste récursivement les fichiers Markdown d'un répertoire. */
+/** Recursively lists the Markdown files of a directory. */
 export function listMarkdown(dir, out = []) {
   for (const entry of readdirSync(dir)) {
     const p = join(dir, entry);
@@ -27,45 +27,45 @@ export function listMarkdown(dir, out = []) {
 }
 
 /**
- * Liste récursivement les fichiers d'un répertoire, avec leur poids.
+ * Recursively lists the files of a directory, with their size.
  *
- * Les chemins sont relatifs à `racine`, séparés par « / » quel que soit le
- * système : c'est la forme sous laquelle la plateforme les donne, et celle que
- * la règle partagée contrôle.
+ * Paths are relative to `rootDir`, separated by "/" whatever the system: that
+ * is the form in which the platform gives them, and the one the shared rule
+ * checks.
  */
-function listFichiers(racine, dir = racine, out = []) {
+function listFiles(rootDir, dir = rootDir, out = []) {
   for (const entry of readdirSync(dir)) {
     const p = join(dir, entry);
     const s = statSync(p);
-    if (s.isDirectory()) listFichiers(racine, p, out);
-    else out.push({ chemin: relative(racine, p).split(sep).join('/'), taille: s.size });
+    if (s.isDirectory()) listFiles(rootDir, p, out);
+    else out.push({ chemin: relative(rootDir, p).split(sep).join('/'), taille: s.size });
   }
   return out;
 }
 
 /**
- * Liste les fichiers d'un dépôt, chemins relatifs séparés par « / ».
+ * Lists the files of a repo, relative paths separated by "/".
  *
- * Ce qui commence par « . » est écarté : `.git` n'est pas du contenu, et le
- * parcourir coûterait plus que tout le reste.
+ * What starts with "." is left out: `.git` is not content, and walking it
+ * would cost more than all the rest.
  */
-function listChemins(racine, dir = racine, out = []) {
+function listPaths(rootDir, dir = rootDir, out = []) {
   for (const entry of readdirSync(dir)) {
     if (entry.startsWith('.')) continue;
     const p = join(dir, entry);
-    if (statSync(p).isDirectory()) listChemins(racine, p, out);
-    else out.push(relative(racine, p).split(sep).join('/'));
+    if (statSync(p).isDirectory()) listPaths(rootDir, p, out);
+    else out.push(relative(rootDir, p).split(sep).join('/'));
   }
   return out;
 }
 
 /**
- * Les noms que le référentiel déclare, sans charger le reste.
+ * The names the specification declares, without loading the rest.
  *
- * Une configuration illisible rend les noms du format : le chargement la
- * signale, et un référentiel se lit même quand sa configuration est fautive.
+ * An unreadable configuration gives the format's names: loading reports it,
+ * and a specification can be read even when its configuration is faulty.
  */
-export function lireNoms(root) {
+export function readNames(root) {
   try {
     return resoudreNoms(load(readFileSync(join(root, 'ssk-canon.yml'), 'utf8')));
   } catch {
@@ -74,10 +74,10 @@ export function lireNoms(root) {
 }
 
 /**
- * Charge un dépôt de projet en mémoire.
- * Retourne les entités indexées par identifiant, et les erreurs de forme :
- * codées dans `anomalies` — RG-anomalies-codees —, et dans `errors` sous leur
- * forme française d'hier, que des appelants lisent encore en texte.
+ * Loads a project repo into memory.
+ * Returns the entities indexed by identifier, and the form errors: coded in
+ * `anomalies` — RG-anomalies-codees —, and in `errors` in yesterday's French
+ * form, which some callers still read as text.
  */
 export function loadRepo(root) {
   const anomalies = [];
@@ -85,9 +85,9 @@ export function loadRepo(root) {
   const features = new Map();
   const rules = new Map();
   const cadrages = new Map();
-  // Les cibles d'architecture sont indexées à part des règles : elles suivent
-  // le même régime de projection, mais se consultent séparément — on ne lit pas
-  // un dossier d'architecture pour y chercher le comportement du produit.
+  // Architecture targets are indexed apart from rules: they follow the same
+  // projection regime, but are consulted separately — one does not read an
+  // architecture folder to look for the product's behaviour.
   const decisions = new Map();
   const architecture = new Map();
 
@@ -95,113 +95,113 @@ export function loadRepo(root) {
   try {
     config = load(readFileSync(join(root, 'ssk-canon.yml'), 'utf8'));
   } catch (e) {
-    // Absente ou illisible : deux causes, deux codes ; la raison reste celle
-    // qu'on a reçue.
-    anomalies.push(erreur(e?.code === 'ENOENT' ? 'config-absente' : 'config-illisible', { raison: e.message }));
+    // Missing or unreadable: two causes, two codes; the reason stays the one
+    // we received.
+    anomalies.push(createError(e?.code === 'ENOENT' ? 'config-absente' : 'config-illisible', { raison: e.message }));
   }
 
-  /** Un frontmatter illisible, rapporté au fichier qui le porte. */
-  const dansLeFichier = (chemin, anomalie) => ({ ...anomalie, params: { chemin, ...anomalie.params } });
+  /** An unreadable frontmatter, attributed to the file that carries it. */
+  const inFile = (chemin, anomaly) => ({ ...anomaly, params: { chemin, ...anomaly.params } });
 
-  // Les noms que le référentiel déclare — RG-noms-declares. Une déclaration
-  // fautive est écartée ici sans bruit : la vérification la signale, et la
-  // signaler deux fois ferait douter du nombre de fautes.
-  const noms = resoudreNoms(config);
-  const repertoireCadrages = noms.dossiers.cadrages;
+  // The names the specification declares — RG-noms-declares. A faulty
+  // declaration is set aside here silently: the check reports it, and reporting
+  // it twice would cast doubt on the number of faults.
+  const names = resoudreNoms(config);
+  const scopingsDir = names.dossiers.cadrages;
 
-  // le dossier de chaque collection, sous son nom déclaré
-  const collectionDuDossier = new Map(
-    Object.entries(DOSSIER_DE_COLLECTION).map(([collection, cle]) => [noms.dossiers[cle], collection]),
+  // the folder of each collection, under its declared name
+  const collectionOfFolder = new Map(
+    Object.entries(DOSSIER_DE_COLLECTION).map(([collection, key]) => [names.dossiers[key], collection]),
   );
   const collections = { domains, features, rules, cadrages, decisions, architecture };
 
-  const chemins = listChemins(root).sort();
-  for (const rel of chemins) {
+  const paths = listPaths(root).sort();
+  for (const rel of paths) {
     if (!rel.endsWith('.md')) continue;
     const file = join(root, ...rel.split('/'));
     const parts = rel.split('/');
-    const collection = collectionDuDossier.get(parts[0]);
+    const collection = collectionOfFolder.get(parts[0]);
 
-    // les fichiers hors des répertoires de contenu (README et compagnie) ne
-    // sont pas des entités : on les ignore sans rien en dire
+    // files outside the content directories (README and the like) are not
+    // entities: they are ignored without a word
     if (parts.length < 2 || !collection) continue;
 
-    // Un README à l'intérieur d'un répertoire de contenu n'en est pas une non
-    // plus : il explique ce que le répertoire attend, ce qui est utile à qui
-    // ouvre le dépôt sur la plateforme. Le traiter comme une entité ferait
-    // échouer la vérification sur de la documentation.
+    // A README inside a content directory is not one either: it explains what
+    // the directory expects, which is useful to whoever opens the repo on the
+    // platform. Treating it as an entity would make the check fail on
+    // documentation.
     if (parts.at(-1) === 'README.md') continue;
 
-    // Les fichiers rattachés à un cadrage — décisions, pièces jointes — sont
-    // chargés plus bas, avec leur cadrage. Les traiter ici aussi signalerait
-    // deux fois la même erreur.
-    if (collection === 'cadrages' && !(parts.length === 3 && parts[2] === noms.fichiers.cadrage)) continue;
+    // The files attached to a scoping — decisions, attachments — are loaded
+    // further down, with their scoping. Handling them here as well would report
+    // the same error twice.
+    if (collection === 'cadrages' && !(parts.length === 3 && parts[2] === names.fichiers.cadrage)) continue;
 
     const parsed = splitFrontmatter(readFileSync(file, 'utf8'));
     if (!parsed) {
-      anomalies.push(erreur('frontmatter-absent', { chemin: rel, malForme: true }));
+      anomalies.push(createError('frontmatter-absent', { chemin: rel, malForme: true }));
       continue;
     }
-    // Un fichier illisible est écarté et signalé, sans interrompre les autres :
-    // corriger une erreur à la fois quand la vérification s'arrête à la première
-    // demande autant d'exécutions qu'il y a de fautes.
+    // An unreadable file is set aside and reported, without interrupting the
+    // others: fixing one error at a time when the check stops at the first one
+    // takes as many runs as there are faults.
     if (parsed.erreur) {
-      anomalies.push(dansLeFichier(rel, parsed.anomalie));
+      anomalies.push(inFile(rel, parsed.anomalie));
       continue;
     }
     const { data, body } = parsed;
-    // le chemin garde le séparateur du système, comme avant que les noms ne
-    // se déclarent : les messages le citent tel que le rédacteur le tape
+    // the path keeps the system's separator, as before names were declared:
+    // the messages quote it as the author types it
     collections[collection].set(data.id, { ...data, path: parts.join(sep), body });
-    // les décisions de cadrage et pièces jointes sont rattachées à leur cadrage plus bas
+    // scoping decisions and attachments are linked to their scoping further down
   }
 
-  // L'identité visuelle n'est pas un contenu : ses fichiers ne sont pas des
-  // entités, et seuls leur nom et leur poids comptent — RG-identite-du-projet.
-  let identite = [];
+  // The visual identity is not content: its files are not entities, and only
+  // their name and size matter — RG-identite-du-projet.
+  let identity = [];
   try {
-    identite = listFichiers(join(root, noms.dossiers.identite)).sort((a, b) =>
+    identity = listFiles(join(root, names.dossiers.identite)).sort((a, b) =>
       a.chemin.localeCompare(b.chemin),
     );
   } catch {
-    // pas d'identité, cas normal
+    // no identity, normal case
   }
 
-  // rattachement des décisions et pièces jointes
+  // linking of decisions and attachments
   for (const [id, c] of cadrages) {
-    const dir = join(root, repertoireCadrages, id);
+    const dir = join(root, scopingsDir, id);
     c.decisions = [];
     try {
-      for (const f of listMarkdown(join(dir, noms.dossiers.decisions_cadrage)).sort()) {
+      for (const f of listMarkdown(join(dir, names.dossiers.decisions_cadrage)).sort()) {
         const parsed = splitFrontmatter(readFileSync(f, 'utf8'));
-        if (!parsed) anomalies.push(erreur('frontmatter-absent', { chemin: relative(root, f), malForme: false }));
-        else if (parsed.erreur) anomalies.push(dansLeFichier(relative(root, f), parsed.anomalie));
+        if (!parsed) anomalies.push(createError('frontmatter-absent', { chemin: relative(root, f), malForme: false }));
+        else if (parsed.erreur) anomalies.push(inFile(relative(root, f), parsed.anomalie));
         else c.decisions.push({ ...parsed.data, body: parsed.body });
       }
-    } catch { /* pas de décisions, cas normal */ }
+    } catch { /* no decisions, normal case */ }
 
     try {
-      const parsed = splitFrontmatter(readFileSync(join(dir, noms.fichiers.pieces_jointes), 'utf8'));
+      const parsed = splitFrontmatter(readFileSync(join(dir, names.fichiers.pieces_jointes), 'utf8'));
       if (parsed?.erreur)
-        anomalies.push(dansLeFichier(`${repertoireCadrages}/${id}/${noms.fichiers.pieces_jointes}`, parsed.anomalie));
+        anomalies.push(inFile(`${scopingsDir}/${id}/${names.fichiers.pieces_jointes}`, parsed.anomalie));
       c.attachments = parsed?.data?.attachments ?? [];
     } catch {
-      // absence de fichier : cas normal, un cadrage n'a pas toujours de pièces
+      // missing file: normal case, a scoping does not always have attachments
       c.attachments = [];
     }
   }
 
   return {
     config,
-    noms,
-    chemins,
+    noms: names,
+    chemins: paths,
     domains,
     features,
     rules,
     cadrages,
     decisions,
     architecture,
-    identite,
+    identite: identity,
     errors: anomalies.map((a) => formaterAnomalie(a, 'fr')),
     anomalies,
   };

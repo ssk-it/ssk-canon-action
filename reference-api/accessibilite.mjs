@@ -1,9 +1,9 @@
-// Passe chaque page de la référence générée à axe-core, en clair puis en
-// sombre, contre les critères A et AA de WCAG 2.0 à 2.2 ; puis vérifie au
-// clavier qu'une section dépliable s'ouvre et se ferme. Sort en erreur au
-// premier écart, pour que la CI ne publie pas une référence qui régresse.
+// Runs each page of the generated reference through axe-core, in light then in
+// dark, against the A and AA criteria of WCAG 2.0 to 2.2; then checks with the
+// keyboard that a collapsible section opens and closes. Exits with an error on
+// the first discrepancy, so that CI does not publish a reference that regresses.
 //
-// Usage : npm run reference-api && npm run reference-api:accessibilite
+// Usage: npm run reference-api && npm run reference-api:accessibilite
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -12,74 +12,74 @@ import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 
 const SITE = join(import.meta.dirname, 'site');
-const CRITERES = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
+const CRITERIA = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 
 const pages = readdirSync(SITE, { recursive: true })
-  .filter((chemin) => chemin.endsWith('.html'))
-  .map((chemin) => join(SITE, chemin))
+  .filter((path) => path.endsWith('.html'))
+  .map((path) => join(SITE, path))
   .sort();
 if (pages.length === 0) {
   console.error(`Aucune page dans ${SITE} : lancer d'abord npm run reference-api.`);
   process.exit(1);
 }
 
-const navigateur = await chromium.launch();
-let ecarts = 0;
+const browser = await chromium.launch();
+let discrepancies = 0;
 
-for (const schema of ['light', 'dark']) {
-  const contexte = await navigateur.newContext({ colorScheme: schema });
-  const onglet = await contexte.newPage();
+for (const scheme of ['light', 'dark']) {
+  const context = await browser.newContext({ colorScheme: scheme });
+  const tab = await context.newPage();
   for (const page of pages) {
-    await onglet.goto(pathToFileURL(page).href);
-    // Le menu latéral est construit par un script asynchrone : l'analyser avant
-    // qu'il soit là laisserait passer ses écarts.
-    await onglet.waitForSelector('#tsd-nav-container li');
-    await onglet.addScriptTag({ content: AXE });
-    const { violations } = await onglet.evaluate(
-      (criteres) => window.axe.run({ runOnly: criteres }),
-      CRITERES,
+    await tab.goto(pathToFileURL(page).href);
+    // The side menu is built by an asynchronous script: analysing before it is
+    // there would let its discrepancies through.
+    await tab.waitForSelector('#tsd-nav-container li');
+    await tab.addScriptTag({ content: AXE });
+    const { violations } = await tab.evaluate(
+      (criteria) => window.axe.run({ runOnly: criteria }),
+      CRITERIA,
     );
     for (const violation of violations) {
-      ecarts++;
-      console.error(`${relative(SITE, page)} (${schema}) — ${violation.id} : ${violation.help}`);
-      for (const noeud of violation.nodes) console.error(`    ${noeud.target.join(' ')}`);
+      discrepancies++;
+      console.error(`${relative(SITE, page)} (${scheme}) — ${violation.id} : ${violation.help}`);
+      for (const node of violation.nodes) console.error(`    ${node.target.join(' ')}`);
     }
   }
-  await contexte.close();
+  await context.close();
 }
 
-// Le permalien retiré du <summary>, le titre de section doit rester atteignable
-// et manipulable au clavier seul.
+// With the permalink removed from the <summary>, the section title must stay
+// reachable and operable with the keyboard alone.
 {
-  const onglet = await navigateur.newPage();
+  const tab = await browser.newPage();
   const module = pages.find((page) => page.endsWith('_pistes.html'));
-  await onglet.goto(pathToFileURL(module).href);
-  const section = onglet.locator('details.tsd-accordion:has(> summary h2)').first();
-  const ouverte = () => section.evaluate((details) => details.open);
-  const avant = await ouverte();
-  let atteinte = false;
-  for (let i = 0; i < 60 && !atteinte; i++) {
-    await onglet.keyboard.press('Tab');
-    atteinte = await section.evaluate((details) => document.activeElement === details.querySelector(':scope > summary'));
+  await tab.goto(pathToFileURL(module).href);
+  const section = tab.locator('details.tsd-accordion:has(> summary h2)').first();
+  const isOpen = () => section.evaluate((details) => details.open);
+  const before = await isOpen();
+  let reached = false;
+  for (let i = 0; i < 60 && !reached; i++) {
+    await tab.keyboard.press('Tab');
+    reached = await section.evaluate((details) => document.activeElement === details.querySelector(':scope > summary'));
   }
-  if (!atteinte) {
-    ecarts++;
+  if (!reached) {
+    discrepancies++;
     console.error('Clavier : aucune tabulation n’atteint le titre de la première section.');
   } else {
-    await onglet.keyboard.press('Enter');
-    if ((await ouverte()) === avant) {
-      ecarts++;
+    await tab.keyboard.press('Enter');
+    if ((await isOpen()) === before) {
+      discrepancies++;
       console.error('Clavier : Entrée ne déplie ni ne replie la section.');
     }
   }
-  await onglet.close();
+  await tab.close();
 }
 
-await navigateur.close();
+await browser.close();
 
-if (ecarts > 0) {
-  console.error(`\n${ecarts} écart(s) d’accessibilité.`);
+if (discrepancies > 0) {
+  console.error(`\n${discrepancies} écart(s) d’accessibilité.`);
   process.exit(1);
 }
 console.log(`${pages.length} pages, en clair et en sombre : aucun écart WCAG 2.2 AA relevé par axe ; sections dépliables manipulables au clavier.`);

@@ -1,7 +1,7 @@
-# Vérifie le propagateur et le vérificateur contre le dépôt de référence, copié
-# ici comme fixture. Deux niveaux : les tests unitaires construisent leurs
-# propres dépôts temporaires, la fixture valide le comportement sur un
-# référentiel complet et réaliste.
+# Checks the propagator and the checker against the reference repo, copied
+# here as a fixture. Two levels: the unit tests build their own temporary
+# repos, the fixture validates the behaviour on a complete and realistic
+# specification.
 name: Vérification
 
 on:
@@ -25,30 +25,30 @@ jobs:
       - name: Vérifier l'intégrité de la fixture
         run: npm run check
 
-      # Le référentiel doit être la projection des cadrages livrés : si la
-      # propagation trouve quelque chose à écrire, c'est que la fixture a dérivé.
+      # The specification must be the projection of the delivered scopings: if
+      # the propagation finds something to write, the fixture has drifted.
       - name: Vérifier que la fixture ne dérive pas
         run: npm run propagate:dry
 
-  # L'action composite doit être testée telle qu'un dépôt cadré l'utilise, et
-  # pas seulement par ses scripts : c'est le montage `uses:` qui casse en
-  # premier quand la structure du dépôt change.
+  # The composite action must be tested as a scoping repo uses it, and not
+  # only through its scripts: the `uses:` wiring is what breaks first when the
+  # repo's structure changes.
   action:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
-          # même besoin que dans un dépôt cadré : sans l'historique, la base est
-          # hors d'atteinte et le contrôle d'immuabilité ne peut pas avoir lieu
+          # same need as in a scoping repo: without the history, the base is
+          # unreachable and the immutability check cannot take place
           fetch-depth: 0
       - uses: ./
         with:
           referentiel: test/fixture-repo
           appliquer: 'false'
 
-  # La vérification des pistes est une seconde action, sous `pistes/` : son
-  # montage se teste de même, sur une issue fictive et sans rien écrire sur la
-  # plateforme.
+  # The roadmap item check is a second action, under `pistes/`: its wiring is
+  # tested the same way, on a fictitious issue and without writing anything on
+  # the platform.
   pistes:
     runs-on: ubuntu-latest
     steps:
@@ -57,7 +57,7 @@ jobs:
         uses: ./pistes
         with:
           referentiel: test/fixture-repo
-          evenement: test/evenements/piste-mal-rattachee.json
+          evenement: test/events/piste-mal-rattachee.json
           commenter: 'false'
       - name: Vérifier que l'écart a été vu
         run: |

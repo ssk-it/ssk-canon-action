@@ -1,33 +1,33 @@
-// Les messages des pistes (`pistes.mjs`, `verifier-piste.mjs`, `etiquettes-pistes.mjs`).
+// The messages of roadmap items (`pistes.mjs`, `check-roadmap-item.mjs`, `roadmap-item-labels.mjs`).
 
-/** Ce que désigne une collection de rattachement, et ce qu'elle connaît, dans chaque langue. */
+/** What a link collection designates, and what it knows, in each language. */
 const COLLECTION = {
   fr: {
-    domains: { aucun: 'aucun domaine', connus: 'domaines connus' },
-    features: { aucun: 'aucune fonctionnalité', connus: 'fonctionnalités connues' },
+    domains: { none: 'aucun domaine', known: 'domaines connus' },
+    features: { none: 'aucune fonctionnalité', known: 'fonctionnalités connues' },
   },
   en: {
-    domains: { aucun: 'no domain', connus: 'known domains' },
-    features: { aucun: 'no feature', connus: 'known features' },
+    domains: { none: 'no domain', known: 'known domains' },
+    features: { none: 'no feature', known: 'known features' },
   },
 };
 
-const enCode = (ids) => ids.map((id) => `\`${id}\``).join(', ');
+const asCode = (ids) => ids.map((id) => `\`${id}\``).join(', ');
 
-/** Ce qu'il advient du commentaire, dit dans le journal en anglais. */
+/** What happens to the comment, told in the log in English. */
 const ACTION_EN = { rien: 'none', creer: 'created', modifier: 'updated', supprimer: 'deleted' };
 
-export const pistes = {
+export const roadmapItems = {
   fr: {
     'piste-non-rattachee': () =>
       `la piste n'est rattachée à aucun domaine ni aucune fonctionnalité du référentiel : ` +
       `elle n'apparaîtra nulle part — lui ajouter une étiquette \`domaine/<id>\` ou \`fonctionnalite/<id>\``,
     'etiquette-piste-sans-identifiant': (p) => `l'étiquette \`${p.etiquette}\` est sans identifiant`,
     'etiquette-piste-inconnue': (p) =>
-      `l'étiquette \`${p.etiquette}\` ne désigne ${COLLECTION.fr[p.collection].aucun} du référentiel` +
-      (p.connus.length ? ` — ${COLLECTION.fr[p.collection].connus} : ${enCode(p.connus)}` : ''),
+      `l'étiquette \`${p.etiquette}\` ne désigne ${COLLECTION.fr[p.collection].none} du référentiel` +
+      (p.connus.length ? ` — ${COLLECTION.fr[p.collection].known} : ${asCode(p.connus)}` : ''),
 
-    // Le commentaire sur l'issue.
+    // The comment on the issue.
     'piste-commentaire-titre': () => '**Cette piste est mal rattachée au référentiel.**',
     'piste-commentaire-regle': () =>
       'Une piste se rattache à au moins un domaine ou une fonctionnalité par des étiquettes ' +
@@ -35,14 +35,14 @@ export const pistes = {
       'principale du référentiel — RG-piste-rattachee. Ce commentaire se met à jour à chaque ' +
       "modification de l'issue, et disparaît quand le rattachement est juste.",
 
-    // Le journal de la vérification.
+    // The check's log.
     'piste-sans-issue': () => 'Aucune issue dans cet événement : rien à vérifier.',
     'piste-pas-une-piste': (p) => `Issue #${p.numero} : pas une piste.`,
     'piste-commentaire-action': (p) => `Commentaire : ${p.action}.`,
     'piste-ecarts': (p) => `${p.nombre} écart(s) de rattachement`,
     'piste-aucun-ecart': () => 'aucun écart de rattachement',
 
-    // Les étiquettes à créer.
+    // The labels to create.
     'piste-referentiel-vide': (p) => `${p.racine} : ni domaine ni fonctionnalité — est-ce un référentiel ?`,
   },
   en: {
@@ -51,8 +51,8 @@ export const pistes = {
       `it will appear nowhere — add a \`domaine/<id>\` or \`fonctionnalite/<id>\` label to it`,
     'etiquette-piste-sans-identifiant': (p) => `the label \`${p.etiquette}\` has no identifier`,
     'etiquette-piste-inconnue': (p) =>
-      `the label \`${p.etiquette}\` designates ${COLLECTION.en[p.collection].aucun} of the specification` +
-      (p.connus.length ? ` — ${COLLECTION.en[p.collection].connus}: ${enCode(p.connus)}` : ''),
+      `the label \`${p.etiquette}\` designates ${COLLECTION.en[p.collection].none} of the specification` +
+      (p.connus.length ? ` — ${COLLECTION.en[p.collection].known}: ${asCode(p.connus)}` : ''),
 
     'piste-commentaire-titre': () => '**This roadmap item is not properly linked to the specification.**',
     'piste-commentaire-regle': () =>

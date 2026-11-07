@@ -1,12 +1,12 @@
-// Tests de la citation d'un autre référentiel — RG-regle-du-socle-citee,
+// Tests of citing another specification — RG-regle-du-socle-citee,
 // RG-citation-signalee-chez-le-citant, RG-prefixe-projet.
 //
-// Ce qu'ils protègent : une règle ou une décision d'architecture cite, par son
-// champ `applique`, une cible d'un autre référentiel que le citant déclare dans
-// `referentiels_cites`. La vérification avertit quand la cible a changé depuis
-// le cadrage noté, qu'elle est abrogée ou absente, ou qu'elle n'a pas pu être
-// lue — et n'en fait jamais une erreur : le changement vient d'un autre dépôt,
-// et bloquer ferait échouer des demandes de fusion qui n'y sont pour rien.
+// What they protect: a rule or an architecture decision cites, through its
+// `applique` field, a target of another specification that the citing one
+// declares in `referentiels_cites`. The check warns when the target has changed
+// since the noted scoping, is repealed or missing, or could not be read — and
+// never makes it an error: the change comes from another repo, and blocking
+// would fail pull requests that have nothing to do with it.
 //
 //   node test/citations.test.mjs
 
@@ -23,75 +23,75 @@ import {
   verifierCitations,
 } from '../src/citations.mjs';
 import { checkRepo } from '../src/verifier.mjs';
-import * as bibliotheque from '../src/verifier.mjs';
+import * as library from '../src/verifier.mjs';
 import { formaterAnomalie } from '../src/anomalies.mjs';
-import { check, chargerReferentielsCites } from '../src/check.mjs';
+import { check, loadCitedSpecifications } from '../src/check.mjs';
 
-let reussis = 0;
-const echecs = [];
+let passed = 0;
+const failures = [];
 
-async function test(nom, fn) {
+async function test(name, fn) {
   try {
     await fn();
-    reussis += 1;
+    passed += 1;
   } catch (e) {
-    echecs.push(`${nom} : ${e.message}`);
+    failures.push(`${name}: ${e.message}`);
   }
 }
 
-function vrai(condition, message) {
+function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-const egal = (obtenu, attendu, message = '') =>
-  vrai(
-    JSON.stringify(obtenu) === JSON.stringify(attendu),
-    `${message}\n    obtenu  ${JSON.stringify(obtenu)}\n    attendu ${JSON.stringify(attendu)}`,
+const equal = (actual, expected, message = '') =>
+  assert(
+    JSON.stringify(actual) === JSON.stringify(expected),
+    `${message}\n    actual   ${JSON.stringify(actual)}\n    expected ${JSON.stringify(expected)}`,
   );
 
-// --- la forme d'une citation ---
+// --- the form of a citation ---
 
-await test('une citation se lit en préfixe, identifiant et cadrage noté', () => {
-  egal(lireCitation('socle:RG-nommage-des-roles@2026-012'), {
+await test('a citation is read as prefix, identifier and noted scoping', () => {
+  equal(lireCitation('socle:RG-nommage-des-roles@2026-012'), {
     prefixe: 'socle',
     id: 'RG-nommage-des-roles',
     cadrage: '2026-012',
   });
-  egal(lireCitation('socle:ADR-runners@2026-003').id, 'ADR-runners');
+  equal(lireCitation('socle:ADR-runners@2026-003').id, 'ADR-runners');
 });
 
-await test('une citation sans préfixe, sans cadrage ou mal formée ne se lit pas', () => {
+await test('a citation without prefix, without scoping or malformed is not read', () => {
   for (const t of ['RG-x@2026-001', 'socle:RG-x', 'socle:RG-x@demain', '2026:RG-x@2026-001', ':RG-x@2026-001', 42, null])
-    egal(lireCitation(t), null, `« ${t} »`);
+    equal(lireCitation(t), null, `“${t}”`);
 });
 
-await test('deux cadrages se comparent par année puis par numéro, non par texte', () => {
-  vrai(comparerCadrages('2026-012', '2026-003') > 0, '012 après 003');
-  vrai(comparerCadrages('2026-999', '2026-1000') < 0, '999 avant 1000');
-  vrai(comparerCadrages('2025-900', '2026-001') < 0, '2025 avant 2026');
-  egal(comparerCadrages('2026-012', '2026-012'), 0);
+await test('two scopings compare by year then by number, not by text', () => {
+  assert(comparerCadrages('2026-012', '2026-003') > 0, '012 after 003');
+  assert(comparerCadrages('2026-999', '2026-1000') < 0, '999 before 1000');
+  assert(comparerCadrages('2025-900', '2026-001') < 0, '2025 before 2026');
+  equal(comparerCadrages('2026-012', '2026-012'), 0);
 });
 
-// --- la déclaration des référentiels cités ---
+// --- the declaration of the cited specifications ---
 
 const config = (extra = {}) => ({ projet: { nom: 'App', prefixe: 'APP' }, ...extra });
 
-await test('referentiels_cites associe chaque préfixe à son dépôt', () => {
+await test('referentiels_cites maps each prefix to its repo', () => {
   const { cites, anomalies } = referentielsCites(
     config({ referentiels_cites: [{ prefixe: 'socle', repo: 'Vanex/prime-infra-cadrage' }] }),
   );
-  egal([...cites], [['socle', 'Vanex/prime-infra-cadrage']]);
-  egal(anomalies, []);
+  equal([...cites], [['socle', 'Vanex/prime-infra-cadrage']]);
+  equal(anomalies, []);
 });
 
-await test('sans referentiels_cites, aucun référentiel n’est cité, et rien ne se signale', () => {
+await test('without referentiels_cites, no specification is cited, and nothing is reported', () => {
   const { cites, anomalies } = referentielsCites(config());
-  egal(cites.size, 0);
-  egal(anomalies, []);
-  egal(referentielsCites(null).cites.size, 0);
+  equal(cites.size, 0);
+  equal(anomalies, []);
+  equal(referentielsCites(null).cites.size, 0);
 });
 
-await test('une déclaration fautive s’avertit et s’écarte, sans bloquer', () => {
+await test('a faulty declaration warns and is discarded, without blocking', () => {
   const { cites, anomalies } = referentielsCites(
     config({
       referentiels_cites: [
@@ -104,8 +104,8 @@ await test('une déclaration fautive s’avertit et s’écarte, sans bloquer', 
       ],
     }),
   );
-  egal([...cites], [['socle', 'o/a']]);
-  egal(
+  equal([...cites], [['socle', 'o/a']]);
+  equal(
     anomalies.map((a) => [a.code, a.gravite, a.params]),
     [
       ['referentiel-cite-en-double', 'avertissement', { prefixe: 'socle' }],
@@ -115,21 +115,21 @@ await test('une déclaration fautive s’avertit et s’écarte, sans bloquer', 
       ['referentiel-cite-mal-forme', 'avertissement', { position: 6 }],
     ],
   );
-  egal(referentielsCites(config({ referentiels_cites: 'socle' })).anomalies[0].code, 'referentiels-cites-mal-forme');
+  equal(referentielsCites(config({ referentiels_cites: 'socle' })).anomalies[0].code, 'referentiels-cites-mal-forme');
 });
 
-await test('un préfixe désigne le projet, un référentiel cité, ou une adresse inconnue', () => {
+await test('a prefix designates the project, a cited specification, or an unknown address', () => {
   const c = config({ referentiels_cites: [{ prefixe: 'socle', repo: 'o/socle' }] });
-  egal(resoudrePrefixe('APP', c), { nature: 'projet' });
-  egal(resoudrePrefixe('socle', c), { nature: 'cite', repo: 'o/socle' });
-  egal(resoudrePrefixe('autre', c), { nature: 'inconnue' });
-  // un identifiant bien formé ne suffit pas à rendre l'adresse connue
-  egal(resoudrePrefixe('APP', config({ projet: {} })), { nature: 'inconnue' });
+  equal(resoudrePrefixe('APP', c), { nature: 'projet' });
+  equal(resoudrePrefixe('socle', c), { nature: 'cite', repo: 'o/socle' });
+  equal(resoudrePrefixe('autre', c), { nature: 'inconnue' });
+  // a well-formed identifier is not enough to make the address known
+  equal(resoudrePrefixe('APP', config({ projet: {} })), { nature: 'inconnue' });
 });
 
-// --- l'état des citations ---
+// --- the state of the citations ---
 
-function referentiel({ rules = [], decisions = [], cfg = config() } = {}) {
+function specification({ rules = [], decisions = [], cfg = config() } = {}) {
   return {
     config: cfg,
     domains: new Map([['d', { id: 'd' }]]),
@@ -141,9 +141,9 @@ function referentiel({ rules = [], decisions = [], cfg = config() } = {}) {
   };
 }
 
-const AVEC_SOCLE = config({ referentiels_cites: [{ prefixe: 'socle', repo: 'o/socle' }] });
+const WITH_SOCLE = config({ referentiels_cites: [{ prefixe: 'socle', repo: 'o/socle' }] });
 
-const socle = referentiel({
+const socle = specification({
   rules: [
     { id: 'RG-nommage', cree_par: '2026-003', modifie_par: [] },
     { id: 'RG-modifiee', cree_par: '2026-003', modifie_par: ['2026-010', '2026-014'] },
@@ -152,29 +152,29 @@ const socle = referentiel({
   decisions: [{ id: 'ADR-runners', cree_par: '2026-004', modifie_par: [] }],
 });
 
-function citant(applique, { surAdr = false, cfg = AVEC_SOCLE } = {}) {
-  return surAdr
-    ? referentiel({ cfg, decisions: [{ id: 'ADR-moi', applique }] })
-    : referentiel({ cfg, rules: [{ id: 'RG-moi', applique }] });
+function citing(applique, { onAdr = false, cfg = WITH_SOCLE } = {}) {
+  return onAdr
+    ? specification({ cfg, decisions: [{ id: 'ADR-moi', applique }] })
+    : specification({ cfg, rules: [{ id: 'RG-moi', applique }] });
 }
 
-await test('une citation à jour est dite à jour, et ne s’avertit pas', () => {
-  const repo = citant(['socle:RG-nommage@2026-003', 'socle:RG-modifiee@2026-014']);
+await test('an up-to-date citation is said to be up to date, and does not warn', () => {
+  const repo = citing(['socle:RG-nommage@2026-003', 'socle:RG-modifiee@2026-014']);
   const cites = new Map([['socle', socle]]);
-  egal(
+  equal(
     etatDesCitations(repo, { cites }).map((c) => [c.source, c.nature, c.texte, c.etat, c.repo]),
     [
       ['RG-moi', 'regle', 'socle:RG-nommage@2026-003', 'a-jour', 'o/socle'],
       ['RG-moi', 'regle', 'socle:RG-modifiee@2026-014', 'a-jour', 'o/socle'],
     ],
   );
-  egal(verifierCitations(repo, { cites }), []);
+  equal(verifierCitations(repo, { cites }), []);
 });
 
-await test('une cible modifiée par un cadrage plus récent que celui noté s’avertit', () => {
-  const repo = citant(['socle:RG-modifiee@2026-003']);
+await test('a target modified by a scoping more recent than the noted one warns', () => {
+  const repo = citing(['socle:RG-modifiee@2026-003']);
   const [a] = verifierCitations(repo, { cites: new Map([['socle', socle]]) });
-  egal(a, {
+  equal(a, {
     code: 'citation-perimee',
     gravite: 'avertissement',
     params: {
@@ -186,208 +186,208 @@ await test('une cible modifiée par un cadrage plus récent que celui noté s’
       recents: ['2026-010', '2026-014'],
     },
   });
-  egal(
+  equal(
     formaterAnomalie(a, 'fr'),
     'règle RG-moi → applique socle:RG-modifiee@2026-003 : modifiée depuis par 2026-010, 2026-014 dans o/socle — un cadrage doit en prendre acte',
   );
-  egal(
+  equal(
     formaterAnomalie(a, 'en'),
     'rule RG-moi → applies socle:RG-modifiee@2026-003: modified since by 2026-010, 2026-014 in o/socle — a scoping must take note of it',
   );
 });
 
-await test('une cible abrogée s’avertit comme abrogée, non comme modifiée', () => {
-  const repo = citant(['socle:RG-abrogee@2026-003']);
+await test('a repealed target warns as repealed, not as modified', () => {
+  const repo = citing(['socle:RG-abrogee@2026-003']);
   const anomalies = verifierCitations(repo, { cites: new Map([['socle', socle]]) });
-  egal(anomalies.map((a) => a.code), ['citation-abrogee']);
-  egal(anomalies[0].params.cadrage, '2026-011');
-  egal(
+  equal(anomalies.map((a) => a.code), ['citation-abrogee']);
+  equal(anomalies[0].params.cadrage, '2026-011');
+  equal(
     formaterAnomalie(anomalies[0], 'fr'),
     'règle RG-moi → applique socle:RG-abrogee@2026-003 : abrogée par 2026-011 dans o/socle',
   );
-  egal(
+  equal(
     formaterAnomalie(anomalies[0], 'en'),
     'rule RG-moi → applies socle:RG-abrogee@2026-003: repealed by 2026-011 in o/socle',
   );
 });
 
-await test('une cible absente s’avertit', () => {
-  const repo = citant(['socle:RG-disparue@2026-003'], { surAdr: true });
+await test('a missing target warns', () => {
+  const repo = citing(['socle:RG-disparue@2026-003'], { onAdr: true });
   const [a] = verifierCitations(repo, { cites: new Map([['socle', socle]]) });
-  egal([a.code, a.gravite, a.params.nature, a.params.source], ['citation-absente', 'avertissement', 'adr', 'ADR-moi']);
-  egal(
+  equal([a.code, a.gravite, a.params.nature, a.params.source], ['citation-absente', 'avertissement', 'adr', 'ADR-moi']);
+  equal(
     formaterAnomalie(a, 'fr'),
     "décision d'architecture ADR-moi → applique socle:RG-disparue@2026-003 : introuvable dans o/socle",
   );
-  egal(
+  equal(
     formaterAnomalie(a, 'en'),
     'architecture decision ADR-moi → applies socle:RG-disparue@2026-003: not found in o/socle',
   );
 });
 
-await test('une décision d’architecture citée se trouve parmi les décisions', () => {
-  egal(verifierCitations(citant(['socle:ADR-runners@2026-004']), { cites: new Map([['socle', socle]]) }), []);
+await test('a cited architecture decision is found among the decisions', () => {
+  equal(verifierCitations(citing(['socle:ADR-runners@2026-004']), { cites: new Map([['socle', socle]]) }), []);
 });
 
-await test('un référentiel cité qui n’a pas pu être lu rend la citation non vérifiée, ce qui ne veut pas dire valide', () => {
-  const repo = citant(['socle:RG-nommage@2026-003']);
+await test('a cited specification that could not be read leaves the citation not verified, which does not mean valid', () => {
+  const repo = citing(['socle:RG-nommage@2026-003']);
   for (const cites of [new Map([['socle', null]]), new Map(), undefined]) {
     const [a] = verifierCitations(repo, cites ? { cites } : {});
-    egal([a.code, a.gravite, a.params.repo], ['citation-non-verifiee', 'avertissement', 'o/socle']);
-    egal(etatDesCitations(repo, cites ? { cites } : {})[0].etat, 'non-verifiee');
+    equal([a.code, a.gravite, a.params.repo], ['citation-non-verifiee', 'avertissement', 'o/socle']);
+    equal(etatDesCitations(repo, cites ? { cites } : {})[0].etat, 'non-verifiee');
   }
   const [a] = verifierCitations(repo, {});
-  egal(
+  equal(
     formaterAnomalie(a, 'fr'),
     'règle RG-moi → applique socle:RG-nommage@2026-003 : non vérifiée, o/socle n’a pas pu être lu — ce qui ne veut pas dire valide',
   );
-  egal(
+  equal(
     formaterAnomalie(a, 'en'),
     'rule RG-moi → applies socle:RG-nommage@2026-003: not verified, o/socle could not be read — which does not mean valid',
   );
 });
 
-await test('un préfixe inconnu est une adresse inconnue', () => {
-  const [a] = verifierCitations(citant(['ailleurs:RG-x@2026-001']), {});
-  egal([a.code, a.gravite, a.params.prefixe], ['citation-prefixe-inconnu', 'avertissement', 'ailleurs']);
-  egal(
+await test('an unknown prefix is an unknown address', () => {
+  const [a] = verifierCitations(citing(['ailleurs:RG-x@2026-001']), {});
+  equal([a.code, a.gravite, a.params.prefixe], ['citation-prefixe-inconnu', 'avertissement', 'ailleurs']);
+  equal(
     formaterAnomalie(a, 'fr'),
     'règle RG-moi → applique ailleurs:RG-x@2026-001 : préfixe « ailleurs » inconnu — ni celui du projet, ni un référentiel déclaré dans referentiels_cites',
   );
-  egal(
+  equal(
     formaterAnomalie(a, 'en'),
     'rule RG-moi → applies ailleurs:RG-x@2026-001: unknown prefix “ailleurs” — neither the project’s nor a repo declared in referentiels_cites',
   );
 });
 
-await test('une citation mal formée, ou un applique qui n’est pas une liste, s’avertit', () => {
-  const [a] = verifierCitations(citant(['RG-x']), {});
-  egal([a.code, a.gravite, a.params.texte], ['citation-mal-formee', 'avertissement', 'RG-x']);
-  egal(
+await test('a malformed citation, or an applique that is not a list, warns', () => {
+  const [a] = verifierCitations(citing(['RG-x']), {});
+  equal([a.code, a.gravite, a.params.texte], ['citation-mal-formee', 'avertissement', 'RG-x']);
+  equal(
     formaterAnomalie(a, 'fr'),
     'règle RG-moi → applique « RG-x » : attendu <préfixe>:<identifiant>@<cadrage>, par exemple socle:RG-nommage-des-roles@2026-012',
   );
-  egal(
+  equal(
     formaterAnomalie(a, 'en'),
     'rule RG-moi → applique “RG-x”: expected <prefix>:<id>@<scoping>, for example socle:RG-nommage-des-roles@2026-012',
   );
-  egal(verifierCitations(citant('socle:RG-nommage@2026-003'), {}).map((x) => x.code), ['citation-mal-formee']);
+  equal(verifierCitations(citing('socle:RG-nommage@2026-003'), {}).map((x) => x.code), ['citation-mal-formee']);
 });
 
-await test('le préfixe du projet cite le référentiel lui-même', () => {
-  const repo = referentiel({
+await test('the project’s prefix cites the specification itself', () => {
+  const repo = specification({
     rules: [
       { id: 'RG-moi', applique: ['APP:RG-voisine@2026-001'] },
       { id: 'RG-voisine', modifie_par: ['2026-002'] },
     ],
   });
   const [a] = verifierCitations(repo, {});
-  egal([a.code, a.params.repo, a.params.recents], ['citation-perimee', null, ['2026-002']]);
-  egal(
+  equal([a.code, a.params.repo, a.params.recents], ['citation-perimee', null, ['2026-002']]);
+  equal(
     formaterAnomalie(a, 'fr'),
     'règle RG-moi → applique APP:RG-voisine@2026-001 : modifiée depuis par 2026-002 dans ce référentiel — un cadrage doit en prendre acte',
   );
-  egal(formaterAnomalie(a, 'en').includes('in this repo'), true);
+  equal(formaterAnomalie(a, 'en').includes('in this repo'), true);
 });
 
-await test('l’état d’une citation se calcule aussi contre sa seule cible, pour qui l’a lue ailleurs', () => {
+await test('the state of a citation is also computed against its target alone, for whoever read it elsewhere', () => {
   const c = lireCitation('socle:RG-x@2026-003');
-  egal(etatDeCible(c, { statut: 'actif', modifie_par: [] }), { etat: 'a-jour' });
-  egal(etatDeCible(c, { statut: 'actif', modifie_par: ['2026-002', '2026-010'] }), { etat: 'perimee', recents: ['2026-010'] });
-  egal(etatDeCible(c, { statut: 'abroge', modifie_par: ['2026-011'] }), { etat: 'abrogee', cadrage: '2026-011' });
-  egal(etatDeCible(c, null), { etat: 'absente' });
-  egal(etatDeCible(c, undefined, { lu: false }), { etat: 'non-verifiee' });
+  equal(etatDeCible(c, { statut: 'actif', modifie_par: [] }), { etat: 'a-jour' });
+  equal(etatDeCible(c, { statut: 'actif', modifie_par: ['2026-002', '2026-010'] }), { etat: 'perimee', recents: ['2026-010'] });
+  equal(etatDeCible(c, { statut: 'abroge', modifie_par: ['2026-011'] }), { etat: 'abrogee', cadrage: '2026-011' });
+  equal(etatDeCible(c, null), { etat: 'absente' });
+  equal(etatDeCible(c, undefined, { lu: false }), { etat: 'non-verifiee' });
 });
 
-// --- dans la vérification ---
+// --- in the check ---
 
-await test('la vérification porte les citations en avertissements, et jamais en erreurs', () => {
-  const repo = citant(['socle:RG-abrogee@2026-003', 'socle:RG-modifiee@2026-003', 'x', 'nul:RG-x@2026-001'], {
-    cfg: config({ referentiels_cites: [...AVEC_SOCLE.referentiels_cites, { prefixe: 'socle', repo: 'o/autre' }] }),
+await test('the check carries the citations as warnings, and never as errors', () => {
+  const repo = citing(['socle:RG-abrogee@2026-003', 'socle:RG-modifiee@2026-003', 'x', 'nul:RG-x@2026-001'], {
+    cfg: config({ referentiels_cites: [...WITH_SOCLE.referentiels_cites, { prefixe: 'socle', repo: 'o/autre' }] }),
   });
   const r = checkRepo(repo, { ignorerIndexDerives: true, cites: new Map([['socle', socle]]) });
-  egal(r.errors, []);
-  egal(
+  equal(r.errors, []);
+  equal(
     r.anomalies.map((a) => a.code),
     ['referentiel-cite-en-double', 'citation-abrogee', 'citation-perimee', 'citation-mal-formee', 'citation-prefixe-inconnu'],
   );
 });
 
-await test('sans référentiels cités fournis, la vérification dit ses citations non vérifiées', () => {
-  const r = checkRepo(citant(['socle:RG-nommage@2026-003']), { ignorerIndexDerives: true });
-  egal(r.anomalies.map((a) => a.code), ['citation-non-verifiee']);
-  egal(r.errors, []);
+await test('without cited specifications provided, the check says its citations are not verified', () => {
+  const r = checkRepo(citing(['socle:RG-nommage@2026-003']), { ignorerIndexDerives: true });
+  equal(r.anomalies.map((a) => a.code), ['citation-non-verifiee']);
+  equal(r.errors, []);
 });
 
-await test('la bibliothèque expose la citation à qui la lit, comme le reste du format', () => {
-  for (const nom of ['lireCitation', 'referentielsCites', 'resoudrePrefixe', 'comparerCadrages', 'etatDesCitations', 'etatDeCible', 'verifierCitations'])
-    vrai(typeof bibliotheque[nom] === 'function', `${nom} n'est pas exporté par verifier.mjs`);
+await test('the library exposes the citation to whoever reads it, like the rest of the format', () => {
+  for (const name of ['lireCitation', 'referentielsCites', 'resoudrePrefixe', 'comparerCadrages', 'etatDesCitations', 'etatDeCible', 'verifierCitations'])
+    assert(typeof library[name] === 'function', `${name} is not exported by verifier.mjs`);
 });
 
-// --- depuis le système de fichiers ---
+// --- from the file system ---
 
-function ecrire(racine, chemin, contenu) {
-  const complet = join(racine, ...chemin.split('/'));
-  mkdirSync(join(complet, '..'), { recursive: true });
-  writeFileSync(complet, contenu);
+function write(root, path, content) {
+  const full = join(root, ...path.split('/'));
+  mkdirSync(join(full, '..'), { recursive: true });
+  writeFileSync(full, content);
 }
 
-function depotCite(racine) {
-  ecrire(racine, 'ssk-canon.yml', 'schema_version: 1\nprojet:\n  nom: Socle\n');
-  ecrire(racine, 'domains/d.md', '---\nid: d\nnom: D\n---\n');
-  ecrire(racine, 'features/f.md', '---\nid: f\nnom: F\ndomaines: [d]\n---\n');
-  ecrire(
-    racine,
+function citedRepo(root) {
+  write(root, 'ssk-canon.yml', 'schema_version: 1\nprojet:\n  nom: Socle\n');
+  write(root, 'domains/d.md', '---\nid: d\nnom: D\n---\n');
+  write(root, 'features/f.md', '---\nid: f\nnom: F\ndomaines: [d]\n---\n');
+  write(
+    root,
     'rules/RG-nommage.md',
     "---\nid: RG-nommage\nstatut: actif\nfonctionnalites: [f]\ncree_par: '2026-003'\nmodifie_par: ['2026-009']\n---\n",
   );
 }
 
-function depotCitant(racine) {
-  ecrire(
-    racine,
+function citingRepo(root) {
+  write(
+    root,
     'ssk-canon.yml',
     'schema_version: 1\nprojet:\n  nom: App\nreferentiels_cites:\n  - { prefixe: socle, repo: o/socle }\n  - { prefixe: prive, repo: o/prive }\n',
   );
-  ecrire(racine, 'domains/d.md', '---\nid: d\nnom: D\n---\n');
-  ecrire(racine, 'features/f.md', '---\nid: f\nnom: F\ndomaines: [d]\n---\n');
-  ecrire(
-    racine,
+  write(root, 'domains/d.md', '---\nid: d\nnom: D\n---\n');
+  write(root, 'features/f.md', '---\nid: f\nnom: F\ndomaines: [d]\n---\n');
+  write(
+    root,
     'rules/RG-moi.md',
     "---\nid: RG-moi\nstatut: actif\nfonctionnalites: [f]\napplique: ['socle:RG-nommage@2026-003', 'prive:RG-y@2026-001']\n---\n",
   );
 }
 
-await test('les référentiels cités se chargent par le dépôt qui les obtient, et un dépôt inaccessible reste non lu', () => {
-  const racine = mkdtempSync(join(tmpdir(), 'canon-cites-'));
+await test('the cited specifications are loaded through the repo that obtains them, and an unreachable repo stays unread', () => {
+  const root = mkdtempSync(join(tmpdir(), 'canon-cites-'));
   try {
-    depotCite(join(racine, 'socle'));
-    const demandes = [];
-    const cites = chargerReferentielsCites(
+    citedRepo(join(root, 'socle'));
+    const requests = [];
+    const cites = loadCitedSpecifications(
       { referentiels_cites: [{ prefixe: 'socle', repo: 'o/socle' }, { prefixe: 'prive', repo: 'o/prive' }] },
-      { obtenir: (repo) => (demandes.push(repo), repo === 'o/socle' ? join(racine, 'socle') : null) },
+      { obtenir: (repo) => (requests.push(repo), repo === 'o/socle' ? join(root, 'socle') : null) },
     );
-    egal(demandes, ['o/socle', 'o/prive']);
-    egal([...cites.get('socle').rules.keys()], ['RG-nommage']);
-    egal(cites.get('prive'), null);
+    equal(requests, ['o/socle', 'o/prive']);
+    equal([...cites.get('socle').rules.keys()], ['RG-nommage']);
+    equal(cites.get('prive'), null);
   } finally {
-    rmSync(racine, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
-await test('check lit les référentiels cités sous le dossier donné, et avertit sans échouer', () => {
-  const racine = mkdtempSync(join(tmpdir(), 'canon-cites-'));
+await test('check reads the cited specifications under the given folder, and warns without failing', () => {
+  const root = mkdtempSync(join(tmpdir(), 'canon-cites-'));
   try {
-    depotCitant(join(racine, 'app'));
-    depotCite(join(racine, 'cites', 'o', 'socle'));
-    const r = check(join(racine, 'app'), {
+    citingRepo(join(root, 'app'));
+    citedRepo(join(root, 'cites', 'o', 'socle'));
+    const r = check(join(root, 'app'), {
       livres: new Set(),
       ignorerIndexDerives: true,
-      dossierCites: join(racine, 'cites'),
+      dossierCites: join(root, 'cites'),
       cloner: false,
     });
-    egal(r.errors, []);
-    egal(
+    equal(r.errors, []);
+    equal(
       r.anomalies.map((a) => [a.code, a.params.citation]),
       [
         ['citation-perimee', 'socle:RG-nommage@2026-003'],
@@ -395,10 +395,10 @@ await test('check lit les référentiels cités sous le dossier donné, et avert
       ],
     );
   } finally {
-    rmSync(racine, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
-for (const e of echecs) console.error(`✗ ${e}`);
-console.log(`${reussis} réussi(s), ${echecs.length} échec(s)`);
-if (echecs.length) process.exit(1);
+for (const e of failures) console.error(`✗ ${e}`);
+console.log(`${passed} passed, ${failures.length} failure(s)`);
+if (failures.length) process.exit(1);

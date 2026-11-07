@@ -1,11 +1,11 @@
 /**
- * La résolution des noms qu'un référentiel déclare dans `ssk-canon.yml` (RG-noms-declares). Repris à la racine du paquet.
+ * Resolving the names a specification declares in `ssk-canon.yml` (RG-noms-declares). Re-exported at the package root.
  *
  * @module @ssk-it/canon-check/noms
  */
 import type { Anomalie } from './verifier.js';
 
-/** Les clés du bloc `dossiers` de `ssk-canon.yml`. */
+/** The keys of the `dossiers` block of `ssk-canon.yml`. */
 export type CleDossier =
   | 'domaines'
   | 'fonctionnalites'
@@ -16,19 +16,19 @@ export type CleDossier =
   | 'identite'
   | 'decisions_cadrage';
 
-/** Les clés du bloc `fichiers` de `ssk-canon.yml`. */
+/** The keys of the `fichiers` block of `ssk-canon.yml`. */
 export type CleFichier = 'cadrage' | 'pieces_jointes';
 
-/** Les noms d'un référentiel, déclarés ou ceux du format. */
+/** A specification's names, declared or the format's. */
 export interface Noms {
   readonly dossiers: Readonly<Record<CleDossier, string>>;
   readonly fichiers: Readonly<Record<CleFichier, string>>;
 }
 
-/** Les noms du format, que garde toute clé non déclarée. */
+/** The format's names, which any undeclared key keeps. */
 export const NOMS_PAR_DEFAUT: Noms;
 
-/** La clé de `dossiers` qui nomme chaque collection d'entités. */
+/** The `dossiers` key that names each entity collection. */
 export const DOSSIER_DE_COLLECTION: Readonly<{
   domains: 'domaines';
   features: 'fonctionnalites';
@@ -39,15 +39,15 @@ export const DOSSIER_DE_COLLECTION: Readonly<{
 }>;
 
 /**
- * Résout les noms à partir de la configuration lue de `ssk-canon.yml`. Une
- * entrée fautive est écartée, reprend le nom du format, et se dit dans
- * `erreurs`, en anomalie codée que `formaterAnomalie` dit dans une langue.
+ * Resolves the names from the configuration read from `ssk-canon.yml`. A
+ * faulty entry is set aside, takes back the format's name, and is told in
+ * `erreurs`, as a coded anomaly that `formaterAnomalie` tells in a language.
  */
 export function resoudreNoms(config: unknown): Noms & { readonly erreurs: Anomalie[] };
 
 /**
- * Signale un dossier ou un fichier déclaré introuvable quand celui du nom du
- * format existe encore, en anomalies codées. `chemins` : les fichiers du dépôt,
- * relatifs à sa racine.
+ * Reports a declared folder or file that cannot be found when the one with the
+ * format's name still exists, as coded anomalies. `paths`: the repo's files,
+ * relative to its root.
  */
-export function verifierDossiersDeclares(noms: Noms, chemins: readonly string[]): Anomalie[];
+export function verifierDossiersDeclares(names: Noms, paths: readonly string[]): Anomalie[];

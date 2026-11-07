@@ -1,24 +1,22 @@
-// Les noms des dossiers et des fichiers convenus d'un référentiel —
+// The names of a specification's agreed folders and files —
 // RG-noms-declares.
 //
-// Un référentiel peut les déclarer dans `ssk-canon.yml`, pour parler la langue
-// et le lexique de son client : le dépôt est lu sur la plateforme par des gens
-// qui n'ouvrent jamais l'application. Chaque clé est facultative, et une clé
-// absente garde le nom du format : un référentiel qui ne déclare rien se lit
-// comme avant.
+// A specification can declare them in `ssk-canon.yml`, to speak its client's
+// language and vocabulary: the repo is read on the platform by people who
+// never open the application. Each key is optional, and a missing key keeps
+// the format's name: a specification that declares nothing reads as before.
 //
-// Ce module ne dépend d'aucun système de fichiers. La vérification, la
-// propagation et l'application résolvent les noms ici, une seule fois — deux
-// résolutions finiraient par lire deux référentiels différents
-// (RG-parseur-partage).
+// This module depends on no file system. The check, the propagation and the
+// application resolve the names here, once — two resolutions would end up
+// reading two different specifications (RG-parseur-partage).
 
-// Ses fautes se disent en anomalies codées — RG-anomalies-codees —, dont le
-// message vient du catalogue de la bibliothèque. Le module n'importe rien pour
-// autant : les skills en portent une copie, sans la bibliothèque. D'où ce
-// constructeur, le même que celui de `anomalies.mjs`.
-const erreur = (code, params = {}) => ({ code, gravite: 'erreur', params });
+// Its faults are told as coded anomalies — RG-anomalies-codees —, whose
+// message comes from the library's catalogue. Yet the module imports nothing:
+// the skills carry a copy of it, without the library. Hence this constructor,
+// the same as the one in `anomalies.mjs`.
+const createError = (code, params = {}) => ({ code, gravite: 'erreur', params });
 
-/** Les noms du format, que garde toute clé non déclarée. */
+/** The format's names, which any undeclared key keeps. */
 export const NOMS_PAR_DEFAUT = Object.freeze({
   dossiers: Object.freeze({
     domaines: 'domains',
@@ -37,8 +35,8 @@ export const NOMS_PAR_DEFAUT = Object.freeze({
 });
 
 /**
- * La clé de `dossiers` qui nomme chaque collection d'entités, telle que le
- * chargement les indexe.
+ * The `dossiers` key that names each entity collection, as loading indexes
+ * them.
  */
 export const DOSSIER_DE_COLLECTION = Object.freeze({
   domains: 'domaines',
@@ -50,166 +48,166 @@ export const DOSSIER_DE_COLLECTION = Object.freeze({
 });
 
 /**
- * Les noms qui partagent un même répertoire, et ne doivent donc pas se
- * confondre : ceux de la racine, et ceux du dossier d'un cadrage. Le dossier
- * des décisions d'un cadrage peut ainsi porter le nom de celui des décisions
- * d'architecture, qui vit ailleurs.
+ * The names that share a same directory, and so must not collide: those at
+ * the root, and those in a scoping's folder. The folder of a scoping's
+ * decisions can thus bear the name of the architecture decisions' folder,
+ * which lives elsewhere.
  */
-const VOISINAGES = [
+const NEIGHBOURHOODS = [
   {
-    bloc: 'dossiers',
-    cles: ['domaines', 'fonctionnalites', 'regles', 'cadrages', 'decisions', 'architecture', 'identite'],
+    block: 'dossiers',
+    keys: ['domaines', 'fonctionnalites', 'regles', 'cadrages', 'decisions', 'architecture', 'identite'],
   },
-  { bloc: 'dossiers', cles: ['decisions_cadrage'], avec: { bloc: 'fichiers', cles: ['cadrage', 'pieces_jointes'] } },
+  { block: 'dossiers', keys: ['decisions_cadrage'], with: { block: 'fichiers', keys: ['cadrage', 'pieces_jointes'] } },
 ];
 
-const estTable = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const isTable = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
-/** La faute d'un nom déclaré, ou `null` s'il est admis. */
-function fauteDuNom(bloc, cle, valeur) {
-  const p = { bloc, cle, defaut: NOMS_PAR_DEFAUT[bloc][cle] };
-  if (valeur === null || valeur === undefined || valeur === '') return erreur('nom-vide', p);
-  if (typeof valeur !== 'string') return erreur('nom-non-chaine', p);
-  if (valeur.trim() !== valeur) return erreur('nom-borde-d-espaces', p);
-  if (/[/\\]/.test(valeur)) return erreur('nom-chemin', p);
-  if (valeur.startsWith('.')) return erreur('nom-commence-par-point', p);
-  if (bloc === 'fichiers' && !valeur.endsWith('.md')) return erreur('nom-fichier-non-markdown', p);
+/** The fault of a declared name, or `null` if it is allowed. */
+function findNameFault(block, key, value) {
+  const p = { bloc: block, cle: key, defaut: NOMS_PAR_DEFAUT[block][key] };
+  if (value === null || value === undefined || value === '') return createError('nom-vide', p);
+  if (typeof value !== 'string') return createError('nom-non-chaine', p);
+  if (value.trim() !== value) return createError('nom-borde-d-espaces', p);
+  if (/[/\\]/.test(value)) return createError('nom-chemin', p);
+  if (value.startsWith('.')) return createError('nom-commence-par-point', p);
+  if (block === 'fichiers' && !value.endsWith('.md')) return createError('nom-fichier-non-markdown', p);
   return null;
 }
 
 /**
- * Résout les noms d'un référentiel à partir de sa configuration.
+ * Resolves a specification's names from its configuration.
  *
- * Une entrée fautive est écartée et reprend le nom du format ; le reste de la
- * déclaration s'applique. Deux noms qui se confondent dans un même répertoire
- * sont écartés tous les deux, faute de pouvoir dire lequel était voulu — un nom
- * du format qu'aucune déclaration ne remplace n'est jamais en faute.
+ * A faulty entry is set aside and takes back the format's name; the rest of
+ * the declaration applies. Two names that collide in a same directory are both
+ * set aside, for lack of a way to tell which one was meant — a format name
+ * that no declaration replaces is never at fault.
  *
- * @param {unknown} config la configuration lue de `ssk-canon.yml`, ou rien
+ * @param {unknown} config the configuration read from `ssk-canon.yml`, or nothing
  * @returns {{ dossiers: Record<string, string>, fichiers: Record<string, string>, erreurs: object[] }}
- *   `erreurs` : des anomalies codées, que `formaterAnomalie` dit dans une langue
+ *   `erreurs`: coded anomalies, which `formaterAnomalie` tells in a language
  */
 export function resoudreNoms(config) {
-  const erreurs = [];
-  const noms = {
+  const errors = [];
+  const names = {
     dossiers: { ...NOMS_PAR_DEFAUT.dossiers },
     fichiers: { ...NOMS_PAR_DEFAUT.fichiers },
   };
-  const declares = new Set();
+  const declared = new Set();
 
-  for (const bloc of ['dossiers', 'fichiers']) {
-    const declaration = estTable(config) ? config[bloc] : undefined;
+  for (const block of ['dossiers', 'fichiers']) {
+    const declaration = isTable(config) ? config[block] : undefined;
     if (declaration === undefined || declaration === null) continue;
-    if (!estTable(declaration)) {
-      erreurs.push(erreur('noms-bloc-non-table', { bloc }));
+    if (!isTable(declaration)) {
+      errors.push(createError('noms-bloc-non-table', { bloc: block }));
       continue;
     }
-    for (const [cle, valeur] of Object.entries(declaration)) {
-      if (!(cle in NOMS_PAR_DEFAUT[bloc])) {
-        erreurs.push(erreur('nom-cle-inconnue', { bloc, cle, cles: Object.keys(NOMS_PAR_DEFAUT[bloc]) }));
+    for (const [key, value] of Object.entries(declaration)) {
+      if (!(key in NOMS_PAR_DEFAUT[block])) {
+        errors.push(createError('nom-cle-inconnue', { bloc: block, cle: key, cles: Object.keys(NOMS_PAR_DEFAUT[block]) }));
         continue;
       }
-      const faute = fauteDuNom(bloc, cle, valeur);
-      if (faute) {
-        erreurs.push(faute);
+      const fault = findNameFault(block, key, value);
+      if (fault) {
+        errors.push(fault);
         continue;
       }
-      noms[bloc][cle] = valeur;
-      if (valeur !== NOMS_PAR_DEFAUT[bloc][cle]) declares.add(`${bloc}.${cle}`);
+      names[block][key] = value;
+      if (value !== NOMS_PAR_DEFAUT[block][key]) declared.add(`${block}.${key}`);
     }
   }
 
-  // Écarter une entrée lui rend le nom du format, qui peut à son tour en
-  // heurter une autre : on recommence jusqu'à ce que plus rien ne se confonde.
-  for (let encore = true; encore; ) {
-    encore = false;
-    for (const voisinage of VOISINAGES) {
-      const entrees = [voisinage, voisinage.avec]
+  // Setting an entry aside gives it back the format's name, which may in turn
+  // collide with another: we start over until nothing collides any more.
+  for (let again = true; again; ) {
+    again = false;
+    for (const neighbourhood of NEIGHBOURHOODS) {
+      const entries = [neighbourhood, neighbourhood.with]
         .filter(Boolean)
-        .flatMap(({ bloc, cles }) => cles.map((cle) => ({ bloc, cle, nom: noms[bloc][cle] })));
-      // Toutes les fautes d'un passage se constatent avant d'en écarter une :
-      // écarter la première ferait passer sa jumelle pour innocente.
-      const fautives = entrees
-        .filter(({ bloc, cle }) => declares.has(`${bloc}.${cle}`))
-        .map((e) => ({ ...e, autres: entrees.filter((o) => o.nom === e.nom && o !== e) }))
-        .filter((e) => e.autres.length);
-      for (const { bloc, cle, nom, autres } of fautives) {
-        erreurs.push(
-          erreur('nom-en-double', {
-            bloc,
-            cle,
-            nom,
-            autres: autres.map((e) => `${e.bloc}.${e.cle}`),
-            defaut: NOMS_PAR_DEFAUT[bloc][cle],
+        .flatMap(({ block, keys }) => keys.map((key) => ({ block, key, name: names[block][key] })));
+      // All the faults of a pass are found before setting one aside: setting
+      // the first aside would make its twin look innocent.
+      const faulty = entries
+        .filter(({ block, key }) => declared.has(`${block}.${key}`))
+        .map((e) => ({ ...e, others: entries.filter((o) => o.name === e.name && o !== e) }))
+        .filter((e) => e.others.length);
+      for (const { block, key, name, others } of faulty) {
+        errors.push(
+          createError('nom-en-double', {
+            bloc: block,
+            cle: key,
+            nom: name,
+            autres: others.map((e) => `${e.block}.${e.key}`),
+            defaut: NOMS_PAR_DEFAUT[block][key],
           }),
         );
-        noms[bloc][cle] = NOMS_PAR_DEFAUT[bloc][cle];
-        declares.delete(`${bloc}.${cle}`);
-        encore = true;
+        names[block][key] = NOMS_PAR_DEFAUT[block][key];
+        declared.delete(`${block}.${key}`);
+        again = true;
       }
     }
   }
 
-  return { ...noms, erreurs };
+  return { ...names, erreurs: errors };
 }
 
 /**
- * Signale un dossier ou un fichier déclaré introuvable, quand celui du nom du
- * format existe encore à sa place.
+ * Reports a declared folder or file that cannot be found, when the one with
+ * the format's name still exists in its place.
  *
- * Un nom se choisit à la création et ne change plus (RG-chemins-immuables) :
- * une déclaration qui change sans que les fichiers bougent viderait le
- * référentiel sans bruit, ses entités restant sous un nom que plus rien ne lit.
+ * A name is chosen at creation and never changes (RG-chemins-immuables): a
+ * declaration that changes without the files moving would silently empty the
+ * specification, its entities staying under a name that nothing reads any more.
  *
- * @param {{ dossiers: Record<string, string>, fichiers: Record<string, string> }} noms
- * @param {readonly string[]} chemins les fichiers du dépôt, relatifs à sa racine, séparés par « / »
- * @returns {object[]} des anomalies codées, que `formaterAnomalie` dit dans une langue
+ * @param {{ dossiers: Record<string, string>, fichiers: Record<string, string> }} names
+ * @param {readonly string[]} paths the repo's files, relative to its root, separated by “/”
+ * @returns {object[]} coded anomalies, which `formaterAnomalie` tells in a language
  */
-export function verifierDossiersDeclares(noms, chemins) {
-  const erreurs = [];
-  const defaut = NOMS_PAR_DEFAUT;
-  const contient = (prefixe) => chemins.some((c) => c.startsWith(prefixe));
+export function verifierDossiersDeclares(names, paths) {
+  const errors = [];
+  const defaults = NOMS_PAR_DEFAUT;
+  const contains = (prefix) => paths.some((c) => c.startsWith(prefix));
 
-  for (const [cle, nom] of Object.entries(noms.dossiers)) {
-    if (cle === 'decisions_cadrage' || nom === defaut.dossiers[cle]) continue;
-    const ancien = defaut.dossiers[cle];
-    // L'ancien nom peut être porté légitimement par une autre nature.
-    if (Object.entries(noms.dossiers).some(([c, n]) => c !== cle && c !== 'decisions_cadrage' && n === ancien))
+  for (const [key, name] of Object.entries(names.dossiers)) {
+    if (key === 'decisions_cadrage' || name === defaults.dossiers[key]) continue;
+    const former = defaults.dossiers[key];
+    // The former name may legitimately be borne by another kind.
+    if (Object.entries(names.dossiers).some(([k, n]) => k !== key && k !== 'decisions_cadrage' && n === former))
       continue;
-    if (!contient(`${nom}/`) && contient(`${ancien}/`))
-      erreurs.push(erreur('dossier-declare-introuvable', { cle, nom, ancien }));
+    if (!contains(`${name}/`) && contains(`${former}/`))
+      errors.push(createError('dossier-declare-introuvable', { cle: key, nom: name, ancien: former }));
   }
 
-  // Dans chaque cadrage, ce qui porte encore le nom du format alors qu'un autre
-  // est déclaré.
-  const cadrages = `${noms.dossiers.cadrages}/`;
-  const parCadrage = new Map();
-  for (const c of chemins) {
-    if (!c.startsWith(cadrages)) continue;
-    const [id, ...reste] = c.slice(cadrages.length).split('/');
-    if (!id || !reste.length) continue;
-    if (!parCadrage.has(id)) parCadrage.set(id, []);
-    parCadrage.get(id).push(reste.join('/'));
+  // In each scoping, what still bears the format's name while another one is
+  // declared.
+  const scopings = `${names.dossiers.cadrages}/`;
+  const byScoping = new Map();
+  for (const c of paths) {
+    if (!c.startsWith(scopings)) continue;
+    const [id, ...rest] = c.slice(scopings.length).split('/');
+    if (!id || !rest.length) continue;
+    if (!byScoping.has(id)) byScoping.set(id, []);
+    byScoping.get(id).push(rest.join('/'));
   }
 
-  const internes = [
-    { cle: 'dossiers.decisions_cadrage', nom: `${noms.dossiers.decisions_cadrage}/`, ancien: `${defaut.dossiers.decisions_cadrage}/` },
-    { cle: 'fichiers.cadrage', nom: noms.fichiers.cadrage, ancien: defaut.fichiers.cadrage },
-    { cle: 'fichiers.pieces_jointes', nom: noms.fichiers.pieces_jointes, ancien: defaut.fichiers.pieces_jointes },
+  const inner = [
+    { key: 'dossiers.decisions_cadrage', name: `${names.dossiers.decisions_cadrage}/`, former: `${defaults.dossiers.decisions_cadrage}/` },
+    { key: 'fichiers.cadrage', name: names.fichiers.cadrage, former: defaults.fichiers.cadrage },
+    { key: 'fichiers.pieces_jointes', name: names.fichiers.pieces_jointes, former: defaults.fichiers.pieces_jointes },
   ];
-  for (const [id, contenu] of parCadrage)
-    for (const { cle, nom, ancien } of internes) {
-      if (nom === ancien) continue;
-      const present = (n) => contenu.some((c) => (n.endsWith('/') ? c.startsWith(n) : c === n));
-      if (!present(nom) && present(ancien))
-        erreurs.push(
-          erreur('nom-de-cadrage-introuvable', {
-            chemin: `${cadrages}${id}/${nom}`,
-            ancien: `${cadrages}${id}/${ancien}`,
-            cle,
+  for (const [id, content] of byScoping)
+    for (const { key, name, former } of inner) {
+      if (name === former) continue;
+      const present = (n) => content.some((c) => (n.endsWith('/') ? c.startsWith(n) : c === n));
+      if (!present(name) && present(former))
+        errors.push(
+          createError('nom-de-cadrage-introuvable', {
+            chemin: `${scopings}${id}/${name}`,
+            ancien: `${scopings}${id}/${former}`,
+            cle: key,
           }),
         );
     }
 
-  return erreurs;
+  return errors;
 }

@@ -1,45 +1,45 @@
-// Déclarations de `citations.mjs` — RG-regle-du-socle-citee,
+// Declarations for `citations.mjs` — RG-regle-du-socle-citee,
 // RG-citation-signalee-chez-le-citant, RG-prefixe-projet.
 
 /**
- * La citation d'un autre référentiel : lecture, résolution du préfixe, état de chaque citation. Repris à la racine du paquet.
+ * Citing another specification: parsing, prefix resolution, state of each citation. Re-exported at the package root.
  *
  * @module @ssk-it/canon-check/citations
  */
 import type { Anomalie } from './verifier.js';
 
-/** Un préfixe de projet : des lettres, chiffres ou « _ », commençant par une lettre. */
+/** A project prefix: letters, digits or « _ », starting with a letter. */
 export declare const FORME_PREFIXE: RegExp;
 
-/** Une citation lue : `<prefixe>:<id>@<cadrage>`, le cadrage étant celui du référentiel cité. */
+/** A parsed citation: `<prefixe>:<id>@<cadrage>`, the scoping being the cited specification's. */
 export interface Citation {
   readonly prefixe: string;
   readonly id: string;
   readonly cadrage: string;
 }
 
-/** Une citation lue, ou `null` si elle ne suit pas la forme. */
-export function lireCitation(texte: unknown): Citation | null;
+/** A parsed citation, or `null` if it does not follow the pattern. */
+export function lireCitation(text: unknown): Citation | null;
 
-/** Compare deux identifiants de cadrage, par année puis par numéro. */
+/** Compares two scoping identifiers, by year then by number. */
 export function comparerCadrages(a: string, b: string): number;
 
 /**
- * Les référentiels que le projet cite — `referentiels_cites` de `ssk-canon.yml`
- * —, par préfixe. Une entrée fautive est écartée, et avertie.
+ * The specifications the project cites — `referentiels_cites` in `ssk-canon.yml`
+ * —, by prefix. A faulty entry is set aside, and warned about.
  */
 export function referentielsCites(config: unknown): {
   cites: Map<string, string>;
   anomalies: Anomalie[];
 };
 
-/** Ce que désigne un préfixe : le projet, un référentiel qu'il cite, ou une adresse inconnue. */
+/** What a prefix designates: the project, a specification it cites, or an unknown address. */
 export function resoudrePrefixe(
-  prefixe: string,
+  prefix: string,
   config: unknown,
 ): { nature: 'projet' } | { nature: 'cite'; repo: string } | { nature: 'inconnue' };
 
-/** Un référentiel cité, chargé : ses règles, et ses décisions d'architecture s'il en a. */
+/** A loaded cited specification: its rules, and its architecture decisions if it has any. */
 export interface ReferentielCite {
   readonly rules: ReadonlyMap<string, unknown>;
   readonly decisions?: ReadonlyMap<string, unknown>;
@@ -47,8 +47,8 @@ export interface ReferentielCite {
 
 export interface OptionsCitations {
   /**
-   * Par préfixe, le référentiel cité déjà chargé, ou `null` s'il n'a pas pu
-   * l'être. Un préfixe absent n'a pas été lu : ses citations sont non vérifiées.
+   * By prefix, the cited specification already loaded, or `null` if it could
+   * not be. A missing prefix was not read: its citations are unchecked.
    */
   readonly cites?: ReadonlyMap<string, ReferentielCite | null>;
 }
@@ -62,37 +62,37 @@ export type EtatCitation =
   | 'prefixe-inconnu'
   | 'mal-formee';
 
-/** Une citation et ce qu'en dit la vérification. */
+/** A citation and what the check says about it. */
 export interface EtatDeCitation {
-  /** L'identifiant de la règle ou de la décision d'architecture qui cite. */
+  /** The identifier of the rule or architecture decision that cites. */
   readonly source: string;
   readonly nature: 'regle' | 'adr';
-  /** La citation telle qu'écrite dans `applique`. */
+  /** The citation as written in `applique`. */
   readonly texte: string;
-  /** `null` quand elle est mal formée. */
+  /** `null` when it is malformed. */
   readonly citation: Citation | null;
   readonly etat: EtatCitation;
-  /** Le dépôt cité ; `null` quand le préfixe est celui du projet ; absent si le préfixe ne se résout pas. */
+  /** The cited repo; `null` when the prefix is the project's; absent if the prefix does not resolve. */
   readonly repo?: string | null;
-  /** `perimee` : les cadrages du référentiel cité postérieurs à celui noté. */
+  /** `perimee`: the cited specification's scopings later than the noted one. */
   readonly recents?: readonly string[];
-  /** `abrogee` : le cadrage qui l'a abrogée, s'il est connu. */
+  /** `abrogee`: the scoping that repealed it, if known. */
   readonly cadrage?: string | null;
 }
 
-/** L'état de chaque citation, dans l'ordre des règles puis des décisions d'architecture. */
+/** The state of each citation, in the order of rules then architecture decisions. */
 export function etatDesCitations(
   repo: { readonly config?: unknown; readonly rules: ReadonlyMap<string, unknown>; readonly decisions?: ReadonlyMap<string, unknown> },
   options?: OptionsCitations,
 ): EtatDeCitation[];
 
 /**
- * L'état d'une citation face à sa seule cible, lue dans le référentiel cité :
- * `null` si elle est introuvable, `lu: false` si le référentiel n'a pas pu être lu.
+ * The state of a citation against its target alone, read in the cited specification:
+ * `null` if it cannot be found, `lu: false` if the specification could not be read.
  */
 export function etatDeCible(
   citation: Pick<Citation, 'cadrage'>,
-  cible: { readonly statut?: string; readonly modifie_par?: readonly string[] } | null | undefined,
+  target: { readonly statut?: string; readonly modifie_par?: readonly string[] } | null | undefined,
   options?: { readonly lu?: boolean },
 ): {
   etat: 'a-jour' | 'perimee' | 'abrogee' | 'absente' | 'non-verifiee';
@@ -100,7 +100,7 @@ export function etatDeCible(
   cadrage?: string | null;
 };
 
-/** Les avertissements des citations, et de la déclaration des référentiels cités. Jamais une erreur. */
+/** The warnings of the citations, and of the declaration of cited specifications. Never an error. */
 export function verifierCitations(
   repo: { readonly config?: unknown; readonly rules: ReadonlyMap<string, unknown>; readonly decisions?: ReadonlyMap<string, unknown> },
   options?: OptionsCitations,

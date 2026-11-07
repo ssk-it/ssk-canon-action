@@ -1,139 +1,139 @@
-// L'identité visuelle d'un projet — RG-identite-du-projet.
+// A project's visual identity — RG-identite-du-projet.
 //
-// Un référentiel peut porter, dans `identite/` à sa racine, le symbole et le
-// logotype de son projet. Rien ne la déclare ailleurs : c'est le nom des
-// fichiers qui fait foi. D'où la vérification, sans laquelle un fichier mal
-// nommé serait ignoré sans que personne ne sache pourquoi.
+// A specification can carry, in `identite/` at its root, its project's symbol
+// and logotype. Nothing declares it elsewhere: the file names are what count.
+// Hence the check, without which a badly named file would be ignored without
+// anyone knowing why.
 //
-// Ce module ne dépend d'aucun système de fichiers. Il prend la liste des
-// fichiers du répertoire avec leur poids, que l'Action lit sur le disque et
-// l'application dans l'arborescence du dépôt distant — RG-parseur-partage.
-// L'application en reprend aussi les noms, les formats et leur ordre de
-// préférence : les écrire de son côté garantirait qu'ils divergent.
+// This module depends on no file system. It takes the list of the directory's
+// files with their size, which the Action reads on disk and the application in
+// the remote repo's tree — RG-parseur-partage. The application also takes
+// from it the names, the formats and their order of preference: writing them
+// on its side would guarantee that they diverge.
 
-import { erreur, avertissement, enTexte } from './anomalies.mjs';
+import { createError, createWarning, enTexte } from './anomalies.mjs';
 
-/** Le répertoire qui porte l'identité, à la racine du référentiel. */
+/** The directory that carries the identity, at the specification's root. */
 export const REPERTOIRE_IDENTITE = 'identite';
 
-/** Les éléments d'une identité. */
+/** The elements of an identity. */
 export const ELEMENTS_IDENTITE = Object.freeze(['symbole', 'logotype']);
 
 /**
- * Les variantes d'un élément : pour un fond clair, pour un fond sombre. Un
- * élément sans suffixe convient aux deux fonds.
+ * The variants of an element: for a light background, for a dark background.
+ * An element without a suffix suits both backgrounds.
  */
 export const VARIANTES_IDENTITE = Object.freeze(['clair', 'sombre']);
 
 /**
- * Les formats admis, dans l'ordre de préférence : quand un même nom existe en
- * plusieurs formats, le premier de cet ordre est employé. Le SVG reste net à
- * toutes les tailles et se relit en différence ; les formats matriciels servent
- * quand le dessin n'existe qu'ainsi.
+ * The allowed formats, in order of preference: when a same name exists in
+ * several formats, the first in this order is used. SVG stays sharp at every
+ * size and can be reviewed as a diff; raster formats serve when the drawing
+ * only exists that way.
  */
 export const FORMATS_IDENTITE = Object.freeze(['svg', 'webp', 'png']);
 
 /**
- * Le poids maximal d'un fichier, en octets : 100 Kio.
+ * The maximum size of a file, in bytes: 100 KiB.
  *
- * L'identité fait exception au refus des binaires versionnés (2026-002/02)
- * parce que ses fichiers sont peu nombreux, petits et rarement révisés. La
- * borne garantit qu'ils le restent : chaque révision d'un binaire pèse sur tout
- * clone du référentiel, et pour toujours.
+ * The identity is an exception to the refusal of versioned binaries (2026-002/02)
+ * because its files are few, small and rarely revised. The limit guarantees
+ * they stay so: each revision of a binary weighs on every clone of the
+ * specification, and forever.
  */
 export const POIDS_MAX_IDENTITE = 100 * 1024;
 
-/** Le fichier d'accueil, admis au titre de la documentation. */
-const ACCUEIL = 'README.md';
+/** The landing file, allowed as documentation. */
+const README_FILE = 'README.md';
 
-const NOM = new RegExp(
+const NAME_PATTERN = new RegExp(
   `^(${ELEMENTS_IDENTITE.join('|')})(?:-(${VARIANTES_IDENTITE.join('|')}))?\\.([^./]+)$`,
 );
 
 /**
- * Lit un nom de fichier d'identité.
+ * Reads an identity file name.
  *
- * Retourne l'élément, la variante — `null` pour un fichier sans suffixe — et le
- * format, ou `null` si le fichier n'est pas une image d'identité admise.
+ * Returns the element, the variant — `null` for a file without a suffix — and
+ * the format, or `null` if the file is not an allowed identity image.
  *
- * @param {string} chemin relatif au répertoire `identite/`
+ * @param {string} path relative to the `identite/` directory
  * @returns {{ element: string, variante: string | null, format: string } | null}
  */
-export function lireNomIdentite(chemin) {
-  const m = NOM.exec(chemin);
+export function lireNomIdentite(path) {
+  const m = NAME_PATTERN.exec(path);
   if (!m || !FORMATS_IDENTITE.includes(m[3])) return null;
   return { element: m[1], variante: m[2] ?? null, format: m[3] };
 }
 
 /**
- * Vérifie le répertoire `identite/` d'un référentiel.
+ * Checks a specification's `identite/` directory.
  *
- * Nom inconnu, format non admis et poids dépassé sont des erreurs. Un même nom
- * en plusieurs formats, et une variante sans sa jumelle quand aucune version
- * sans suffixe ne couvre l'autre fond, sont des avertissements : l'application
- * sait quoi en faire, mais le rédacteur ne l'a sans doute pas voulu.
+ * Unknown name, disallowed format and exceeded size are errors. A same name
+ * in several formats, and a variant without its twin when no suffix-less
+ * version covers the other background, are warnings: the application knows
+ * what to do with them, but the author most likely did not mean it.
  *
- * Chaque cause se dit par une anomalie codée — RG-anomalies-codees — dans
- * `anomalies` ; `errors` et `warnings` en gardent la forme française.
+ * Each cause is told by a coded anomaly — RG-anomalies-codees — in
+ * `anomalies`; `errors` and `warnings` keep its French form.
  *
- * @param {ReadonlyArray<{ chemin: string, taille: number }>} fichiers
- *   les fichiers du répertoire, chemins relatifs à celui-ci
- * @param {string} [repertoire] le nom du répertoire, tel que le référentiel le
- *   déclare — RG-noms-declares
+ * @param {ReadonlyArray<{ chemin: string, taille: number }>} files
+ *   the directory's files, paths relative to it
+ * @param {string} [directory] the directory's name, as the specification
+ *   declares it — RG-noms-declares
  */
-export function checkIdentite(fichiers, repertoire = REPERTOIRE_IDENTITE) {
+export function checkIdentite(files, directory = REPERTOIRE_IDENTITE) {
   const anomalies = [];
-  // chaque nom sans extension, et les formats admis sous lesquels il existe
+  // each name without extension, and the allowed formats it exists in
   const formats = new Map();
 
-  for (const { chemin, taille } of fichiers) {
-    const ici = `${repertoire}/${chemin}`;
+  for (const { chemin: path, taille: size } of files) {
+    const here = `${directory}/${path}`;
 
-    if (taille > POIDS_MAX_IDENTITE)
-      anomalies.push(erreur('identite-trop-lourde', { chemin: ici, taille, max: POIDS_MAX_IDENTITE }));
+    if (size > POIDS_MAX_IDENTITE)
+      anomalies.push(createError('identite-trop-lourde', { chemin: here, taille: size, max: POIDS_MAX_IDENTITE }));
 
-    if (chemin === ACCUEIL) continue;
+    if (path === README_FILE) continue;
 
-    const m = NOM.exec(chemin);
+    const m = NAME_PATTERN.exec(path);
     if (!m) {
       anomalies.push(
-        erreur('identite-nom-non-admis', {
-          chemin: ici,
+        createError('identite-nom-non-admis', {
+          chemin: here,
           elements: ELEMENTS_IDENTITE,
           variantes: VARIANTES_IDENTITE,
-          accueil: ACCUEIL,
+          accueil: README_FILE,
         }),
       );
       continue;
     }
     if (!FORMATS_IDENTITE.includes(m[3])) {
-      anomalies.push(erreur('identite-format-non-admis', { chemin: ici, formats: FORMATS_IDENTITE }));
+      anomalies.push(createError('identite-format-non-admis', { chemin: here, formats: FORMATS_IDENTITE }));
       continue;
     }
 
-    const nom = chemin.slice(0, -(m[3].length + 1));
-    if (!formats.has(nom)) formats.set(nom, []);
-    formats.get(nom).push(m[3]);
+    const name = path.slice(0, -(m[3].length + 1));
+    if (!formats.has(name)) formats.set(name, []);
+    formats.get(name).push(m[3]);
   }
 
-  for (const [nom, presents] of formats) {
-    if (presents.length < 2) continue;
-    const ordonnes = FORMATS_IDENTITE.filter((f) => presents.includes(f));
-    anomalies.push(avertissement('identite-plusieurs-formats', { chemin: `${repertoire}/${nom}`, formats: ordonnes }));
+  for (const [name, present] of formats) {
+    if (present.length < 2) continue;
+    const ordered = FORMATS_IDENTITE.filter((f) => present.includes(f));
+    anomalies.push(createWarning('identite-plusieurs-formats', { chemin: `${directory}/${name}`, formats: ordered }));
   }
 
   for (const element of ELEMENTS_IDENTITE) {
     if (formats.has(element)) continue;
-    const [clair, sombre] = VARIANTES_IDENTITE.map((v) => formats.has(`${element}-${v}`));
-    if (clair === sombre) continue;
-    const present = `${element}-${clair ? 'clair' : 'sombre'}`;
-    const manquant = `${element}-${clair ? 'sombre' : 'clair'}`;
+    const [light, dark] = VARIANTES_IDENTITE.map((v) => formats.has(`${element}-${v}`));
+    if (light === dark) continue;
+    const present = `${element}-${light ? 'clair' : 'sombre'}`;
+    const missing = `${element}-${light ? 'sombre' : 'clair'}`;
     anomalies.push(
-      avertissement('identite-variante-seule', {
-        chemin: `${repertoire}/${present}`,
-        manquant,
+      createWarning('identite-variante-seule', {
+        chemin: `${directory}/${present}`,
+        manquant: missing,
         element,
-        fond: clair ? 'sombre' : 'clair',
+        fond: light ? 'sombre' : 'clair',
       }),
     );
   }

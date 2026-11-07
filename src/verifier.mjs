@@ -1,44 +1,43 @@
-// Vérification d'intégrité d'un référentiel, sans dépendance au système de
-// fichiers.
+// Integrity check of a specification, with no file-system dependency.
 //
-// Ce module s'exécute dans l'Action, qui lit un répertoire, et dans un
-// navigateur, qui lit un dépôt distant. Les règles du format vivent ainsi à un
-// seul endroit : les dupliquer garantirait qu'elles divergent, et le produit
-// sait déjà ce que coûte une seconde implémentation.
+// This module runs in the Action, which reads a directory, and in a browser,
+// which reads a remote repo. The format's rules thus live in a single place:
+// duplicating them would guarantee that they diverge, and the product already
+// knows what a second implementation costs.
 //
-// Ce qu'il attrape, que le format seul ne peut pas garantir : références
-// croisées, énoncés manquants, cohérence des statuts.
+// What it catches, that the format alone cannot guarantee: cross references,
+// missing statements, consistency of statuses.
 
-import { erreur, avertissement, versAnomalie, enTexte, langueDuDepot } from './anomalies.mjs';
+import { createError, createWarning, toAnomaly, enTexte, langueDuDepot } from './anomalies.mjs';
 import { extractEnonces } from './format.mjs';
 import { checkIdentite } from './identite.mjs';
 import { resoudreNoms, verifierDossiersDeclares } from './noms.mjs';
 import { FORME_PREFIXE, verifierCitations } from './citations.mjs';
 
-// L'identité visuelle relève des mêmes règles partagées : l'application les
-// reprend d'ici, sans avoir à connaître le découpage interne du paquet.
+// The visual identity falls under the same shared rules: the application takes
+// them from here, without having to know the package's internal layout.
 export * from './identite.mjs';
 export * from './noms.mjs';
-// La citation d'un autre référentiel — RG-regle-du-socle-citee.
+// Citing another specification — RG-regle-du-socle-citee.
 export * from './citations.mjs';
-// Les anomalies et leurs messages, pour qui les dit dans sa langue —
+// Anomalies and their messages, for whoever says them in their language —
 // RG-anomalies-codees.
 export { LANGUES, formaterAnomalie, enTexte, langueDuDepot } from './anomalies.mjs';
 
 const OPERATIONS = new Set(['cree', 'modifie', 'abroge', 'touche']);
-const STATUTS_REGLE = new Set(['actif', 'abroge']);
+const RULE_STATUSES = new Set(['actif', 'abroge']);
 
 /**
- * Les natures qu'un impact peut viser, et le mot qui les nomme dans un message.
+ * The kinds an impact can target, and the word that names them in a message.
  *
- * Un impact désigne ce qu'il change : une règle de gestion, une décision
- * d'architecture, ou un document d'architecture. Les trois suivent le même
- * régime — mêmes opérations, même exigence d'énoncé, même projection — et ne se
- * distinguent que par le répertoire qui les porte et la façon de les nommer.
+ * An impact designates what it changes: a business rule, an architecture
+ * decision, or an architecture document. All three follow the same regime —
+ * same operations, same statement requirement, same projection — and differ
+ * only by the directory that holds them and the way they are named.
  *
- * Les traiter par une table plutôt que par des branches successives est ce qui
- * garantit qu'une nature ajoutée demain hérite des contrôles sans qu'on ait à
- * penser à chacun.
+ * Handling them through a table rather than successive branches is what
+ * guarantees that a kind added tomorrow inherits the checks without having to
+ * think of each one.
  */
 export const CIBLES = [
   { champ: 'regle', collection: 'rules', libelle: 'règle' },
@@ -47,231 +46,231 @@ export const CIBLES = [
 ];
 
 /**
- * Ce qu'un impact vise, quelle que soit la nature.
+ * What an impact targets, whatever the kind.
  *
- * Un impact qui n'en désigne aucune est une erreur de saisie, distinguée d'une
- * cible inconnue : « aucune cible » envoie relire le champ, « cible inconnue »
- * envoie vérifier un identifiant.
+ * An impact that designates none is an input error, distinguished from an
+ * unknown target: « no target » sends one to reread the field, « unknown
+ * target » sends one to check an identifier.
  */
 export function cibleDe(impact) {
-  for (const c of CIBLES) if (impact[c.champ] !== undefined) return { ...c, id: impact[c.champ] };
+  for (const t of CIBLES) if (impact[t.champ] !== undefined) return { ...t, id: impact[t.champ] };
   return null;
 }
 
 /**
- * Vérifie un référentiel déjà chargé.
+ * Checks an already loaded specification.
  *
- * Séparé de `check()` pour ne dépendre d'aucun système de fichiers : la même
- * fonction s'exécute dans l'Action, qui lit un répertoire, et dans le navigateur,
- * qui lit un dépôt distant. Les règles vivent ainsi à un seul endroit — les
- * dupliquer garantirait qu'elles divergent, et le produit sait déjà ce que coûte
- * une seconde implémentation du format.
+ * Separate from `check()` so as to depend on no file system: the same function
+ * runs in the Action, which reads a directory, and in the browser, which reads
+ * a remote repo. The rules thus live in a single place — duplicating them
+ * would guarantee that they diverge, and the product already knows what a
+ * second implementation of the format costs.
  *
- * `livres` porte les identifiants des cadrages livrés. Un cadrage ne déclare pas
- * son statut — il se déduit de l'état du dépôt, et seul l'appelant sait le lire :
- * la branche principale pour l'Action, la plateforme pour le navigateur. Sans cet
- * ensemble, aucun cadrage n'est tenu pour livré, ce qui est le cas d'un
- * référentiel qu'on vérifie hors de tout dépôt.
+ * `livres` carries the identifiers of delivered scopings. A scoping does not
+ * declare its status — it is deduced from the repo's state, and only the
+ * caller knows how to read it: the main branch for the Action, the platform
+ * for the browser. Without this set, no scoping is considered delivered, which
+ * is the case of a specification checked outside any repo.
  *
  * @param {{domains: Map, features: Map, rules: Map, cadrages: Map, errors: string[]}} repo
- * `cites` porte, par préfixe, les référentiels que celui-ci cite, déjà chargés,
- * ou `null` pour ceux qui n'ont pas pu l'être. Seul l'appelant sait les lire —
- * un clone pour l'Action, la plateforme pour le navigateur — et ce qu'il n'a pas
- * lu se signale comme non vérifié.
+ * `cites` carries, by prefix, the specifications this one cites, already
+ * loaded, or `null` for those that could not be. Only the caller knows how to
+ * read them — a clone for the Action, the platform for the browser — and what
+ * it has not read is reported as unchecked.
  *
  * @param {{ignorerIndexDerives?: boolean, livres?: Set<string>, cites?: Map<string, object | null>}} [options]
  */
 export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set(), cites = new Map() } = {}) {
-  const { domains, features, rules, cadrages } = repo;
-  // Les erreurs de chargement arrivent codées quand le chargement les code, en
-  // texte sinon : un texte se rend tel quel, faute de pouvoir le dire autrement.
+  const { domains, features, rules, cadrages: scopings } = repo;
+  // Loading errors arrive coded when loading codes them, as text otherwise: a
+  // text is rendered as is, for lack of a way to say it otherwise.
   const problems = repo.anomalies ?? repo.errors ?? [];
-  const anomalies = problems.map((p) => versAnomalie(p));
-  const signaler = (...a) => anomalies.push(...a.map((x) => versAnomalie(x)));
-  const avertir = (...a) => anomalies.push(...a.map((x) => versAnomalie(x, 'avertissement')));
+  const anomalies = problems.map((p) => toAnomaly(p));
+  const report = (...a) => anomalies.push(...a.map((x) => toAnomaly(x)));
+  const warn = (...a) => anomalies.push(...a.map((x) => toAnomaly(x, 'avertissement')));
 
-  // La langue du dépôt — RG-langue-du-depot. Mal déclarée, elle se signale ici.
-  signaler(...langueDuDepot(repo.config).anomalies);
+  // The repo's language — RG-langue-du-depot. Badly declared, it is reported here.
+  report(...langueDuDepot(repo.config).anomalies);
 
-  // --- configuration du projet ---
-  const prefixe = repo.config?.projet?.prefixe;
-  if (prefixe !== undefined && !FORME_PREFIXE.test(String(prefixe)))
-    signaler(erreur('prefixe-invalide', { prefixe: String(prefixe) }));
+  // --- project configuration ---
+  const prefix = repo.config?.projet?.prefixe;
+  if (prefix !== undefined && !FORME_PREFIXE.test(String(prefix)))
+    report(createError('prefixe-invalide', { prefixe: String(prefix) }));
 
-  // Les noms déclarés — RG-noms-declares. Une entrée fautive a déjà été
-  // écartée à la lecture ; c'est ici qu'elle se dit. Les chemins, quand
-  // l'appelant les connaît, révèlent un dossier renommé sans ses fichiers.
-  const noms = resoudreNoms(repo.config);
-  signaler(...noms.erreurs);
-  if (repo.chemins) signaler(...verifierDossiersDeclares(noms, repo.chemins));
+  // Declared names — RG-noms-declares. A faulty entry has already been set
+  // aside on reading; this is where it is reported. The paths, when the caller
+  // knows them, reveal a folder renamed without its files.
+  const names = resoudreNoms(repo.config);
+  report(...names.erreurs);
+  if (repo.chemins) report(...verifierDossiersDeclares(names, repo.chemins));
 
-  // Les citations d'autres référentiels — RG-citation-signalee-chez-le-citant.
-  // Des avertissements seulement : une cible change dans un autre dépôt, et
-  // bloquer ferait échouer ici des demandes qui n'y sont pour rien.
+  // Citations of other specifications — RG-citation-signalee-chez-le-citant.
+  // Warnings only: a target changes in another repo, and blocking would make
+  // pull requests fail here that have nothing to do with it.
   anomalies.push(...verifierCitations(repo, { cites }));
 
-  /** Un cadrage est livré si la branche principale le porte, et rien d'autre. */
-  const estLivre = (id) => livres.has(id);
+  /** A scoping is delivered if the main branch carries it, and nothing else. */
+  const isDelivered = (id) => livres.has(id);
 
-  // --- identifiants et cohérence de forme ---
+  // --- identifiers and consistency of form ---
   for (const [id, d] of domains)
-    if (!id) signaler(erreur('identifiant-manquant', { chemin: d.path }));
+    if (!id) report(createError('identifiant-manquant', { chemin: d.path }));
 
   for (const [id, f] of features) {
-    if (!id) signaler(erreur('identifiant-manquant', { chemin: f.path }));
-    if (!f.domaines?.length) avertir(avertissement('fonctionnalite-sans-domaine', { id }));
+    if (!id) report(createError('identifiant-manquant', { chemin: f.path }));
+    if (!f.domaines?.length) warn(createWarning('fonctionnalite-sans-domaine', { id }));
     for (const d of f.domaines ?? [])
       if (!domains.has(d))
-        signaler(erreur('domaine-inconnu', { source: 'fonctionnalite', id, domaine: d }));
+        report(createError('domaine-inconnu', { source: 'fonctionnalite', id, domaine: d }));
   }
 
   for (const [id, r] of rules) {
-    if (!id) signaler(erreur('identifiant-manquant', { chemin: r.path }));
-    if (!STATUTS_REGLE.has(r.statut))
-      signaler(erreur('statut-regle-invalide', { regle: id, statut: r.statut }));
-    // Bloquant, et non un simple avertissement : la navigation du référentiel
-    // passe par les domaines puis les fonctionnalités. Une règle rattachée à
-    // rien est introuvable — elle est livrée sans exister pour ses lecteurs.
+    if (!id) report(createError('identifiant-manquant', { chemin: r.path }));
+    if (!RULE_STATUSES.has(r.statut))
+      report(createError('statut-regle-invalide', { regle: id, statut: r.statut }));
+    // Blocking, and not a mere warning: navigating the specification goes
+    // through domains then features. A rule linked to nothing cannot be found —
+    // it is delivered without existing for its readers.
     if (!r.fonctionnalites?.length)
-      signaler(erreur('regle-sans-fonctionnalite', { regle: id }));
+      report(createError('regle-sans-fonctionnalite', { regle: id }));
     for (const f of r.fonctionnalites ?? [])
-      if (!features.has(f)) signaler(erreur('fonctionnalite-inconnue', { regle: id, fonctionnalite: f }));
+      if (!features.has(f)) report(createError('fonctionnalite-inconnue', { regle: id, fonctionnalite: f }));
 
-    // les index dérivés doivent pointer des cadrages réels
+    // derived indexes must point to real scopings
     if (!ignorerIndexDerives) {
-      if (r.cree_par && !cadrages.has(r.cree_par))
-        signaler(erreur('cree-par-inconnu', { regle: id, cadrage: r.cree_par }));
+      if (r.cree_par && !scopings.has(r.cree_par))
+        report(createError('cree-par-inconnu', { regle: id, cadrage: r.cree_par }));
       for (const c of r.modifie_par ?? [])
-        if (!cadrages.has(c)) signaler(erreur('modifie-par-inconnu', { regle: id, cadrage: c }));
+        if (!scopings.has(c)) report(createError('modifie-par-inconnu', { regle: id, cadrage: c }));
     }
   }
 
-  // --- cadrages ---
-  for (const [id, c] of cadrages) {
-    // Un statut déclaré dans le fichier serait une seconde source pour un fait
-    // que le dépôt établit déjà, et c'est cette duplication qui a divergé.
+  // --- scopings ---
+  for (const [id, c] of scopings) {
+    // A status declared in the file would be a second source for a fact the
+    // repo already establishes, and it is this duplication that diverged.
     if (c.statut !== undefined)
-      signaler(erreur('statut-declare', { cadrage: id }));
+      report(createError('statut-declare', { cadrage: id }));
     for (const d of c.domaines ?? [])
-      if (!domains.has(d)) signaler(erreur('domaine-inconnu', { source: 'cadrage', id, domaine: d }));
+      if (!domains.has(d)) report(createError('domaine-inconnu', { source: 'cadrage', id, domaine: d }));
 
-    // Deux provenances possibles : un cadrage lu depuis un fichier porte son
-    // corps brut, un cadrage déjà parsé porte ses énoncés indexés. Accepter les
-    // deux évite à l'appelant de reconstruire un corps qu'il a déjà découpé.
-    const enonces = c.enonces instanceof Map ? c.enonces : extractEnonces(c.body ?? '');
-    const vus = new Set();
+    // Two possible origins: a scoping read from a file carries its raw body, a
+    // scoping already parsed carries its indexed statements. Accepting both
+    // spares the caller from rebuilding a body it has already split.
+    const statements = c.enonces instanceof Map ? c.enonces : extractEnonces(c.body ?? '');
+    const seen = new Set();
 
     for (const impact of c.impacts ?? []) {
       const { operation } = impact;
-      const cible = cibleDe(impact);
+      const target = cibleDe(impact);
 
-      // Sans cible, il n'y a rien à contrôler ensuite : signaler et passer,
-      // plutôt que de dérouler des messages qui parleraient tous de « undefined ».
-      if (!cible) {
-        signaler(erreur('impact-sans-cible', { cadrage: id, champs: CIBLES.map((c) => c.champ) }));
+      // Without a target, there is nothing to check next: report and move on,
+      // rather than unrolling messages that would all speak of « undefined ».
+      if (!target) {
+        report(createError('impact-sans-cible', { cadrage: id, champs: CIBLES.map((t) => t.champ) }));
         continue;
       }
 
-      const { id: nom, champ: nature, collection } = cible;
+      const { id: name, champ: kind, collection } = target;
       if (!OPERATIONS.has(operation))
-        signaler(erreur('operation-invalide', { cadrage: id, operation, cible: nom }));
-      if (vus.has(nom)) signaler(erreur('impact-en-double', { cadrage: id, nature, cible: nom }));
-      vus.add(nom);
+        report(createError('operation-invalide', { cadrage: id, operation, cible: name }));
+      if (seen.has(name)) report(createError('impact-en-double', { cadrage: id, nature: kind, cible: name }));
+      seen.add(name);
 
-      // une cible créée par ce cadrage n'existe pas encore si le cadrage n'est
-      // pas livré : on ne l'exige dans son répertoire qu'après livraison
-      const doitExister = operation !== 'cree' || estLivre(id);
-      if (doitExister && !repo[collection]?.has(nom))
-        signaler(erreur('cible-inconnue', { cadrage: id, nature, cible: nom }));
+      // a target created by this scoping does not exist yet if the scoping is
+      // not delivered: it is required in its directory only after delivery
+      const mustExist = operation !== 'cree' || isDelivered(id);
+      if (mustExist && !repo[collection]?.has(name))
+        report(createError('cible-inconnue', { cadrage: id, nature: kind, cible: name }));
 
-      // c'est l'énoncé qui porte le texte à écrire : sans lui, la propagation
-      // n'a rien à appliquer
-      if ((operation === 'cree' || operation === 'modifie') && !enonces.has(nom))
-        signaler(erreur('enonce-manquant', { cadrage: id, operation, cible: nom }));
+      // the statement carries the text to write: without it, the propagation
+      // has nothing to apply
+      if ((operation === 'cree' || operation === 'modifie') && !statements.has(name))
+        report(createError('enonce-manquant', { cadrage: id, operation, cible: name }));
     }
 
-    for (const nom of enonces.keys())
-      if (!vus.has(nom))
-        avertir(avertissement('enonce-sans-impact', { cadrage: id, cible: nom }));
+    for (const name of statements.keys())
+      if (!seen.has(name))
+        warn(createWarning('enonce-sans-impact', { cadrage: id, cible: name }));
 
     for (const a of c.attachments ?? []) {
       if (!/^[0-9a-f]{64}$/.test(a.sha256 ?? ''))
-        signaler(erreur('piece-jointe-empreinte', { cadrage: id, nom: a.nom }));
+        report(createError('piece-jointe-empreinte', { cadrage: id, nom: a.nom }));
     }
   }
 
-  // --- les index dérivés doivent refléter les impacts des cadrages livrés ---
-  // cree_par / modifie_par sont écrits par la propagation, jamais à la main :
-  // une divergence signale soit une édition manuelle, soit une propagation ratée.
-  const attendu = new Map();
-  const cadragesLivres = [...cadrages.values()]
-    .filter((c) => estLivre(c.id))
+  // --- derived indexes must reflect the impacts of delivered scopings ---
+  // cree_par / modifie_par are written by the propagation, never by hand: a
+  // divergence signals either a manual edit or a failed propagation.
+  const expected = new Map();
+  const deliveredScopings = [...scopings.values()]
+    .filter((c) => isDelivered(c.id))
     .sort((a, b) => String(a.id).localeCompare(String(b.id)));
 
-  for (const c of cadragesLivres)
+  for (const c of deliveredScopings)
     for (const impact of c.impacts ?? []) {
-      const cible = cibleDe(impact);
-      if (!cible) continue;
-      if (!attendu.has(cible.id))
-        attendu.set(cible.id, { cree_par: null, modifie_par: [] });
-      const e = attendu.get(cible.id);
-      if (impact.operation === 'cree') e.cree_par = c.id;
+      const target = cibleDe(impact);
+      if (!target) continue;
+      if (!expected.has(target.id))
+        expected.set(target.id, { createdBy: null, modifiedBy: [] });
+      const e = expected.get(target.id);
+      if (impact.operation === 'cree') e.createdBy = c.id;
       else if (impact.operation === 'modifie' || impact.operation === 'abroge')
-        e.modifie_par.push(c.id);
+        e.modifiedBy.push(c.id);
     }
 
-  // Les trois natures partagent ce contrôle : un index dérivé faux est le même
-  // défaut, qu'il porte sur une règle ou sur un document d'architecture.
-  for (const { collection, champ: nature } of ignorerIndexDerives ? [] : CIBLES)
+  // The three kinds share this check: a wrong derived index is the same
+  // defect, whether it concerns a rule or an architecture document.
+  for (const { collection, champ: kind } of ignorerIndexDerives ? [] : CIBLES)
     for (const [id, r] of repo[collection] ?? []) {
-      const e = attendu.get(id);
+      const e = expected.get(id);
       if (!e) {
-        avertir(avertissement('cible-jamais-creee', { nature, id }));
+        warn(createWarning('cible-jamais-creee', { nature: kind, id }));
         continue;
       }
-      if ((r.cree_par ?? null) !== e.cree_par)
-        signaler(
-          erreur('cree-par-diverge', { nature, id, declare: r.cree_par ?? null, derive: e.cree_par }),
+      if ((r.cree_par ?? null) !== e.createdBy)
+        report(
+          createError('cree-par-diverge', { nature: kind, id, declare: r.cree_par ?? null, derive: e.createdBy }),
         );
-      const declare = r.modifie_par ?? [];
-      if (JSON.stringify(declare) !== JSON.stringify(e.modifie_par))
-        signaler(erreur('modifie-par-diverge', { nature, id, declare, derive: e.modifie_par }));
+      const declared = r.modifie_par ?? [];
+      if (JSON.stringify(declared) !== JSON.stringify(e.modifiedBy))
+        report(createError('modifie-par-diverge', { nature: kind, id, declare: declared, derive: e.modifiedBy }));
     }
 
-  // --- cohérence des règles abrogées ---
+  // --- consistency of repealed rules ---
   for (const [id, r] of rules) {
     if (r.statut !== 'abroge') continue;
-    const dernier = (r.modifie_par ?? []).at(-1);
-    if (!dernier) {
-      avertir(avertissement('abrogee-sans-cadrage', { regle: id }));
+    const last = (r.modifie_par ?? []).at(-1);
+    if (!last) {
+      warn(createWarning('abrogee-sans-cadrage', { regle: id }));
       continue;
     }
-    if (!estLivre(dernier))
-      signaler(erreur('abrogee-par-non-livre', { regle: id, cadrage: dernier }));
+    if (!isDelivered(last))
+      report(createError('abrogee-par-non-livre', { regle: id, cadrage: last }));
   }
 
-  // une règle abrogée ne devrait plus être impactée par un cadrage en cours
-  for (const [id, c] of cadrages) {
-    if (estLivre(id)) continue;
+  // a repealed rule should no longer be impacted by an ongoing scoping
+  for (const [id, c] of scopings) {
+    if (isDelivered(id)) continue;
     for (const impact of c.impacts ?? []) {
-      const cible = cibleDe(impact);
-      if (!cible) continue;
-      const r = repo[cible.collection]?.get(cible.id);
+      const target = cibleDe(impact);
+      if (!target) continue;
+      const r = repo[target.collection]?.get(target.id);
       if (r?.statut === 'abroge' && impact.operation !== 'touche')
-        avertir(avertissement('opere-sur-abrogee', { cadrage: id, cible: cible.id }));
+        warn(createWarning('opere-sur-abrogee', { cadrage: id, cible: target.id }));
     }
   }
 
-  // --- identité visuelle ---
-  // Absente de ce qu'on passe, elle n'est pas contrôlée : un référentiel chargé
-  // sans son arborescence reste vérifiable pour le reste.
+  // --- visual identity ---
+  // Missing from what is passed, it is not checked: a specification loaded
+  // without its tree remains checkable for the rest.
   if (repo.identite) {
-    const identite = checkIdentite(repo.identite, noms.dossiers.identite);
-    anomalies.push(...identite.anomalies);
+    const identity = checkIdentite(repo.identite, names.dossiers.identite);
+    anomalies.push(...identity.anomalies);
   }
 
-  // La forme textuelle d'hier, en français, mot pour mot : un consommateur qui
-  // ne lit pas encore les codes ne voit rien changer.
+  // Yesterday's textual form, in French, word for word: a consumer that does
+  // not read codes yet sees nothing change.
   const { errors, warnings } = enTexte(anomalies);
   return {
     errors,
@@ -281,7 +280,7 @@ export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set(
       domaines: domains.size,
       fonctionnalites: features.size,
       regles: rules.size,
-      cadrages: cadrages.size,
+      cadrages: scopings.size,
     },
   };
 }

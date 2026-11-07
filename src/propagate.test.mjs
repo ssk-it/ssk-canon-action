@@ -1,13 +1,13 @@
-// Tests du propagateur, sur des référentiels jetables construits en mémoire.
+// Tests of the propagator, on throwaway specifications built in memory.
 //
-// Ce que ces cas protègent : le propagateur écrit dans le référentiel, donc une
-// régression y est coûteuse. On vérifie surtout ce qui n'est pas évident —
-// l'idempotence, le tout-ou-rien, et le fait qu'un cadrage non livré n'écrit rien.
+// What these cases protect: the propagator writes to the specification, so a
+// regression there is costly. We mostly check what is not obvious —
+// idempotence, all-or-nothing, and the fact that an undelivered scoping writes nothing.
 //
-// Chaque référentiel jetable est un vrai dépôt Git : la livraison ne se déclare
-// plus dans un fichier, elle se lit de l'état du dépôt. Un cadrage est livré
-// quand `HEAD` le porte — le simuler autrement testerait autre chose que ce qui
-// s'exécute.
+// Each throwaway specification is a real Git repo: delivery is no longer
+// declared in a file, it is read from the repo state. A scoping is delivered
+// when `HEAD` carries it — simulating it any other way would test something
+// other than what runs.
 //
 //   node src/propagate.test.mjs
 
@@ -15,30 +15,30 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { propager, etatAttendu, calculerEcritures } from './propagate.mjs';
+import { propagate, expectedState, computeWrites } from './propagate.mjs';
 import { check } from './check.mjs';
 import { loadRepo } from './parse.mjs';
 import { formaterAnomalie } from './anomalies.mjs';
 
-let reussis = 0;
-const echecs = [];
+let passed = 0;
+const failures = [];
 
-function test(nom, fn) {
-  const racine = mkdtempSync(join(tmpdir(), 'pc-'));
+function test(name, fn) {
+  const root = mkdtempSync(join(tmpdir(), 'pc-'));
   try {
     for (const d of ['domains', 'features', 'rules', 'cadrages']) {
-      mkdirSync(join(racine, d), { recursive: true });
+      mkdirSync(join(root, d), { recursive: true });
     }
-    writeFileSync(join(racine, 'ssk-canon.yml'), 'schema_version: 1\n');
-    git(racine, ['init', '-q', '-b', 'main']);
-    git(racine, ['config', 'user.email', 'test@exemple.fr']);
-    git(racine, ['config', 'user.name', 'Test']);
-    fn(racine);
-    reussis++;
+    writeFileSync(join(root, 'ssk-canon.yml'), 'schema_version: 1\n');
+    git(root, ['init', '-q', '-b', 'main']);
+    git(root, ['config', 'user.email', 'test@exemple.fr']);
+    git(root, ['config', 'user.name', 'Test']);
+    fn(root);
+    passed++;
   } catch (e) {
-    echecs.push(`${nom} : ${e.message}`);
+    failures.push(`${name}: ${e.message}`);
   } finally {
-    rmSync(racine, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   }
 }
 
@@ -46,42 +46,42 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-function git(racine, args) {
-  execFileSync('git', ['-C', racine, ...args], { stdio: ['ignore', 'ignore', 'ignore'] });
+function git(root, args) {
+  execFileSync('git', ['-C', root, ...args], { stdio: ['ignore', 'ignore', 'ignore'] });
 }
 
-/** Livre ce qui est écrit : un cadrage n'est livré que si `HEAD` le porte. */
-function livrer(racine) {
-  git(racine, ['add', '-A']);
-  git(racine, ['commit', '-q', '-m', 'livraison']);
+/** Delivers what is written: a scoping is delivered only if `HEAD` carries it. */
+function deliver(root) {
+  git(root, ['add', '-A']);
+  git(root, ['commit', '-q', '-m', 'livraison']);
 }
 
-/** Écrit un référentiel minimal : un domaine, une fonctionnalité. */
-function socle(racine) {
-  writeFileSync(join(racine, 'domains/d.md'), '---\nid: d\nnom: D\n---\n\nUn domaine.\n');
+/** Writes a minimal specification: one domain, one feature. */
+function writeBase(root) {
+  writeFileSync(join(root, 'domains/d.md'), '---\nid: d\nnom: D\n---\n\nUn domaine.\n');
   writeFileSync(
-    join(racine, 'features/f.md'),
+    join(root, 'features/f.md'),
     '---\nid: f\nnom: F\ndomaines: [d]\n---\n\nUne fonctionnalité.\n',
   );
 }
 
-function ecrireCadrage(racine, id, livre, impacts, enonces = {}) {
-  mkdirSync(join(racine, 'cadrages', id), { recursive: true });
-  const lignesImpacts = impacts
+function writeScoping(root, id, delivered, impacts, statements = {}) {
+  mkdirSync(join(root, 'cadrages', id), { recursive: true });
+  const impactLines = impacts
     .map((i) => `  - { regle: ${i.regle}, operation: ${i.operation} }`)
     .join('\n');
-  const sections = Object.entries(enonces)
+  const sections = Object.entries(statements)
     .map(([r, t]) => `### ${r}\n\n${t}\n`)
     .join('\n');
   writeFileSync(
-    join(racine, 'cadrages', id, 'cadrage.md'),
-    `---\nid: ${id}\ntitre: Cadrage ${id}\ndomaines: [d]\nimpacts:\n${lignesImpacts}\n---\n\n## Objectif\n\nUn objectif.\n\n## Énoncés\n\n${sections}`,
+    join(root, 'cadrages', id, 'cadrage.md'),
+    `---\nid: ${id}\ntitre: Cadrage ${id}\ndomaines: [d]\nimpacts:\n${impactLines}\n---\n\n## Objectif\n\nUn objectif.\n\n## Énoncés\n\n${sections}`,
   );
-  // La livraison est un fait du dépôt : seul un cadrage commité est livré.
-  if (livre === 'livree' || livre === true) livrer(racine);
+  // Delivery is a fact of the repo: only a committed scoping is delivered.
+  if (delivered === 'livree' || delivered === true) deliver(root);
 }
 
-function ecrireRegle(racine, id, corps, frontmatter = {}) {
+function writeRule(root, id, body, frontmatter = {}) {
   const fm = {
     id,
     fonctionnalites: '[f]',
@@ -90,159 +90,159 @@ function ecrireRegle(racine, id, corps, frontmatter = {}) {
     modifie_par: '[]',
     ...frontmatter,
   };
-  const lignes = Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join('\n');
-  writeFileSync(join(racine, 'rules', `${id}.md`), `---\n${lignes}\n---\n\n${corps}\n`);
+  const lines = Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join('\n');
+  writeFileSync(join(root, 'rules', `${id}.md`), `---\n${lines}\n---\n\n${body}\n`);
 }
 
-// --- l'écriture elle-même ---
+// --- the writing itself ---
 
-// --- l'ordre de livraison ---
+// --- delivery order ---
 //
-// Deux cadrages préparés en parallèle reçoivent leur identifiant à la
-// préparation : celui au plus petit numéro peut être livré après l'autre.
-// C'est alors son énoncé qui fait foi, puisqu'il a été écrit en connaissant
-// l'autre. Arrivé sur ssk-recon-cadrage avec 2026-020 et 2026-021.
+// Two scopings prepared in parallel get their identifier at preparation time:
+// the one with the smaller number may be delivered after the other. Its
+// statement then prevails, since it was written knowing about the other one.
+// Happened on ssk-recon-cadrage with 2026-020 and 2026-021.
 
-test('l’énoncé livré en dernier fait foi, même d’un identifiant plus petit', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'Initial.');
-  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+test('the statement delivered last prevails, even with a smaller identifier', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Initial.');
+  writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Création.',
   });
-  ecrireCadrage(racine, '2026-003', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
+  writeScoping(root, '2026-003', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
     'RG-a': 'Texte du 003, livré d’abord.',
   });
-  ecrireCadrage(racine, '2026-002', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
+  writeScoping(root, '2026-002', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
     'RG-a': 'Texte du 002, livré ensuite.',
   });
 
-  const r = propager(racine);
-  assert(r.ok, `échec inattendu : ${r.problemes.join(', ')}`);
-  const ecrit = readFileSync(join(racine, 'rules/RG-a.md'), 'utf8');
-  assert(ecrit.includes('Texte du 002'), `l'énoncé livré en dernier est perdu : ${ecrit}`);
-  assert(!ecrit.includes('Texte du 003'), 'l’énoncé remplacé est resté');
-  // Ce que l'Action vérifie après avoir écrit : les index restent ceux que la
-  // vérification recalcule, triés par identifiant.
-  livrer(racine);
-  const { errors } = check(racine, { base: 'HEAD' });
-  assert(errors.length === 0, `référentiel écrit refusé : ${errors.join(' ; ')}`);
+  const r = propagate(root);
+  assert(r.ok, `unexpected failure: ${r.problemes.join(', ')}`);
+  const written = readFileSync(join(root, 'rules/RG-a.md'), 'utf8');
+  assert(written.includes('Texte du 002'), `the statement delivered last is lost: ${written}`);
+  assert(!written.includes('Texte du 003'), 'the replaced statement remained');
+  // What the Action checks after writing: the indexes stay those the check
+  // recomputes, sorted by identifier.
+  deliver(root);
+  const { errors } = check(root, { base: 'HEAD' });
+  assert(errors.length === 0, `written specification rejected: ${errors.join(' ; ')}`);
 });
 
-test('la livraison est la fusion sur la branche principale, non le commit du cadrage', (racine) => {
-  // Le 002 est commité sur sa branche avant que le 003 ne soit livré, puis
-  // fusionné après lui : c'est la fusion qui le livre.
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'Initial.');
-  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+test('delivery is the merge into the main branch, not the scoping commit', (root) => {
+  // 002 is committed on its branch before 003 is delivered, then merged after
+  // it: the merge is what delivers it.
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Initial.');
+  writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Création.',
   });
-  git(racine, ['checkout', '-q', '-b', 'cadrage-2026-002']);
-  ecrireCadrage(racine, '2026-002', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
+  git(root, ['checkout', '-q', '-b', 'cadrage-2026-002']);
+  writeScoping(root, '2026-002', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
     'RG-a': 'Texte du 002, fusionné ensuite.',
   });
-  git(racine, ['checkout', '-q', 'main']);
-  ecrireCadrage(racine, '2026-003', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
+  git(root, ['checkout', '-q', 'main']);
+  writeScoping(root, '2026-003', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
     'RG-a': 'Texte du 003, livré d’abord.',
   });
-  git(racine, ['merge', '-q', '--no-ff', '-m', 'Fusion du 002', 'cadrage-2026-002']);
+  git(root, ['merge', '-q', '--no-ff', '-m', 'Fusion du 002', 'cadrage-2026-002']);
 
-  const r = propager(racine);
-  assert(r.ok, `échec inattendu : ${r.problemes.join(', ')}`);
-  const ecrit = readFileSync(join(racine, 'rules/RG-a.md'), 'utf8');
-  assert(ecrit.includes('Texte du 002'), `la fusion la plus récente n'a pas fait foi : ${ecrit}`);
-  // Ce que l'Action vérifie après avoir écrit : les index restent ceux que la
-  // vérification recalcule, triés par identifiant.
-  livrer(racine);
-  const { errors } = check(racine, { base: 'HEAD' });
-  assert(errors.length === 0, `référentiel écrit refusé : ${errors.join(' ; ')}`);
+  const r = propagate(root);
+  assert(r.ok, `unexpected failure: ${r.problemes.join(', ')}`);
+  const written = readFileSync(join(root, 'rules/RG-a.md'), 'utf8');
+  assert(written.includes('Texte du 002'), `the most recent merge did not prevail: ${written}`);
+  // What the Action checks after writing: the indexes stay those the check
+  // recomputes, sorted by identifier.
+  deliver(root);
+  const { errors } = check(root, { base: 'HEAD' });
+  assert(errors.length === 0, `written specification rejected: ${errors.join(' ; ')}`);
 });
 
 
-test('applique un énoncé au référentiel', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'Texte périmé.');
-  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+test('applies a statement to the specification', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Texte périmé.');
+  writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Le texte attendu.',
   });
 
-  const r = propager(racine);
-  assert(r.ok, `échec inattendu : ${r.problemes.join(', ')}`);
-  assert(r.ecritures.length === 1, `une écriture attendue, ${r.ecritures.length} obtenue(s)`);
+  const r = propagate(root);
+  assert(r.ok, `unexpected failure: ${r.problemes.join(', ')}`);
+  assert(r.ecritures.length === 1, `one write expected, ${r.ecritures.length} obtained`);
 
-  const ecrit = readFileSync(join(racine, 'rules/RG-a.md'), 'utf8');
-  assert(ecrit.includes('Le texte attendu.'), 'énoncé non appliqué');
-  assert(ecrit.includes('cree_par: 2026-001'), 'index cree_par non renseigné');
+  const written = readFileSync(join(root, 'rules/RG-a.md'), 'utf8');
+  assert(written.includes('Le texte attendu.'), 'statement not applied');
+  assert(written.includes('cree_par: 2026-001'), 'cree_par index not filled in');
 });
 
-test('est idempotent : ne réécrit pas un référentiel à jour', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'Périmé.');
-  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+test('is idempotent: does not rewrite an up-to-date specification', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Périmé.');
+  writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'À jour.',
   });
 
-  propager(racine);
-  const second = propager(racine);
-  assert(second.ok, 'second passage en échec');
-  assert(second.ecritures.length === 0, `${second.ecritures.length} écriture(s) au second passage`);
+  propagate(root);
+  const second = propagate(root);
+  assert(second.ok, 'second pass failed');
+  assert(second.ecritures.length === 0, `${second.ecritures.length} write(s) on the second pass`);
 });
 
-test('un cadrage non livré n’écrit rien', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'Inchangé.');
-  ecrireCadrage(racine, '2026-001', 'en_relecture', [{ regle: 'RG-a', operation: 'modifie' }], {
+test('an undelivered scoping writes nothing', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Inchangé.');
+  writeScoping(root, '2026-001', 'en_relecture', [{ regle: 'RG-a', operation: 'modifie' }], {
     'RG-a': 'Ne doit pas être appliqué.',
   });
 
-  const r = propager(racine);
-  assert(r.ok, `échec inattendu : ${r.problemes.join(', ')}`);
-  assert(r.ecritures.length === 0, 'un cadrage en relecture a écrit');
+  const r = propagate(root);
+  assert(r.ok, `unexpected failure: ${r.problemes.join(', ')}`);
+  assert(r.ecritures.length === 0, 'a scoping under review wrote');
   assert(
-    readFileSync(join(racine, 'rules/RG-a.md'), 'utf8').includes('Inchangé.'),
-    'la règle a été modifiée',
+    readFileSync(join(root, 'rules/RG-a.md'), 'utf8').includes('Inchangé.'),
+    'the rule was modified',
   );
 });
 
-test('une abrogation change le statut sans supprimer le fichier', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'Texte.', { cree_par: '2026-001' });
-  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+test('a repeal changes the status without deleting the file', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Texte.', { cree_par: '2026-001' });
+  writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Texte.',
   });
-  ecrireCadrage(racine, '2026-002', 'livree', [{ regle: 'RG-a', operation: 'abroge' }], {
+  writeScoping(root, '2026-002', 'livree', [{ regle: 'RG-a', operation: 'abroge' }], {
     'RG-a': 'Abrogée : remplacée par autre chose.',
   });
 
-  const r = propager(racine);
-  assert(r.ok, `échec inattendu : ${r.problemes.join(', ')}`);
-  const ecrit = readFileSync(join(racine, 'rules/RG-a.md'), 'utf8');
-  assert(ecrit.includes('statut: abroge'), 'statut non passé à abrogé');
-  assert(ecrit.includes('Abrogée'), 'énoncé d’abrogation non appliqué');
-  assert(ecrit.includes('modifie_par'), 'index modifie_par absent');
+  const r = propagate(root);
+  assert(r.ok, `unexpected failure: ${r.problemes.join(', ')}`);
+  const written = readFileSync(join(root, 'rules/RG-a.md'), 'utf8');
+  assert(written.includes('statut: abroge'), 'status not switched to repealed');
+  assert(written.includes('Abrogée'), 'repeal statement not applied');
+  assert(written.includes('modifie_par'), 'modifie_par index missing');
 });
 
-test('l’opération « touche » ne produit aucune écriture', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'Texte.', { cree_par: '2026-001' });
-  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+test('the “touche” operation produces no write', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Texte.', { cree_par: '2026-001' });
+  writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Texte.',
   });
-  ecrireCadrage(racine, '2026-002', 'livree', [{ regle: 'RG-a', operation: 'touche' }], {});
+  writeScoping(root, '2026-002', 'livree', [{ regle: 'RG-a', operation: 'touche' }], {});
 
-  const r = propager(racine);
-  assert(r.ok, `échec inattendu : ${r.problemes.join(', ')}`);
-  assert(r.ecritures.length === 0, '« touche » a produit une écriture');
+  const r = propagate(root);
+  assert(r.ok, `unexpected failure: ${r.problemes.join(', ')}`);
+  assert(r.ecritures.length === 0, '“touche” produced a write');
 });
 
-// --- le tout ou rien ---
+// --- all or nothing ---
 
-test('n’écrit rien si un énoncé manque', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'Intact.', { cree_par: '2026-001' });
-  ecrireRegle(racine, 'RG-b', 'Intact aussi.', { cree_par: '2026-001' });
-  // RG-b est déclarée modifiée mais sans énoncé : le lot entier doit échouer
-  ecrireCadrage(
-    racine,
+test('writes nothing if a statement is missing', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Intact.', { cree_par: '2026-001' });
+  writeRule(root, 'RG-b', 'Intact aussi.', { cree_par: '2026-001' });
+  // RG-b is declared modified but without a statement: the whole batch must fail
+  writeScoping(
+    root,
     '2026-001',
     'livree',
     [
@@ -252,21 +252,21 @@ test('n’écrit rien si un énoncé manque', (racine) => {
     { 'RG-a': 'Nouveau texte de A.' },
   );
 
-  const r = propager(racine);
-  assert(!r.ok, 'la propagation aurait dû échouer');
-  assert(r.ecritures.length === 0, 'des écritures ont été produites malgré l’échec');
+  const r = propagate(root);
+  assert(!r.ok, 'the propagation should have failed');
+  assert(r.ecritures.length === 0, 'writes were produced despite the failure');
   assert(
-    readFileSync(join(racine, 'rules/RG-a.md'), 'utf8').includes('Intact.'),
-    'RG-a a été écrite alors que le lot devait échouer',
+    readFileSync(join(root, 'rules/RG-a.md'), 'utf8').includes('Intact.'),
+    'RG-a was written although the batch had to fail',
   );
 });
 
-test('n’écrit rien si le référentiel est incohérent', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'Intact.', { cree_par: '2026-001' });
-  // impact vers une règle inexistante : la vérification d'intégrité doit bloquer
-  ecrireCadrage(
-    racine,
+test('writes nothing if the specification is inconsistent', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Intact.', { cree_par: '2026-001' });
+  // impact on a nonexistent rule: the integrity check must block
+  writeScoping(
+    root,
     '2026-001',
     'livree',
     [
@@ -276,592 +276,591 @@ test('n’écrit rien si le référentiel est incohérent', (racine) => {
     { 'RG-a': 'Nouveau.', 'RG-inexistante': 'Texte.' },
   );
 
-  const r = propager(racine);
-  assert(!r.ok, 'la propagation aurait dû échouer sur l’intégrité');
+  const r = propagate(root);
+  assert(!r.ok, 'the propagation should have failed on integrity');
   assert(
-    readFileSync(join(racine, 'rules/RG-a.md'), 'utf8').includes('Intact.'),
-    'une écriture a eu lieu malgré l’incohérence',
+    readFileSync(join(root, 'rules/RG-a.md'), 'utf8').includes('Intact.'),
+    'a write happened despite the inconsistency',
   );
 });
 
-// --- l'ordre de livraison ---
+// --- delivery order ---
 
-test('le dernier cadrage livré fait foi sur l’énoncé', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'Ancien.', { cree_par: '2026-001' });
-  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+test('the last delivered scoping prevails on the statement', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Ancien.', { cree_par: '2026-001' });
+  writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Premier énoncé.',
   });
-  ecrireCadrage(racine, '2026-002', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
+  writeScoping(root, '2026-002', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
     'RG-a': 'Second énoncé, qui fait foi.',
   });
 
-  propager(racine);
-  const ecrit = readFileSync(join(racine, 'rules/RG-a.md'), 'utf8');
-  assert(ecrit.includes('Second énoncé'), 'le dernier énoncé ne fait pas foi');
-  assert(!ecrit.includes('Premier énoncé'), 'l’ancien énoncé subsiste');
-  // et l'énoncé d'époque reste dans le cadrage d'origine
-  const repo = loadRepo(racine);
+  propagate(root);
+  const written = readFileSync(join(root, 'rules/RG-a.md'), 'utf8');
+  assert(written.includes('Second énoncé'), 'the last statement does not prevail');
+  assert(!written.includes('Premier énoncé'), 'the old statement remains');
+  // and the statement of the time stays in the original scoping
+  const repo = loadRepo(root);
   assert(
     repo.cadrages.get('2026-001').body.includes('Premier énoncé'),
-    'l’énoncé d’époque a été perdu',
+    'the statement of the time was lost',
   );
 });
 
-test('l’état attendu ignore les cadrages non livrés', (racine) => {
-  socle(racine);
-  ecrireCadrage(racine, '2026-001', 'brouillon', [{ regle: 'RG-z', operation: 'cree' }], {
+test('the expected state ignores undelivered scopings', (root) => {
+  writeBase(root);
+  writeScoping(root, '2026-001', 'brouillon', [{ regle: 'RG-z', operation: 'cree' }], {
     'RG-z': 'Texte.',
   });
-  // rien n'est commité : aucun cadrage n'est livré
-  const attendu = etatAttendu(loadRepo(racine), new Set());
-  assert(attendu.size === 0, `${attendu.size} règle(s) attendue(s) pour un seul brouillon`);
+  // nothing is committed: no scoping is delivered
+  const expected = expectedState(loadRepo(root), new Set());
+  assert(expected.size === 0, `${expected.size} rule(s) expected for a single draft`);
 });
 
-// --- frontmatter illisible ---
+// --- unreadable frontmatter ---
 //
-// Un YAML invalide levait une exception qui traversait tout : le lecteur
-// recevait une trace de pile sans savoir quel fichier reprendre. Ces cas
-// vérifient qu'il est signalé, situé, et qu'il n'arrête pas le chargement.
+// Invalid YAML raised an exception that went through everything: the reader
+// got a stack trace without knowing which file to fix. These cases check that
+// it is reported, located, and does not stop the loading.
 
-test('signale un frontmatter illisible sans lever', (racine) => {
-  socle(racine);
-  // le cas rencontré en usage : un « : » non quoté dans une valeur
+test('reports an unreadable frontmatter without throwing', (root) => {
+  writeBase(root);
+  // the case met in use: an unquoted “:” in a value
   writeFileSync(
-    join(racine, 'rules', 'RG-casse.md'),
+    join(root, 'rules', 'RG-casse.md'),
     '---\nid: RG-casse\ntitre: Un titre : avec deux-points\n---\n\nTexte.\n',
   );
 
-  const { errors } = loadRepo(racine);
-  const erreur = errors.find((e) => e.includes('RG-casse.md'));
-  assert(erreur, `aucune erreur pour le fichier cassé : ${errors.join(' | ')}`);
-  assert(/ligne \d+/.test(erreur), `l'erreur ne situe pas la ligne : ${erreur}`);
+  const { errors } = loadRepo(root);
+  const error = errors.find((e) => e.includes('RG-casse.md'));
+  assert(error, `no error for the broken file: ${errors.join(' | ')}`);
+  assert(/ligne \d+/.test(error), `the error does not locate the line: ${error}`);
 });
 
-test('charge les autres fichiers malgré un fichier illisible', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-saine', 'Texte.');
-  writeFileSync(join(racine, 'rules', 'RG-casse.md'), '---\nstatut: [actif\n---\n\nTexte.\n');
+test('loads the other files despite an unreadable file', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-saine', 'Texte.');
+  writeFileSync(join(root, 'rules', 'RG-casse.md'), '---\nstatut: [actif\n---\n\nTexte.\n');
 
-  const repo = loadRepo(racine);
-  assert(repo.rules.has('RG-saine'), 'une règle saine a été perdue à cause d’un fichier cassé');
+  const repo = loadRepo(root);
+  assert(repo.rules.has('RG-saine'), 'a sound rule was lost because of a broken file');
 });
 
-test('signale une décision illisible une seule fois', (racine) => {
-  socle(racine);
-  ecrireCadrage(racine, '2026-001', 'livree', []);
-  mkdirSync(join(racine, 'cadrages', '2026-001', 'decisions'), { recursive: true });
+test('reports an unreadable decision only once', (root) => {
+  writeBase(root);
+  writeScoping(root, '2026-001', 'livree', []);
+  mkdirSync(join(root, 'cadrages', '2026-001', 'decisions'), { recursive: true });
   writeFileSync(
-    join(racine, 'cadrages', '2026-001', 'decisions', '01-x.md'),
+    join(root, 'cadrages', '2026-001', 'decisions', '01-x.md'),
     '---\ntitre: Choisir : ceci ou cela\n---\n\nTexte.\n',
   );
 
-  const { errors } = loadRepo(racine);
-  const pour = errors.filter((e) => e.includes('01-x.md'));
-  assert(pour.length === 1, `${pour.length} erreur(s) pour un seul fichier`);
+  const { errors } = loadRepo(root);
+  const forFile = errors.filter((e) => e.includes('01-x.md'));
+  assert(forFile.length === 1, `${forFile.length} error(s) for a single file`);
 });
 
-test('n’écrit rien quand un fichier est illisible', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'Ancien.');
-  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
+test('writes nothing when a file is unreadable', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Ancien.');
+  writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'modifie' }], {
     'RG-a': 'Nouveau.',
   });
-  writeFileSync(join(racine, 'rules', 'RG-casse.md'), '---\nstatut: [actif\n---\n\nTexte.\n');
+  writeFileSync(join(root, 'rules', 'RG-casse.md'), '---\nstatut: [actif\n---\n\nTexte.\n');
 
-  const { ok } = propager(racine, { dryRun: false });
-  assert(!ok, 'la propagation a accepté d’écrire malgré un fichier illisible');
+  const { ok } = propagate(root, { dryRun: false });
+  assert(!ok, 'the propagation agreed to write despite an unreadable file');
   assert(
-    readFileSync(join(racine, 'rules', 'RG-a.md'), 'utf8').includes('Ancien.'),
-    'une écriture a eu lieu alors qu’un fichier était illisible',
+    readFileSync(join(root, 'rules', 'RG-a.md'), 'utf8').includes('Ancien.'),
+    'a write happened while a file was unreadable',
   );
 });
 
-test('un README dans un répertoire de contenu n’est pas une entité', (racine) => {
-  socle(racine);
-  // il explique ce que le répertoire attend, à qui ouvre le dépôt sur la
-  // plateforme — le traiter comme une entité ferait échouer sur de la
-  // documentation
-  writeFileSync(join(racine, 'rules', 'README.md'), '# Règles\n\nCe qu’on dépose ici.\n');
+test('a README in a content folder is not an entity', (root) => {
+  writeBase(root);
+  // it explains what the folder expects, to whoever opens the repo on the
+  // platform — treating it as an entity would fail on documentation
+  writeFileSync(join(root, 'rules', 'README.md'), '# Règles\n\nCe qu’on dépose ici.\n');
 
-  const { errors } = loadRepo(racine);
-  assert(!errors.length, `README signalé : ${errors.join(' | ')}`);
+  const { errors } = loadRepo(root);
+  assert(!errors.length, `README reported: ${errors.join(' | ')}`);
 });
 
-// --- statut déduit, et immuabilité d'un cadrage livré ---
+// --- derived status, and immutability of a delivered scoping ---
 //
-// Le statut n'est plus déclaré : ces cas vérifient que le dépôt seul l'établit,
-// et qu'un cadrage livré ne se reprend plus. C'est ce qui a manqué quand un
-// cadrage a été fusionné en portant « brouillon » sans que rien ne le signale.
+// The status is no longer declared: these cases check that the repo alone
+// establishes it, and that a delivered scoping can no longer be reworked. This
+// is what was missing when a scoping was merged carrying “brouillon” without
+// anything reporting it.
 
-test('un statut déclaré dans le fichier est refusé', (racine) => {
-  socle(racine);
-  mkdirSync(join(racine, 'cadrages', '2026-001'), { recursive: true });
+test('a status declared in the file is rejected', (root) => {
+  writeBase(root);
+  mkdirSync(join(root, 'cadrages', '2026-001'), { recursive: true });
   writeFileSync(
-    join(racine, 'cadrages', '2026-001', 'cadrage.md'),
+    join(root, 'cadrages', '2026-001', 'cadrage.md'),
     '---\nid: 2026-001\ntitre: T\nstatut: livree\ndomaines: [d]\nimpacts: []\n---\n\n## Objectif\n\nUn objectif.\n',
   );
-  livrer(racine);
+  deliver(root);
 
-  const { errors } = check(racine, { base: 'HEAD' });
+  const { errors } = check(root, { base: 'HEAD' });
   assert(
     errors.some((e) => e.includes('le statut ne se déclare pas')),
-    `statut déclaré accepté : ${errors.join(' | ')}`,
+    `declared status accepted: ${errors.join(' | ')}`,
   );
 });
 
-test('un cadrage est livré du seul fait que le dépôt le porte', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'À propager.');
-  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+test('a scoping is delivered by the mere fact that the repo carries it', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'À propager.');
+  writeScoping(root, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
 
-  const r = propager(racine);
-  assert(r.ok, `propagation refusée : ${r.problemes.join(' | ')}`);
+  const r = propagate(root);
+  assert(r.ok, `propagation refused: ${r.problemes.join(' | ')}`);
   assert(
-    readFileSync(join(racine, 'rules/RG-a.md'), 'utf8').includes('Un énoncé.'),
-    'un cadrage commité n’a pas été tenu pour livré',
+    readFileSync(join(root, 'rules/RG-a.md'), 'utf8').includes('Un énoncé.'),
+    'a committed scoping was not taken as delivered',
   );
 });
 
-test('modifier un cadrage livré est refusé', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'À propager.');
-  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+test('modifying a delivered scoping is rejected', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'À propager.');
+  writeScoping(root, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
-  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const base = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 
-  // on reprend le cadrage après sa livraison, ce que RG-cadrage-livre-immuable interdit
+  // the scoping is reworked after its delivery, which RG-cadrage-livre-immuable forbids
   writeFileSync(
-    join(racine, 'cadrages', '2026-001', 'cadrage.md'),
-    readFileSync(join(racine, 'cadrages', '2026-001', 'cadrage.md'), 'utf8') + '\nAjout tardif.\n',
+    join(root, 'cadrages', '2026-001', 'cadrage.md'),
+    readFileSync(join(root, 'cadrages', '2026-001', 'cadrage.md'), 'utf8') + '\nAjout tardif.\n',
   );
-  livrer(racine);
+  deliver(root);
 
-  const { errors } = check(racine, { base });
+  const { errors } = check(root, { base });
   assert(
     errors.some((e) => e.includes('livré, donc figé')),
-    `modification d’un cadrage livré acceptée : ${errors.join(' | ')}`,
+    `modification of a delivered scoping accepted: ${errors.join(' | ')}`,
   );
 });
 
-test('une base hors d’atteinte est signalée, non ignorée', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'À propager.');
-  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+test('an out-of-reach base is reported, not ignored', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'À propager.');
+  writeScoping(root, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
 
-  // un workflow qui omet `fetch-depth: 0` laisse la base hors d'atteinte : le
-  // contrôle n'a alors pas lieu, ce qui ne se confond pas avec un référentiel
-  // conforme — se taire rendrait la règle silencieusement inapplicable
-  const { errors } = check(racine, { base: 'origin/inexistante' });
+  // a workflow that omits `fetch-depth: 0` leaves the base out of reach: the
+  // check then does not run, which is not to be confused with a compliant
+  // specification — staying silent would make the rule silently inapplicable
+  const { errors } = check(root, { base: 'origin/inexistante' });
   assert(
     errors.some((e) => e.includes("hors d'atteinte")),
-    `base hors d’atteinte passée sous silence : ${errors.join(' | ')}`,
+    `out-of-reach base passed over in silence: ${errors.join(' | ')}`,
   );
 });
 
-test('ajouter une décision à un cadrage livré est refusé', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'À propager.');
-  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+test('adding a decision to a delivered scoping is rejected', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'À propager.');
+  writeScoping(root, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
-  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const base = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 
-  // l'ajout n'a été relu par personne, alors que la validation portait sur ce
-  // qui était présent au moment où elle a été donnée
-  mkdirSync(join(racine, 'cadrages', '2026-001', 'decisions'), { recursive: true });
+  // nobody reviewed the addition, whereas the approval covered what was
+  // present at the time it was given
+  mkdirSync(join(root, 'cadrages', '2026-001', 'decisions'), { recursive: true });
   writeFileSync(
-    join(racine, 'cadrages', '2026-001', 'decisions', '01-tardive.md'),
+    join(root, 'cadrages', '2026-001', 'decisions', '01-tardive.md'),
     '---\nid: 01-tardive\ntitre: Tardive\nstatut: retenue\n---\n\nAprès coup.\n',
   );
-  livrer(racine);
+  deliver(root);
 
-  const { errors } = check(racine, { base });
+  const { errors } = check(root, { base });
   assert(
     errors.some((e) => e.includes('livré, donc figé')),
-    `décision ajoutée après livraison acceptée : ${errors.join(' | ')}`,
+    `decision added after delivery accepted: ${errors.join(' | ')}`,
   );
 });
 
-test('un cadrage non livré se modifie librement', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'À propager.');
-  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+test('an undelivered scoping can be modified freely', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'À propager.');
+  writeScoping(root, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
-  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const base = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 
-  ecrireCadrage(racine, '2026-002', true, [{ regle: 'RG-a', operation: 'touche' }], {});
+  writeScoping(root, '2026-002', true, [{ regle: 'RG-a', operation: 'touche' }], {});
 
-  const { errors } = check(racine, { base });
+  const { errors } = check(root, { base });
   assert(
     !errors.some((e) => e.includes('livré, donc figé')),
-    `un cadrage neuf a été pris pour un cadrage livré : ${errors.join(' | ')}`,
+    `a new scoping was taken for a delivered scoping: ${errors.join(' | ')}`,
   );
 });
 
-test('le contrôle d’immuabilité se suspend, sans emporter les autres', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'À propager.');
-  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+test('the immutability check can be suspended, without taking the others with it', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'À propager.');
+  writeScoping(root, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
-  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const base = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 
-  // une reprise de format touche un cadrage livré : c'est ce que la suspension
-  // doit laisser passer, le temps de la livrer
+  // a format rework touches a delivered scoping: this is what the suspension
+  // must let through, long enough to deliver it
   writeFileSync(
-    join(racine, 'cadrages', '2026-001', 'cadrage.md'),
-    readFileSync(join(racine, 'cadrages', '2026-001', 'cadrage.md'), 'utf8') + '\nReprise.\n',
+    join(root, 'cadrages', '2026-001', 'cadrage.md'),
+    readFileSync(join(root, 'cadrages', '2026-001', 'cadrage.md'), 'utf8') + '\nReprise.\n',
   );
-  livrer(racine);
+  deliver(root);
 
-  const avec = check(racine, { base });
+  const withCheck = check(root, { base });
   assert(
-    avec.errors.some((e) => e.includes('livré, donc figé')),
-    'le contrôle ne s’applique pas quand il devrait',
+    withCheck.errors.some((e) => e.includes('livré, donc figé')),
+    'the check does not apply when it should',
   );
 
-  const sans = check(racine, { base, immuabilite: false });
+  const withoutCheck = check(root, { base, immuabilite: false });
   assert(
-    !sans.errors.some((e) => e.includes('livré, donc figé')),
-    `suspension sans effet : ${sans.errors.join(' | ')}`,
+    !withoutCheck.errors.some((e) => e.includes('livré, donc figé')),
+    `suspension without effect: ${withoutCheck.errors.join(' | ')}`,
   );
 });
 
-// --- contrôle de livraison ---
+// --- delivery check ---
 //
-// Le défaut qu'ils protègent s'est produit deux fois : un cadrage créant une
-// règle dont le fichier manquait a été fusionné, la propagation s'est arrêtée
-// tout-ou-rien, et personne ne l'a su avant que la demande de fusion suivante,
-// sans rapport, n'hérite des erreurs.
+// The defect they protect against happened twice: a scoping creating a rule
+// whose file was missing was merged, the propagation stopped all-or-nothing,
+// and nobody knew until the next, unrelated pull request inherited the errors.
 
-test('le contrôle de livraison refuse une règle créée sans son fichier', (racine) => {
-  socle(racine);
-  livrer(racine);
-  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+test('the delivery check rejects a rule created without its file', (root) => {
+  writeBase(root);
+  deliver(root);
+  const base = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 
-  // le cadrage de la demande de fusion : pas encore livré, et sa règle n'a pas
-  // de fichier dans rules/
-  ecrireCadrage(racine, '2026-001', false, [{ regle: 'RG-a', operation: 'cree' }], {
+  // the pull request's scoping: not delivered yet, and its rule has no file
+  // in rules/
+  writeScoping(root, '2026-001', false, [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
-  livrer(racine);
+  deliver(root);
 
-  const ordinaire = check(racine, { base });
+  const ordinary = check(root, { base });
   assert(
-    ordinaire.errors.length === 0,
-    `la vérification ordinaire n’a rien à dire ici : ${ordinaire.errors.join(' | ')}`,
+    ordinary.errors.length === 0,
+    `the ordinary check has nothing to say here: ${ordinary.errors.join(' | ')}`,
   );
 
-  const { errors } = check(racine, { base, livraison: true });
+  const { errors } = check(root, { base, livraison: true });
   assert(
     errors.some((e) => e.includes('à la livraison') && e.includes('RG-a')),
-    `la règle sans fichier n’est pas signalée : ${errors.join(' | ')}`,
+    `the rule without a file is not reported: ${errors.join(' | ')}`,
   );
 });
 
-test('le contrôle de livraison se tait quand le fichier est là', (racine) => {
-  socle(racine);
-  livrer(racine);
-  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+test('the delivery check stays silent when the file is there', (root) => {
+  writeBase(root);
+  deliver(root);
+  const base = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 
-  // `cree_par: null` et « À propager. » : ce que le rédacteur écrit, la
-  // propagation faisant le reste après la fusion
-  ecrireRegle(racine, 'RG-a', 'À propager.');
-  ecrireCadrage(racine, '2026-001', false, [{ regle: 'RG-a', operation: 'cree' }], {
+  // `cree_par: null` and “À propager.”: what the author writes, the
+  // propagation doing the rest after the merge
+  writeRule(root, 'RG-a', 'À propager.');
+  writeScoping(root, '2026-001', false, [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
-  livrer(racine);
+  deliver(root);
 
-  const { errors } = check(racine, { base, livraison: true });
-  assert(errors.length === 0, `erreurs inattendues : ${errors.join(' | ')}`);
+  const { errors } = check(root, { base, livraison: true });
+  assert(errors.length === 0, `unexpected errors: ${errors.join(' | ')}`);
 });
 
-test('le contrôle de livraison n’exige pas ce que la propagation produira', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'Un énoncé déjà propagé.', { cree_par: '2026-001' });
-  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+test('the delivery check does not demand what the propagation will produce', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Un énoncé déjà propagé.', { cree_par: '2026-001' });
+  writeScoping(root, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé déjà propagé.',
   });
-  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const base = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 
-  // un second cadrage modifie la règle : `modifie_par` ne le porte pas encore,
-  // et n'a pas à le porter avant la propagation
-  ecrireCadrage(racine, '2026-002', false, [{ regle: 'RG-a', operation: 'modifie' }], {
+  // a second scoping modifies the rule: `modifie_par` does not carry it yet,
+  // and need not carry it before the propagation
+  writeScoping(root, '2026-002', false, [{ regle: 'RG-a', operation: 'modifie' }], {
     'RG-a': 'Un énoncé repris.',
   });
-  livrer(racine);
+  deliver(root);
 
-  const { errors } = check(racine, { base, livraison: true });
+  const { errors } = check(root, { base, livraison: true });
   assert(
     !errors.some((e) => e.includes('modifie_par')),
-    `les index dérivés sont réclamés trop tôt : ${errors.join(' | ')}`,
+    `the derived indexes are demanded too early: ${errors.join(' | ')}`,
   );
 });
 
-test('le contrôle de livraison voit un cadrage pas encore enregistré', (racine) => {
-  socle(racine);
-  livrer(racine);
-  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+test('the delivery check sees a scoping not yet committed', (root) => {
+  writeBase(root);
+  deliver(root);
+  const base = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 
-  // écrit, non enregistré : le cas de la vérification lancée à la main, où le
-  // contrôle servirait le plus
-  ecrireCadrage(racine, '2026-001', false, [{ regle: 'RG-a', operation: 'cree' }], {
+  // written, not committed: the case of the check run by hand, where the
+  // check would be most useful
+  writeScoping(root, '2026-001', false, [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
 
-  const { errors } = check(racine, { base, livraison: true });
+  const { errors } = check(root, { base, livraison: true });
   assert(
     errors.some((e) => e.includes('à la livraison') && e.includes('RG-a')),
-    `un cadrage non enregistré échappe au contrôle : ${errors.join(' | ')}`,
+    `an uncommitted scoping escapes the check: ${errors.join(' | ')}`,
   );
 });
 
-test('une base hors d’atteinte se signale, plutôt que de se taire', (racine) => {
-  socle(racine);
-  livrer(racine);
+test('an out-of-reach base is reported, rather than kept silent', (root) => {
+  writeBase(root);
+  deliver(root);
 
-  const { errors } = check(racine, { base: 'origine/inconnue', livraison: true });
+  const { errors } = check(root, { base: 'origine/inconnue', livraison: true });
   assert(
     errors.some((e) => e.includes('livraison') && e.includes("hors d'atteinte")),
-    `le contrôle manquant n’est pas signalé : ${errors.join(' | ')}`,
+    `the missing check is not reported: ${errors.join(' | ')}`,
   );
 });
 
-// --- branche déjà fusionnée ---
+// --- branch already merged ---
 //
-// Le contrôle lancé à la main compare à `origin/main`, qui avance avec chaque
-// `fetch`. Une branche fusionnée entre deux contrôles y voit son propre cadrage
-// livré, mais pas encore propagé : les index dérivés en attente passaient pour
-// des erreurs du rédacteur. Arrivé sur ssk-canon avec 2026-052.
+// The check run by hand compares against `origin/main`, which moves with each
+// `fetch`. A branch merged between two checks sees its own scoping delivered
+// there, but not yet propagated: the pending derived indexes passed for the
+// author's errors. Happened on ssk-canon with 2026-052.
 
-/** Livre un cadrage par une fusion, et laisse sa branche sortie. */
-function fusionnerCadrage(racine, id) {
-  socle(racine);
-  livrer(racine);
-  git(racine, ['checkout', '-q', '-b', `cadrage-${id}`]);
-  ecrireRegle(racine, 'RG-a', 'À propager.');
-  ecrireCadrage(racine, id, 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+/** Delivers a scoping through a merge, and leaves its branch checked out. */
+function mergeScoping(root, id) {
+  writeBase(root);
+  deliver(root);
+  git(root, ['checkout', '-q', '-b', `cadrage-${id}`]);
+  writeRule(root, 'RG-a', 'À propager.');
+  writeScoping(root, id, 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
-  git(racine, ['checkout', '-q', 'main']);
-  git(racine, ['merge', '-q', '--no-ff', '-m', `Fusion du ${id}`, `cadrage-${id}`]);
-  git(racine, ['checkout', '-q', `cadrage-${id}`]);
+  git(root, ['checkout', '-q', 'main']);
+  git(root, ['merge', '-q', '--no-ff', '-m', `Fusion du ${id}`, `cadrage-${id}`]);
+  git(root, ['checkout', '-q', `cadrage-${id}`]);
 }
 
-test('une branche déjà fusionnée se signale, sans réclamer la propagation', (racine) => {
-  fusionnerCadrage(racine, '2026-001');
+test('an already merged branch is reported, without demanding the propagation', (root) => {
+  mergeScoping(root, '2026-001');
 
-  const { errors, warnings } = check(racine, { base: 'main', livraison: true });
-  assert(errors.length === 0, `la propagation en attente est réclamée : ${errors.join(' | ')}`);
+  const { errors, warnings } = check(root, { base: 'main', livraison: true });
+  assert(errors.length === 0, `the pending propagation is demanded: ${errors.join(' | ')}`);
   assert(
     warnings.some((w) => w.includes('déjà fusionnée')),
-    `la fusion n’est pas signalée : ${warnings.join(' | ')}`,
+    `the merge is not reported: ${warnings.join(' | ')}`,
   );
 });
 
-test('reprendre un cadrage sur sa branche fusionnée reste refusé', (racine) => {
-  fusionnerCadrage(racine, '2026-001');
-  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+test('reworking a scoping on its merged branch stays rejected', (root) => {
+  mergeScoping(root, '2026-001');
+  writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé repris après la fusion.',
   });
 
-  const { errors, warnings } = check(racine, { base: 'main', livraison: true });
+  const { errors, warnings } = check(root, { base: 'main', livraison: true });
   assert(
     errors.some((e) => e.includes('livré, donc figé')),
-    `la reprise d’un cadrage livré passe : ${errors.join(' | ')}`,
+    `reworking a delivered scoping goes through: ${errors.join(' | ')}`,
   );
   assert(
     !errors.some((e) => e.includes('cree_par')),
-    `la propagation en attente est réclamée : ${errors.join(' | ')}`,
+    `the pending propagation is demanded: ${errors.join(' | ')}`,
   );
   assert(
     warnings.some((w) => w.includes('déjà fusionnée')),
-    `la fusion n’est pas signalée : ${warnings.join(' | ')}`,
+    `the merge is not reported: ${warnings.join(' | ')}`,
   );
 });
 
-test('une branche en cours ne passe pas pour fusionnée', (racine) => {
-  socle(racine);
-  livrer(racine);
-  git(racine, ['checkout', '-q', '-b', 'cadrage-2026-001']);
-  ecrireRegle(racine, 'RG-a', 'À propager.');
-  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+test('a branch in progress does not pass for merged', (root) => {
+  writeBase(root);
+  deliver(root);
+  git(root, ['checkout', '-q', '-b', 'cadrage-2026-001']);
+  writeRule(root, 'RG-a', 'À propager.');
+  writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
-  // la branche principale avance pendant ce temps
-  git(racine, ['checkout', '-q', 'main']);
-  writeFileSync(join(racine, 'domains/e.md'), '---\nid: e\nnom: E\n---\n\nUn autre domaine.\n');
-  livrer(racine);
-  git(racine, ['checkout', '-q', 'cadrage-2026-001']);
+  // the main branch moves forward meanwhile
+  git(root, ['checkout', '-q', 'main']);
+  writeFileSync(join(root, 'domains/e.md'), '---\nid: e\nnom: E\n---\n\nUn autre domaine.\n');
+  deliver(root);
+  git(root, ['checkout', '-q', 'cadrage-2026-001']);
 
-  const { warnings } = check(racine, { base: 'main', livraison: true });
+  const { warnings } = check(root, { base: 'main', livraison: true });
   assert(
     !warnings.some((w) => w.includes('fusionnée')),
-    `une branche en cours est dite fusionnée : ${warnings.join(' | ')}`,
+    `a branch in progress is said to be merged: ${warnings.join(' | ')}`,
   );
 });
 
-test('la branche principale ne passe pas pour fusionnée', (racine) => {
-  fusionnerCadrage(racine, '2026-001');
-  git(racine, ['checkout', '-q', 'main']);
+test('the main branch does not pass for merged', (root) => {
+  mergeScoping(root, '2026-001');
+  git(root, ['checkout', '-q', 'main']);
 
-  // c'est ce que l'intégration continue voit d'une demande de fusion : un commit
-  // dont la branche principale est la première parenté
-  const { warnings } = check(racine, { base: 'main' });
+  // this is what continuous integration sees of a pull request: a commit
+  // whose first parent is the main branch
+  const { warnings } = check(root, { base: 'main' });
   assert(
     !warnings.some((w) => w.includes('fusionnée')),
-    `la branche principale est dite fusionnée : ${warnings.join(' | ')}`,
+    `the main branch is said to be merged: ${warnings.join(' | ')}`,
   );
 });
 
-// --- cibles d'architecture ---
+// --- architecture targets ---
 //
-// Un impact peut viser une décision d'architecture ou un document
-// d'architecture, et non plus seulement une règle de gestion. Ce qui est
-// éprouvé ici n'est pas que le champ est lu, mais que les nouvelles cibles
-// traversent la chaîne entière — chargement, vérification, propagation —
-// exactement comme une règle. Une cible acceptée à la saisie mais ignorée par
-// la propagation serait le pire des deux mondes : un cadrage livré sans effet.
+// An impact may target an architecture decision or an architecture document,
+// and no longer only a business rule. What is tested here is not that the
+// field is read, but that the new targets go through the whole chain —
+// loading, check, propagation — exactly like a rule. A target accepted on
+// input but ignored by the propagation would be the worst of both worlds: a
+// delivered scoping without effect.
 
-/** Écrit un cadrage dont les impacts visent des cibles quelconques. */
-function ecrireCadrageCible(racine, id, livre, impacts, enonces = {}) {
-  mkdirSync(join(racine, 'cadrages', id), { recursive: true });
-  const lignesImpacts = impacts
+/** Writes a scoping whose impacts target arbitrary targets. */
+function writeScopingWithTargets(root, id, delivered, impacts, statements = {}) {
+  mkdirSync(join(root, 'cadrages', id), { recursive: true });
+  const impactLines = impacts
     .map((i) => {
-      const [cle, valeur] = Object.entries(i).find(([k]) => k !== 'operation');
-      return `  - { ${cle}: ${valeur}, operation: ${i.operation} }`;
+      const [key, value] = Object.entries(i).find(([k]) => k !== 'operation');
+      return `  - { ${key}: ${value}, operation: ${i.operation} }`;
     })
     .join('\n');
-  const sections = Object.entries(enonces)
+  const sections = Object.entries(statements)
     .map(([r, t]) => `### ${r}\n\n${t}\n`)
     .join('\n');
   writeFileSync(
-    join(racine, 'cadrages', id, 'cadrage.md'),
-    `---\nid: ${id}\ntitre: Cadrage ${id}\ndomaines: [d]\nimpacts:\n${lignesImpacts}\n---\n\n## Objectif\n\nUn objectif.\n\n## Énoncés\n\n${sections}`,
+    join(root, 'cadrages', id, 'cadrage.md'),
+    `---\nid: ${id}\ntitre: Cadrage ${id}\ndomaines: [d]\nimpacts:\n${impactLines}\n---\n\n## Objectif\n\nUn objectif.\n\n## Énoncés\n\n${sections}`,
   );
-  if (livre === 'livree' || livre === true) livrer(racine);
+  if (delivered === 'livree' || delivered === true) deliver(root);
 }
 
-/** Écrit une cible d'architecture — décision ou document. */
-function ecrireCible(racine, repertoire, id, corps, frontmatter = {}) {
-  mkdirSync(join(racine, repertoire), { recursive: true });
+/** Writes an architecture target — decision or document. */
+function writeTarget(root, folder, id, body, frontmatter = {}) {
+  mkdirSync(join(root, folder), { recursive: true });
   const fm = {
     id,
-    ...(repertoire === 'architecture' ? { nature: 'composant' } : {}),
+    ...(folder === 'architecture' ? { nature: 'composant' } : {}),
     statut: 'actif',
     cree_par: 'null',
     modifie_par: '[]',
     ...frontmatter,
   };
-  const lignes = Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join('\n');
-  writeFileSync(join(racine, repertoire, `${id}.md`), `---\n${lignes}\n---\n\n${corps}\n`);
+  const lines = Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join('\n');
+  writeFileSync(join(root, folder, `${id}.md`), `---\n${lines}\n---\n\n${body}\n`);
 }
 
-test('propage un énoncé vers une décision d’architecture', (racine) => {
-  socle(racine);
-  ecrireCible(racine, 'decisions', 'ADR-stockage', 'À propager.');
-  ecrireCadrageCible(
-    racine,
+test('propagates a statement to an architecture decision', (root) => {
+  writeBase(root);
+  writeTarget(root, 'decisions', 'ADR-stockage', 'À propager.');
+  writeScopingWithTargets(
+    root,
     '2026-001',
     'livree',
     [{ adr: 'ADR-stockage', operation: 'cree' }],
     { 'ADR-stockage': 'Le stockage est objet.' },
   );
 
-  propager(racine);
+  propagate(root);
 
-  const ecrit = readFileSync(join(racine, 'decisions/ADR-stockage.md'), 'utf8');
-  assert(ecrit.includes('Le stockage est objet.'), 'énoncé non propagé vers la décision');
-  assert(ecrit.includes('cree_par: 2026-001'), 'index cree_par non renseigné sur la décision');
+  const written = readFileSync(join(root, 'decisions/ADR-stockage.md'), 'utf8');
+  assert(written.includes('Le stockage est objet.'), 'statement not propagated to the decision');
+  assert(written.includes('cree_par: 2026-001'), 'cree_par index not filled in on the decision');
 });
 
-// Une citation d'un autre référentiel se décide dans le fichier de la règle,
-// comme son rattachement : la propagation la garde, sans jamais la choisir —
-// RG-regle-du-socle-citee. La perdre à la réécriture effacerait ce que le
-// citant applique, au moment même où un cadrage modifie sa règle.
-test('la propagation garde ce qu’une règle ou une décision applique d’un autre référentiel', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'Périmé.', { applique: "['socle:RG-nommage@2026-012']" });
-  ecrireCible(racine, 'decisions', 'ADR-b', 'Périmé.', { applique: "['socle:ADR-runners@2026-003']" });
-  ecrireCadrageCible(
-    racine,
+// A citation of another specification is decided in the rule's file, like its
+// link: the propagation keeps it, without ever choosing it —
+// RG-regle-du-socle-citee. Losing it on rewrite would erase what the citing
+// specification applies, at the very moment a scoping modifies its rule.
+test('the propagation keeps what a rule or a decision applies from another specification', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Périmé.', { applique: "['socle:RG-nommage@2026-012']" });
+  writeTarget(root, 'decisions', 'ADR-b', 'Périmé.', { applique: "['socle:ADR-runners@2026-003']" });
+  writeScopingWithTargets(
+    root,
     '2026-001',
     'livree',
     [{ regle: 'RG-a', operation: 'cree' }, { adr: 'ADR-b', operation: 'cree' }],
     { 'RG-a': 'À jour.', 'ADR-b': 'À jour.' },
   );
 
-  const r = propager(racine);
-  assert(r.ok, `échec inattendu : ${r.problemes.join(', ')}`);
-  const regle = readFileSync(join(racine, 'rules/RG-a.md'), 'utf8');
-  const decision = readFileSync(join(racine, 'decisions/ADR-b.md'), 'utf8');
-  assert(regle.includes('applique: [socle:RG-nommage@2026-012]'), `citation perdue sur la règle :\n${regle}`);
-  assert(decision.includes('applique: [socle:ADR-runners@2026-003]'), `citation perdue sur la décision :\n${decision}`);
-  assert(propager(racine).ecritures.length === 0, 'la citation rend la propagation non idempotente');
+  const r = propagate(root);
+  assert(r.ok, `unexpected failure: ${r.problemes.join(', ')}`);
+  const rule = readFileSync(join(root, 'rules/RG-a.md'), 'utf8');
+  const decision = readFileSync(join(root, 'decisions/ADR-b.md'), 'utf8');
+  assert(rule.includes('applique: [socle:RG-nommage@2026-012]'), `citation lost on the rule:\n${rule}`);
+  assert(decision.includes('applique: [socle:ADR-runners@2026-003]'), `citation lost on the decision:\n${decision}`);
+  assert(propagate(root).ecritures.length === 0, 'the citation makes the propagation non-idempotent');
 });
 
-test('propage un énoncé vers un document d’architecture', (racine) => {
-  socle(racine);
-  ecrireCible(racine, 'architecture', 'FLX-export', 'À propager.', { nature: 'flux' });
-  ecrireCadrageCible(
-    racine,
+test('propagates a statement to an architecture document', (root) => {
+  writeBase(root);
+  writeTarget(root, 'architecture', 'FLX-export', 'À propager.', { nature: 'flux' });
+  writeScopingWithTargets(
+    root,
     '2026-001',
     'livree',
     [{ architecture: 'FLX-export', operation: 'cree' }],
     { 'FLX-export': 'Un export nocturne.' },
   );
 
-  propager(racine);
+  propagate(root);
 
-  const ecrit = readFileSync(join(racine, 'architecture/FLX-export.md'), 'utf8');
-  assert(ecrit.includes('Un export nocturne.'), 'énoncé non propagé vers le document');
-  assert(ecrit.includes('cree_par: 2026-001'), 'index cree_par non renseigné sur le document');
+  const written = readFileSync(join(root, 'architecture/FLX-export.md'), 'utf8');
+  assert(written.includes('Un export nocturne.'), 'statement not propagated to the document');
+  assert(written.includes('cree_par: 2026-001'), 'cree_par index not filled in on the document');
 });
 
-test('un impact « cree » sur une cible d’architecture exige son énoncé', (racine) => {
-  socle(racine);
-  ecrireCible(racine, 'decisions', 'ADR-sans-enonce', 'À propager.');
-  ecrireCadrageCible(racine, '2026-001', false, [
+test('a “cree” impact on an architecture target requires its statement', (root) => {
+  writeBase(root);
+  writeTarget(root, 'decisions', 'ADR-sans-enonce', 'À propager.');
+  writeScopingWithTargets(root, '2026-001', false, [
     { adr: 'ADR-sans-enonce', operation: 'cree' },
   ]);
 
-  const { errors } = check(racine);
+  const { errors } = check(root);
   assert(
     errors.some((e) => e.includes('ADR-sans-enonce') && e.includes('énoncé')),
-    `l’énoncé manquant n’est pas exigé : ${errors.join(' | ')}`,
+    `the missing statement is not required: ${errors.join(' | ')}`,
   );
 });
 
-test('une cible d’architecture inconnue est signalée', (racine) => {
-  socle(racine);
-  ecrireCadrageCible(
-    racine,
+test('an unknown architecture target is reported', (root) => {
+  writeBase(root);
+  writeScopingWithTargets(
+    root,
     '2026-001',
     false,
     [{ adr: 'ADR-fantome', operation: 'modifie' }],
     { 'ADR-fantome': 'Un texte.' },
   );
 
-  const { errors } = check(racine);
+  const { errors } = check(root);
   assert(
     errors.some((e) => e.includes('ADR-fantome')),
-    `une cible inexistante passe la vérification : ${errors.join(' | ')}`,
+    `a nonexistent target passes the check: ${errors.join(' | ')}`,
   );
 });
 
-test('un cadrage mixte touche règle et architecture d’un même mouvement', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'À propager.');
-  ecrireCible(racine, 'decisions', 'ADR-b', 'À propager.');
-  ecrireCadrageCible(
-    racine,
+test('a mixed scoping touches rule and architecture in a single move', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'À propager.');
+  writeTarget(root, 'decisions', 'ADR-b', 'À propager.');
+  writeScopingWithTargets(
+    root,
     '2026-001',
     'livree',
     [
@@ -871,164 +870,164 @@ test('un cadrage mixte touche règle et architecture d’un même mouvement', (r
     { 'RG-a': 'Une règle.', 'ADR-b': 'Une décision.' },
   );
 
-  propager(racine);
+  propagate(root);
 
   assert(
-    readFileSync(join(racine, 'rules/RG-a.md'), 'utf8').includes('Une règle.'),
-    'la règle du cadrage mixte n’a pas été propagée',
+    readFileSync(join(root, 'rules/RG-a.md'), 'utf8').includes('Une règle.'),
+    'the rule of the mixed scoping was not propagated',
   );
   assert(
-    readFileSync(join(racine, 'decisions/ADR-b.md'), 'utf8').includes('Une décision.'),
-    'la décision du cadrage mixte n’a pas été propagée',
+    readFileSync(join(root, 'decisions/ADR-b.md'), 'utf8').includes('Une décision.'),
+    'the decision of the mixed scoping was not propagated',
   );
 });
 
-// --- préfixe de projet ---
+// --- project prefix ---
 //
-// Le préfixe est une voie d'accès supplémentaire, pas un identifiant : il ne
-// change rien à ce qui est stocké. Ce qui est éprouvé ici est donc surtout ce
-// qu'il ne fait pas — et qu'un préfixe mal formé est refusé tôt, plutôt que de
-// se découvrir à l'affichage, là où plus rien ne peut le corriger.
+// The prefix is an additional access path, not an identifier: it changes
+// nothing in what is stored. What is tested here is therefore mostly what it
+// does not do — and that a malformed prefix is rejected early, rather than
+// being discovered at display time, where nothing can correct it anymore.
 
-/** Écrit la configuration du projet, avec ou sans préfixe. */
-function ecrireConfig(racine, prefixe) {
-  const lignes = ['schema_version: 1', 'projet:', '  nom: Essai'];
-  if (prefixe !== undefined) lignes.push(`  prefixe: ${prefixe}`);
-  writeFileSync(join(racine, 'ssk-canon.yml'), `${lignes.join('\n')}\n`);
+/** Writes the project configuration, with or without a prefix. */
+function writeConfig(root, prefix) {
+  const lines = ['schema_version: 1', 'projet:', '  nom: Essai'];
+  if (prefix !== undefined) lines.push(`  prefixe: ${prefix}`);
+  writeFileSync(join(root, 'ssk-canon.yml'), `${lines.join('\n')}\n`);
 }
 
-test('accepte un projet sans préfixe', (racine) => {
-  socle(racine);
-  ecrireConfig(racine);
-  livrer(racine);
+test('accepts a project without a prefix', (root) => {
+  writeBase(root);
+  writeConfig(root);
+  deliver(root);
 
-  const { errors } = check(racine);
-  assert(errors.length === 0, `un projet sans préfixe est refusé : ${errors.join(' | ')}`);
+  const { errors } = check(root);
+  assert(errors.length === 0, `a project without a prefix is rejected: ${errors.join(' | ')}`);
 });
 
-test('accepte un préfixe bien formé', (racine) => {
-  socle(racine);
-  ecrireConfig(racine, 'PRMCO');
-  livrer(racine);
+test('accepts a well-formed prefix', (root) => {
+  writeBase(root);
+  writeConfig(root, 'PRMCO');
+  deliver(root);
 
-  const { errors } = check(racine);
-  assert(errors.length === 0, `un préfixe valide est refusé : ${errors.join(' | ')}`);
+  const { errors } = check(root);
+  assert(errors.length === 0, `a valid prefix is rejected: ${errors.join(' | ')}`);
 });
 
-test('refuse un préfixe qui rendrait un identifiant ambigu', (racine) => {
-  socle(racine);
-  // Un préfixe contenant un tiret ne se distingue plus de la séparation qu'il
-  // introduit : « A-B-2026-001 » ne dit plus où finit le préfixe.
-  ecrireConfig(racine, 'PRM-CO');
-  livrer(racine);
+test('rejects a prefix that would make an identifier ambiguous', (root) => {
+  writeBase(root);
+  // A prefix containing a hyphen can no longer be told apart from the
+  // separator it introduces: “A-B-2026-001” no longer says where the prefix ends.
+  writeConfig(root, 'PRM-CO');
+  deliver(root);
 
-  const { errors } = check(racine);
+  const { errors } = check(root);
   assert(
     errors.some((e) => e.includes('prefixe')),
-    `un préfixe ambigu passe la vérification : ${errors.join(' | ')}`,
+    `an ambiguous prefix passes the check: ${errors.join(' | ')}`,
   );
 });
 
-test('refuse un préfixe qui se lirait comme une année', (racine) => {
-  socle(racine);
-  // « 2026-2026-001 » : rien ne dirait lequel des deux est l'identifiant.
-  ecrireConfig(racine, '2026');
-  livrer(racine);
+test('rejects a prefix that would read as a year', (root) => {
+  writeBase(root);
+  // “2026-2026-001”: nothing would say which of the two is the identifier.
+  writeConfig(root, '2026');
+  deliver(root);
 
-  const { errors } = check(racine);
+  const { errors } = check(root);
   assert(
     errors.some((e) => e.includes('prefixe')),
-    `un préfixe numérique passe la vérification : ${errors.join(' | ')}`,
+    `a numeric prefix passes the check: ${errors.join(' | ')}`,
   );
 });
 
-test('le préfixe ne change rien à ce qui est stocké', (racine) => {
-  socle(racine);
-  ecrireConfig(racine, 'PRMCO');
-  ecrireRegle(racine, 'RG-a', 'À propager.');
-  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+test('the prefix changes nothing in what is stored', (root) => {
+  writeBase(root);
+  writeConfig(root, 'PRMCO');
+  writeRule(root, 'RG-a', 'À propager.');
+  writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
 
-  propager(racine);
+  propagate(root);
 
-  // L'identifiant reste nu partout : le préfixe s'ajoute à l'affichage, et
-  // l'écrire ici romprait les références déjà posées hors du dépôt.
-  const ecrit = readFileSync(join(racine, 'rules/RG-a.md'), 'utf8');
-  assert(ecrit.includes('cree_par: 2026-001'), `index préfixé à tort : ${ecrit}`);
-  assert(!ecrit.includes('PRMCO'), 'le préfixe a fui dans le référentiel');
+  // The identifier stays bare everywhere: the prefix is added at display time,
+  // and writing it here would break the references already set outside the repo.
+  const written = readFileSync(join(root, 'rules/RG-a.md'), 'utf8');
+  assert(written.includes('cree_par: 2026-001'), `index wrongly prefixed: ${written}`);
+  assert(!written.includes('PRMCO'), 'the prefix leaked into the specification');
 });
 
-// --- anomalies codées, et langue du dépôt ---
+// --- coded anomalies, and repo language ---
 //
-// RG-anomalies-codees, RG-langue-du-depot : ce que la vérification et la
-// propagation disent d'un dépôt se dit dans sa langue, et le français reste
-// celui d'hier, mot pour mot.
+// RG-anomalies-codees, RG-langue-du-depot: what the check and the propagation
+// say about a repo is said in its language, and the French stays yesterday's,
+// word for word.
 
 const CLI = new URL('.', import.meta.url).pathname;
 
-/** Lance un outil en ligne de commande ; rend sa sortie et son code. */
-function lancer(outil, args) {
+/** Runs a command-line tool; returns its output and its exit code. */
+function run(tool, args) {
   try {
-    return { code: 0, sortie: execFileSync('node', [join(CLI, outil), ...args], { encoding: 'utf8' }) };
+    return { code: 0, output: execFileSync('node', [join(CLI, tool), ...args], { encoding: 'utf8' }) };
   } catch (e) {
-    return { code: e.status, sortie: e.stdout };
+    return { code: e.status, output: e.stdout };
   }
 }
 
-function enAnglais(racine) {
-  writeFileSync(join(racine, 'ssk-canon.yml'), 'schema_version: 1\nlangue: en\n');
+function setEnglish(root) {
+  writeFileSync(join(root, 'ssk-canon.yml'), 'schema_version: 1\nlangue: en\n');
 }
 
-const deCode = (anomalies, code) => anomalies.find((a) => a.code === code);
+const byCode = (anomalies, code) => anomalies.find((a) => a.code === code);
 
-test('une base hors d’atteinte se dit par son code, en anglais', (racine) => {
-  socle(racine);
-  livrer(racine);
+test('an out-of-reach base is reported by its code, in English', (root) => {
+  writeBase(root);
+  deliver(root);
 
-  const { anomalies } = check(racine, { base: 'origine/inconnue', livraison: true });
-  const immuabilite = deCode(anomalies, 'immuabilite-hors-d-atteinte');
-  const livraison = deCode(anomalies, 'livraison-hors-d-atteinte');
-  assert(immuabilite && livraison, `codes absents : ${JSON.stringify(anomalies)}`);
+  const { anomalies } = check(root, { base: 'origine/inconnue', livraison: true });
+  const immutability = byCode(anomalies, 'immuabilite-hors-d-atteinte');
+  const delivery = byCode(anomalies, 'livraison-hors-d-atteinte');
+  assert(immutability && delivery, `missing codes: ${JSON.stringify(anomalies)}`);
   assert(
-    formaterAnomalie(livraison, 'en') ===
+    formaterAnomalie(delivery, 'en') ===
       'delivery: “origine/inconnue” is out of reach, the check could not run — ' +
         'fetch the history with “fetch-depth: 0”',
-    formaterAnomalie(livraison, 'en'),
+    formaterAnomalie(delivery, 'en'),
   );
-  assert(formaterAnomalie(immuabilite, 'en').startsWith('immutability: '), formaterAnomalie(immuabilite, 'en'));
+  assert(formaterAnomalie(immutability, 'en').startsWith('immutability: '), formaterAnomalie(immutability, 'en'));
 });
 
-test('le contrôle de livraison enveloppe l’anomalie, sans la redire en texte', (racine) => {
-  socle(racine);
-  livrer(racine);
-  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  ecrireCadrage(racine, '2026-001', false, [{ regle: 'RG-a', operation: 'cree' }], {
+test('the delivery check wraps the anomaly, without restating it as text', (root) => {
+  writeBase(root);
+  deliver(root);
+  const base = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  writeScoping(root, '2026-001', false, [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
-  livrer(racine);
+  deliver(root);
 
-  const { anomalies, errors } = check(racine, { base, livraison: true });
-  const a = deCode(anomalies, 'a-la-livraison');
-  assert(a && a.params.anomalie.code, `enveloppe absente : ${JSON.stringify(anomalies)}`);
-  assert(errors.includes(formaterAnomalie(a, 'fr')), `le français a changé : ${errors.join(' | ')}`);
+  const { anomalies, errors } = check(root, { base, livraison: true });
+  const a = byCode(anomalies, 'a-la-livraison');
+  assert(a && a.params.anomalie.code, `missing wrapper: ${JSON.stringify(anomalies)}`);
+  assert(errors.includes(formaterAnomalie(a, 'fr')), `the French changed: ${errors.join(' | ')}`);
   const en = formaterAnomalie(a, 'en');
   assert(en.startsWith('at delivery: ') && en.includes('RG-a') && !en.includes('à la'), en);
 });
 
-test('un cadrage livré modifié se dit par son code, en anglais', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'Un énoncé.', { cree_par: '2026-001' });
-  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+test('a modified delivered scoping is reported by its code, in English', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Un énoncé.', { cree_par: '2026-001' });
+  writeScoping(root, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
-  const base = execFileSync('git', ['-C', racine, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  ecrireCadrage(racine, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
+  const base = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  writeScoping(root, '2026-001', true, [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé repris.',
   });
 
-  const a = deCode(check(racine, { base }).anomalies, 'cadrage-livre-modifie');
-  assert(a, 'code absent');
+  const a = byCode(check(root, { base }).anomalies, 'cadrage-livre-modifie');
+  assert(a, 'missing code');
   assert(
     formaterAnomalie(a, 'en') ===
       'scoping 2026-001: delivered, hence frozen — cadrages/2026-001/cadrage.md; ' +
@@ -1037,14 +1036,14 @@ test('un cadrage livré modifié se dit par son code, en anglais', (racine) => {
   );
 });
 
-test('un nom changé se dit par son code, en anglais', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'Un énoncé.');
-  livrer(racine);
-  writeFileSync(join(racine, 'ssk-canon.yml'), 'schema_version: 1\ndossiers:\n  regles: exigences\n');
+test('a changed name is reported by its code, in English', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Un énoncé.');
+  deliver(root);
+  writeFileSync(join(root, 'ssk-canon.yml'), 'schema_version: 1\ndossiers:\n  regles: exigences\n');
 
-  const a = deCode(check(racine, { base: 'HEAD' }).anomalies, 'nom-change');
-  assert(a, 'code absent');
+  const a = byCode(check(root, { base: 'HEAD' }).anomalies, 'nom-change');
+  assert(a, 'missing code');
   assert(
     formaterAnomalie(a, 'en') ===
       'ssk-canon.yml → dossiers.regles: changes from “rules” to “exigences” — ' +
@@ -1053,112 +1052,112 @@ test('un nom changé se dit par son code, en anglais', (racine) => {
   );
 });
 
-test('une branche déjà fusionnée se dit par son code, en anglais', (racine) => {
-  fusionnerCadrage(racine, '2026-001');
+test('an already merged branch is reported by its code, in English', (root) => {
+  mergeScoping(root, '2026-001');
 
-  const { anomalies, warnings } = check(racine, { base: 'main', livraison: true });
-  const a = deCode(anomalies, 'branche-deja-fusionnee');
-  assert(a && a.gravite === 'avertissement', `code absent : ${JSON.stringify(anomalies)}`);
-  assert(warnings[0] === formaterAnomalie(a, 'fr'), `le français a changé : ${warnings.join(' | ')}`);
+  const { anomalies, warnings } = check(root, { base: 'main', livraison: true });
+  const a = byCode(anomalies, 'branche-deja-fusionnee');
+  assert(a && a.gravite === 'avertissement', `missing code: ${JSON.stringify(anomalies)}`);
+  assert(warnings[0] === formaterAnomalie(a, 'fr'), `the French changed: ${warnings.join(' | ')}`);
   assert(formaterAnomalie(a, 'en').startsWith('branch already merged into “main”'), formaterAnomalie(a, 'en'));
 });
 
-test('la vérification parle anglais à un dépôt qui le déclare', (racine) => {
-  enAnglais(racine);
-  socle(racine);
-  livrer(racine);
+test('the check speaks English to a repo that declares it', (root) => {
+  setEnglish(root);
+  writeBase(root);
+  deliver(root);
 
-  const { code, sortie } = lancer('check.mjs', [racine]);
-  assert(code === 0, sortie);
+  const { code, output } = run('check.mjs', [root]);
+  assert(code === 0, output);
   assert(
-    sortie === '1 domains · 1 features · 0 rules · 0 scopings\n\nIntegrity verified.\n',
-    JSON.stringify(sortie),
+    output === '1 domains · 1 features · 0 rules · 0 scopings\n\nIntegrity verified.\n',
+    JSON.stringify(output),
   );
 });
 
-test('la vérification dit ses erreurs en anglais, de bout en bout', (racine) => {
-  enAnglais(racine);
-  socle(racine);
-  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+test('the check states its errors in English, end to end', (root) => {
+  setEnglish(root);
+  writeBase(root);
+  writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
 
-  const { code, sortie } = lancer('check.mjs', [racine, '--base', 'origine/inconnue']);
-  assert(code === 1, sortie);
-  assert(sortie.includes('error(s):\n') && sortie.includes('  ✗ immutability: '), sortie);
-  assert(!/erreur|règle|cadrage |vérifiée/.test(sortie), `du français subsiste : ${sortie}`);
+  const { code, output } = run('check.mjs', [root, '--base', 'origine/inconnue']);
+  assert(code === 1, output);
+  assert(output.includes('error(s):\n') && output.includes('  ✗ immutability: '), output);
+  assert(!/erreur|règle|cadrage |vérifiée/.test(output), `some French remains: ${output}`);
 });
 
-test('la vérification parle français à un dépôt qui ne déclare rien', (racine) => {
-  socle(racine);
-  livrer(racine);
+test('the check speaks French to a repo that declares nothing', (root) => {
+  writeBase(root);
+  deliver(root);
 
-  const { sortie } = lancer('check.mjs', [racine]);
+  const { output } = run('check.mjs', [root]);
   assert(
-    sortie === '1 domaines · 1 fonctionnalités · 0 règles · 0 cadrages\n\nIntégrité vérifiée.\n',
-    JSON.stringify(sortie),
+    output === '1 domaines · 1 fonctionnalités · 0 règles · 0 cadrages\n\nIntégrité vérifiée.\n',
+    JSON.stringify(output),
   );
 });
 
-test('les problèmes de la propagation se disent par leur code', (racine) => {
-  socle(racine);
-  // une règle créée sans fichier : rattachée à aucune fonctionnalité — la
-  // vérification d'intégrité l'arrête avant, d'où le calcul appelé seul
-  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+test('the propagation problems are reported by their code', (root) => {
+  writeBase(root);
+  // a rule created without a file: linked to no feature — the integrity
+  // check stops it beforehand, hence the computation called on its own
+  writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
 
-  const r = calculerEcritures(racine, new Set(['2026-001']));
-  const a = deCode(r.anomalies, 'regle-creee-sans-rattachement');
-  assert(a, `code absent : ${JSON.stringify(r.anomalies)}`);
+  const r = computeWrites(root, new Set(['2026-001']));
+  const a = byCode(r.anomalies, 'regle-creee-sans-rattachement');
+  assert(a, `missing code: ${JSON.stringify(r.anomalies)}`);
   assert(r.problemes[0] === formaterAnomalie(a, 'fr'), r.problemes.join(' | '));
   assert(formaterAnomalie(a, 'en').startsWith('rule RG-a: created by a scoping'), formaterAnomalie(a, 'en'));
 });
 
-test('l’intégrité refusée avant propagation enveloppe l’anomalie', (racine) => {
-  socle(racine);
-  ecrireRegle(racine, 'RG-a', 'Intact.', { cree_par: '2026-001' });
-  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-inexistante', operation: 'modifie' }], {
+test('integrity rejected before propagation wraps the anomaly', (root) => {
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Intact.', { cree_par: '2026-001' });
+  writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-inexistante', operation: 'modifie' }], {
     'RG-inexistante': 'Texte.',
   });
 
-  const r = propager(racine);
-  const a = deCode(r.anomalies, 'integrite-avant-propagation');
-  assert(!r.ok && a, `code absent : ${JSON.stringify(r)}`);
+  const r = propagate(root);
+  const a = byCode(r.anomalies, 'integrite-avant-propagation');
+  assert(!r.ok && a, `missing code: ${JSON.stringify(r)}`);
   assert(r.problemes.includes(formaterAnomalie(a, 'fr')), r.problemes.join(' | '));
   assert(formaterAnomalie(a, 'en').startsWith('integrity: '), formaterAnomalie(a, 'en'));
 });
 
-test('la propagation parle anglais à un dépôt qui le déclare', (racine) => {
-  enAnglais(racine);
-  socle(racine);
-  livrer(racine);
-  let r = lancer('propagate.mjs', [racine, '--dry-run']);
-  assert(r.sortie === 'Specification already up to date — nothing to propagate.\n', JSON.stringify(r.sortie));
+test('the propagation speaks English to a repo that declares it', (root) => {
+  setEnglish(root);
+  writeBase(root);
+  deliver(root);
+  let r = run('propagate.mjs', [root, '--dry-run']);
+  assert(r.output === 'Specification already up to date — nothing to propagate.\n', JSON.stringify(r.output));
 
-  ecrireRegle(racine, 'RG-a', 'À propager.');
-  ecrireCadrage(racine, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+  writeRule(root, 'RG-a', 'À propager.');
+  writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
     'RG-a': 'Un énoncé.',
   });
-  r = lancer('propagate.mjs', [racine, '--dry-run']);
+  r = run('propagate.mjs', [root, '--dry-run']);
   assert(
-    r.sortie === '1 rule(s) to write:\n  ~ RG-a\n\n(dry run — no file changed)\n',
-    JSON.stringify(r.sortie),
+    r.output === '1 rule(s) to write:\n  ~ RG-a\n\n(dry run — no file changed)\n',
+    JSON.stringify(r.output),
   );
 
-  ecrireCadrage(racine, '2026-002', 'livree', [{ regle: 'RG-b', operation: 'cree' }], {
+  writeScoping(root, '2026-002', 'livree', [{ regle: 'RG-b', operation: 'cree' }], {
     'RG-b': 'Un énoncé.',
   });
-  r = lancer('propagate.mjs', [racine, '--dry-run']);
-  assert(r.code === 1, r.sortie);
-  assert(/^\n1 problem\(s\) — nothing written:\n  ✗ integrity: scoping 2026-002 → \S+ rule: RG-b\n$/.test(r.sortie), JSON.stringify(r.sortie));
+  r = run('propagate.mjs', [root, '--dry-run']);
+  assert(r.code === 1, r.output);
+  assert(/^\n1 problem\(s\) — nothing written:\n  ✗ integrity: scoping 2026-002 → \S+ rule: RG-b\n$/.test(r.output), JSON.stringify(r.output));
 });
 
-// --- rapport ---
+// --- report ---
 
-console.log(`${reussis} test(s) réussi(s)`);
-if (echecs.length) {
-  console.log(`\n${echecs.length} échec(s) :`);
-  for (const e of echecs) console.log(`  ✗ ${e}`);
+console.log(`${passed} test(s) passed`);
+if (failures.length) {
+  console.log(`\n${failures.length} failure(s):`);
+  for (const e of failures) console.log(`  ✗ ${e}`);
   process.exit(1);
 }
