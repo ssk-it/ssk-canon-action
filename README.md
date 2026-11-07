@@ -61,8 +61,8 @@ Puis, dans les réglages du dépôt :
    Le même script règle **General → Pull Requests → Automatically delete head
    branches** : chaque cadrage et chaque propagation laissent sinon leur branche
    derrière eux, et un commit poussé après la fusion — jamais livré — s'y perd
-   parmi des dizaines d'autres. Surtout, la consultation du référentiel les prend
-   pour des cadrages en cours, et signale de faux recouvrements : voir [Consulter
+   parmi des dizaines d'autres. Surtout, la consultation du référentiel les
+   parcourt comme des travaux en cours : voir [Consulter
    le référentiel avant de cadrer ou de développer](docs/skills.md#consulter-le-référentiel-avant-de-cadrer-ou-de-développer).
 
    Un réglage ajouté au script n'atteint que les dépôts sur lesquels on le relance. Un second script le passe sur chaque référentiel que déclare `~/.claude/cadrage-canon.json`, avec les mêmes confirmations, et nomme à la fin ceux qui restent à régler :

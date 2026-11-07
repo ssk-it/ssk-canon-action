@@ -80,6 +80,15 @@ Ce que la première option propose.
 
 Ce que la seconde option propose.
 `);
+// Un mot que seule une fonctionnalité porte : --motif doit aussi chercher là.
+writeFileSync(join(travail, 'features/vocabulaire.md'), `---
+id: vocabulaire
+nom: Vocabulaire
+domaines: [cadrage]
+---
+
+La photocomposition d'un cadrage se règle ici.
+`);
 git(travail, 'init', '-q', '-b', 'main');
 git(travail, 'add', '.');
 git(travail, 'commit', '-q', '-m', 'fixture');
@@ -123,6 +132,85 @@ Un jeton d'organisation ouvre tous ses dépôts, y compris ceux qui n'ont rien �
 git(travail, 'add', '.');
 git(travail, 'commit', '-q', '-m', 'cadrage 2026-016');
 git(travail, 'push', '-q', 'origin', 'cadrage-2026-016');
+
+/** Un commit à une date donnée : de quoi vérifier que la date ne départage rien. */
+function commitDate(date, message) {
+  execFileSync('git', ['-C', travail, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-q', '-m', message], {
+    env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date },
+    stdio: 'ignore',
+  });
+}
+const cadrage2026017 = (titre) => `---
+id: 2026-017
+titre: ${titre}
+domaines: [acces]
+---
+
+## Objectif
+
+Révoquer un jeton sans attendre son expiration.
+`;
+
+// Une branche empilée sur la précédente, dont elle n'a rien changé : même
+// version du cadrage, rien de divergent à signaler.
+git(travail, 'checkout', '-q', '-b', 'cadrage-2026-016-empile');
+writeFileSync(join(travail, 'README.md'), 'Une note sans rapport avec le cadrage.\n');
+git(travail, 'add', '.');
+git(travail, 'commit', '-q', '-m', 'note');
+git(travail, 'push', '-q', 'origin', 'cadrage-2026-016-empile');
+
+// Deux versions d'un même cadrage sur deux branches empilées. La première est la
+// première par ordre alphabétique ; la suite la contient et porte une décision de
+// plus. Ses commits sont pourtant datés d'avant, comme après un rebase qui garde
+// les dates : c'est l'ascendance qui départage, non la date.
+git(travail, 'checkout', '-q', 'main');
+git(travail, 'checkout', '-q', '-b', 'cadrage-2026-017');
+mkdirSync(join(travail, 'cadrages/2026-017/decisions'), { recursive: true });
+writeFileSync(join(travail, 'cadrages/2026-017/cadrage.md'), cadrage2026017('Révoquer un jeton'));
+git(travail, 'add', '.');
+commitDate('2026-10-05T10:00:00Z', 'cadrage 2026-017');
+git(travail, 'push', '-q', 'origin', 'cadrage-2026-017');
+git(travail, 'checkout', '-q', '-b', 'cadrage-2026-017-suite');
+writeFileSync(join(travail, 'cadrages/2026-017/cadrage.md'), cadrage2026017('Révoquer un jeton, et le dire à son porteur'));
+writeFileSync(join(travail, 'cadrages/2026-017/decisions/02-prevenir-le-porteur.md'), `---
+id: 02-prevenir-le-porteur
+titre: Prévenir le porteur d'un jeton révoqué ?
+statut: retenue
+option_retenue: par-courriel
+---
+
+## Description
+
+Un jeton révoqué sans prévenir laisse son porteur chercher la panne.
+`);
+git(travail, 'add', '.');
+commitDate('2026-10-01T10:00:00Z', 'cadrage 2026-017 : prévenir le porteur');
+git(travail, 'push', '-q', 'origin', 'cadrage-2026-017-suite');
+
+// Deux versions d'un même cadrage parties chacune de main : aucune ne contient
+// l'autre. Chacune porte ce que l'autre n'a pas.
+const cadrage2026018 = (objectif) => `---
+id: 2026-018
+titre: Expirer les jetons inutilisés
+domaines: [acces]
+---
+
+## Objectif
+
+${objectif}
+`;
+for (const [branche, date, objectif] of [
+  ['cadrage-2026-018-a', '2026-10-02T10:00:00Z', 'Expirer un jeton resté inutilisé trente jours.'],
+  ['cadrage-2026-018-b', '2026-10-03T10:00:00Z', 'Expirer un jeton resté inutilisé, et le dire à son porteur.'],
+]) {
+  git(travail, 'checkout', '-q', 'main');
+  git(travail, 'checkout', '-q', '-b', branche);
+  mkdirSync(join(travail, 'cadrages/2026-018'), { recursive: true });
+  writeFileSync(join(travail, 'cadrages/2026-018/cadrage.md'), cadrage2026018(objectif));
+  git(travail, 'add', '.');
+  commitDate(date, `cadrage 2026-018 (${branche})`);
+  git(travail, 'push', '-q', 'origin', branche);
+}
 execFileSync('git', ['clone', '-q', origine, REFERENTIEL]);
 
 const SANS_LIMITE = { CONSULTER_MAX_CARACTERES: '10000000' };
@@ -206,6 +294,71 @@ test('rend, pour une issue, son cadrage, ses décisions et la façon de le lire'
   vrai(sortie.includes('ISSUE ssk-canon-pwa#99 → CADRAGE 2026-016 | Se connecter par un jeton d\'organisation | en cours sur origin/cadrage-2026-016'), sortie);
   vrai(sortie.includes('  lire : --lire origin/cadrage-2026-016:cadrages/2026-016/cadrage.md'), sortie);
   vrai(sortie.includes('DECISION_DE_CADRAGE origin/cadrage-2026-016:cadrages/2026-016/decisions/01-portee-du-jeton.md'), sortie);
+});
+
+// ── Versions d'un cadrage en cours ───────────────────────────────────────────
+
+// Ce qu'ils protègent : deux branches portaient le même cadrage, et le script
+// gardait la première par ordre alphabétique — souvent la plus ancienne. Ce que
+// l'autre ajoutait, une décision par exemple, restait invisible. Ni le nom ni la
+// date ne départagent : la date d'un commit, un rebase la réécrit, et deux
+// versions réécrites chacune de leur côté ne sont pas l'une plus ancienne que
+// l'autre. Une version qui contient l'autre se lit seule ; deux versions dont
+// aucune ne contient l'autre se nomment toutes deux.
+
+test('lit la version qui contient l’autre, quelle que soit la date de ses commits', () => {
+  const tout = lignes(lancer([]));
+  const i = tout.findIndex((l) => l.startsWith('  EN_COURS 2026-017 '));
+  vrai(i >= 0, `2026-017 absent :\n${tout.join('\n')}`);
+  vrai(tout[i].endsWith('| origin/cadrage-2026-017-suite'), tout[i]);
+  vrai(!tout[i + 1].startsWith('    VERSION_'), `version contenue signalée : ${tout[i + 1]}`);
+});
+
+test('liste les décisions de la version qui contient l’autre', () => {
+  const sortie = lancer(['--domaine', 'acces']);
+  vrai(sortie.includes('DECISION_DE_CADRAGE origin/cadrage-2026-017-suite:cadrages/2026-017/decisions/02-prevenir-le-porteur.md [retenue → par-courriel]'), sortie);
+});
+
+test('nomme concurrentes deux versions dont aucune ne contient l’autre', () => {
+  const tout = lignes(lancer([]));
+  const i = tout.findIndex((l) => l.startsWith('  EN_COURS 2026-018 '));
+  vrai(i >= 0, `2026-018 absent :\n${tout.join('\n')}`);
+  vrai(tout[i].endsWith('| origin/cadrage-2026-018-b'), tout[i]);
+  egal(
+    tout[i + 1],
+    '    VERSION_CONCURRENTE origin/cadrage-2026-018-a (2026-10-02) — ni elle ni origin/cadrage-2026-018-b (2026-10-03) ne contient l’autre — --lire origin/cadrage-2026-018-a:cadrages/2026-018/cadrage.md',
+  );
+});
+
+test('ne nomme pas une branche empilée qui n’a pas touché au cadrage', () => {
+  const sortie = lancer([]);
+  vrai(!sortie.includes('cadrage-2026-016-empile'), sortie);
+});
+
+// ── Recherche par motif ──────────────────────────────────────────────────────
+
+// Ce qu'ils protègent : --motif cherchait la chaîne exacte. « supprimer » ne
+// trouvait pas « supprimé », « depot » ne trouvait pas « dépôt », et une
+// fonctionnalité n'était jamais parcourue.
+
+const fichiersTrouves = (sortie) => lignes(sortie).filter((l) => /^  (LIVRE|EN_COURS) /.test(l)).map((l) => l.split(' ')[3]).sort();
+
+test('--motif trouve les flexions d’un mot', () => {
+  vrai(fichiersTrouves(lancer(['--motif', 'supprimer'])).includes('origin/main:rules/RG-pj-retention.md'), 'supprimé non trouvé par supprimer');
+});
+
+test('--motif ignore les accents', () => {
+  const sans = fichiersTrouves(lancer(['--motif', 'depot']));
+  vrai(sans.length > 0, 'rien trouvé');
+  egal(sans.join(','), fichiersTrouves(lancer(['--motif', 'dépôt'])).join(','), 'fichiers trouvés');
+});
+
+test('--motif cherche aussi dans les fonctionnalités', () => {
+  vrai(lancer(['--motif', 'photocomposition']).includes('  LIVRE origin/main:features/vocabulaire.md (1) | '), 'fonctionnalité non parcourue');
+});
+
+test('--motif cherche aussi dans une version concurrente', () => {
+  vrai(lancer(['--motif', 'trente']).includes('  EN_COURS origin/cadrage-2026-018-a:cadrages/2026-018/cadrage.md (1) | '), 'version concurrente non parcourue');
 });
 
 // ── Lecture en lot ───────────────────────────────────────────────────────────

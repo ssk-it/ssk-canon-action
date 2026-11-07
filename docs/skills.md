@@ -118,7 +118,13 @@ Il lit `origin/main` et les branches distantes, jamais la copie de travail : un
 clone de référentiel ouvert une fois et jamais tiré a vite des dizaines de
 livraisons de retard.
 
-**Une branche fusionnée qui reste sur l'origine trompe la consultation.** Le skill tient chaque branche distante pour un travail en cours : il ne peut pas savoir qu'une fusion par squash a déjà porté son contenu sur `main`. Une branche laissée derrière une demande fusionnée annonce donc comme en cours des modifications que `main` a déjà absorbées, puis dépassées, et la synthèse remonte ces faux recouvrements à l'appelant, qui les soumet à l'utilisateur. Le 6 novembre 2026, sur 84 fichiers livrés que la consultation disait modifiés sur une branche, 62 venaient de telles branches ; 244 traînaient dans 22 référentiels. Le seul remède durable est la suppression de la branche à la fusion, que `outillage/preparer-depot-cadre.sh` règle ([Installation dans un dépôt cadré](../README.md#installation-dans-un-dépôt-cadré)) : un référentiel sans ce réglage voit ses consultations se dégrader à chaque cadrage livré.
+**Une branche fusionnée qui reste sur l'origine encombre la consultation.** Le skill tient chaque branche distante non fusionnée pour un travail en cours, et une fusion par squash laisse la branche « non fusionnée » aux yeux de git : il la parcourt donc à chaque consultation. Il en écarte ce que `main` a livré — un cadrage livré ne se lit que sur `main` —, mais tout signal tiré du contenu des branches hérite de ce bruit. Le 6 novembre 2026, une version d'essai du skill qui listait les fichiers livrés modifiés sur une branche en relevait 84, dont 62 venaient de telles branches ; 244 traînaient dans 22 référentiels. Le seul remède durable est la suppression de la branche à la fusion, que `outillage/preparer-depot-cadre.sh` règle ([Installation dans un dépôt cadré](../README.md#installation-dans-un-dépôt-cadré)).
+
+Quand deux branches portent un même cadrage en deux versions, il lit celle qui
+contient l'autre, quel que soit le nom ou la date de ses commits ; quand aucune
+ne contient l'autre, il les nomme toutes deux, concurrentes, à lire chacune. Et
+`--motif` cherche sans tenir compte des accents ni des terminaisons courantes,
+jusque dans les fonctionnalités et les domaines.
 
 Il s'exécute dans un sous-agent (`context: fork`) : une consultation lit une
 quinzaine de milliers de tokens de cadrages et de règles, dont l'appelant ne

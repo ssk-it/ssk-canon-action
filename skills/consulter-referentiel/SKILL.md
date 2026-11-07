@@ -101,6 +101,7 @@ répondent en moins d'une seconde.
 | `NOMS <bloc.clé=nom> …` | les dossiers et fichiers que le référentiel nomme autrement que le format (RG-noms-declares) — `dossiers.regles=exigences` : les règles sont dans `exigences/`, non `rules/`. Absente s'il garde ceux du format. Les chemins que ce skill cite sont ceux du format : les lire sous ces noms |
 | `ARCHITECTURE <id> \| <nature> \| …` | composants, flux et contextes documentés |
 | `EN_COURS <id> \| <titre> \| domaines: … \| <branche>` | un cadrage non fusionné — **à lire avec attention** |
+| `VERSION_CONCURRENTE <branche> (<date>) — ni elle ni <branche> (<date>) ne contient l’autre` | sous un cadrage en cours : une autre branche en porte une version que celle de la ligne `EN_COURS` ne contient pas, et qui ne la contient pas non plus. Chacune porte ce que l'autre n'a pas : les lire toutes deux (§4). La ligne `EN_COURS` nomme la plus récente par la date, ce qui ne la rend pas plus juste. Une version que l'autre contient — une branche empilée restée en arrière — ne se signale pas : le script lit la plus avancée |
 | `REFERENTIEL_NON_RETENU` | la situation a échoué ; sa sortie est relayée au-dessus |
 | `DEPOT_COURANT (inconnu) — <cause>` | git n'a pas dit quel est le dépôt courant ; sa réponse suit |
 | `REFERENTIEL_ILLISIBLE <chemin> — <cause>` | git refuse de lire le référentiel ; sa réponse suit |
@@ -202,15 +203,20 @@ métier :
 node ${CLAUDE_SKILL_DIR}/scripts/consulter.mjs --motif "<terme>" [--motif "<synonyme>"]
 ```
 
-Le script cherche dans l'état livré — règles, décisions, architecture, cadrages —
-puis dans chaque cadrage en cours, sur sa branche et **dans son seul dossier** :
-une branche porte aussi les cadrages livrés avant qu'elle ne parte, qui
-reviendraient sinon une fois par branche ouverte. Les résultats sont regroupés par
-fichier, avec leur nombre d'occurrences et une première ligne.
+Le script cherche dans l'état livré — règles, décisions, architecture,
+fonctionnalités, domaines, cadrages —, puis dans chaque cadrage en cours, sur sa
+branche et **dans son seul dossier** : une branche porte aussi les cadrages
+livrés avant qu'elle ne parte, qui reviendraient sinon une fois par branche
+ouverte. Il cherche aussi dans les versions concurrentes d'un cadrage en cours.
+Les résultats sont regroupés par fichier, avec leur nombre de lignes trouvées et
+la première.
 
-Deux ou trois termes suffisent, pris dans la demande et dans ses synonymes métier —
-une « pose » est une installation, un « référencement » s'appelle parfois une
-intervention dans le code. La recherche ignore la casse mais non les accents.
+La recherche ignore la casse, les accents et les terminaisons courantes :
+« supprimer » trouve « supprimé », « depot » trouve « dépôt », « archiver »
+trouve « archivage ». Elle ne connaît pas les synonymes. Deux ou trois termes
+suffisent donc, pris dans la demande et dans ses synonymes métier — une « pose »
+est une installation, un « référencement » s'appelle parfois une intervention
+dans le code.
 
 ## 4. Lire ce qui compte
 
@@ -257,7 +263,10 @@ script fait de lui-même sur une branche — son `cadrage.md` et chacune de ses
 décisions, dans le même appel. C'est le chantier qu'on risque de refaire ou de
 contredire : ses énoncés et ses options sont sa proposition, qu'aucun autre
 fichier ne porte encore, et ni ses premiers paragraphes ni sa ligne `IMPACTS` ne
-disent ce qu'il change à la demande présente.
+disent ce qu'il change à la demande présente. **Ses versions concurrentes se
+lisent aussi**, chacune par la commande que donne sa ligne `VERSION_CONCURRENTE` :
+aucune n'est la bonne d'office, et la synthèse dit ce que chacune porte que
+l'autre n'a pas.
 
 ## 5. Restituer
 

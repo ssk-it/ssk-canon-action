@@ -39,7 +39,7 @@ Then, in the repository settings:
    outillage/preparer-depot-cadre.sh <organisation>/<depot>
    ```
 
-   The same script sets **General → Pull Requests → Automatically delete head branches**: otherwise every cadrage and every propagation leaves its branch behind, and a commit pushed after the merge — never delivered — gets lost among dozens of others. Above all, the référentiel consultation takes them for cadrages in progress, and reports false overlaps: see [Consult the référentiel before scoping or developing](docs/en/skills.md#consult-the-référentiel-before-scoping-or-developing).
+   The same script sets **General → Pull Requests → Automatically delete head branches**: otherwise every cadrage and every propagation leaves its branch behind, and a commit pushed after the merge — never delivered — gets lost among dozens of others. Above all, the référentiel consultation goes through them as work in progress: see [Consult the référentiel before scoping or developing](docs/en/skills.md#consult-the-référentiel-before-scoping-or-developing).
 
    A setting added to the script only reaches the repositories it is run again on. A second script runs it on every référentiel that `~/.claude/cadrage-canon.json` declares, with the same confirmations, and names at the end those still to be set:
 

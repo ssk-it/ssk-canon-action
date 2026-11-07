@@ -212,6 +212,25 @@ function lireEnLot(objets) {
 }
 
 /**
+ * L'identifiant de chaque objet `<ref>:<chemin>`, en un seul processus : de quoi
+ * comparer deux versions d'un fichier sans le lire. Un objet absent n'en a pas.
+ */
+function empreintesEnLot(objets) {
+  const empreintes = new Map();
+  if (objets.length === 0) return empreintes;
+  const sortie = execFileSync('git', ['-C', racine, 'cat-file', '--batch-check=%(objectname)'], {
+    input: `${objets.join('\n')}\n`,
+    encoding: 'utf8',
+    stdio: ['pipe', 'pipe', 'ignore'],
+    maxBuffer: 64 * 1024 * 1024,
+  }).split('\n');
+  objets.forEach((objet, i) => {
+    if (/^[0-9a-f]{40,64}$/.test(sortie[i])) empreintes.set(objet, sortie[i]);
+  });
+  return empreintes;
+}
+
+/**
  * Les noms que le référentiel déclare — RG-noms-declares —, lus sur la même
  * référence que le reste. Sans configuration lisible, ceux du format.
  */
@@ -290,15 +309,58 @@ const idsLivres = new Set(idsDeCadrages(surMain));
  * règles, un chantier en cours n'est visible nulle part ailleurs — et c'est
  * celui qu'on risque de refaire, ou de contredire.
  */
-const aLireEnCours = [];
-for (const branche of git('branch', '-r', '--no-merged', REF, '--format=%(refname:short)').split('\n').filter(Boolean)) {
+const branchesEnCours = git('branch', '-r', '--no-merged', REF, '--format=%(refname:short)').split('\n').filter(Boolean);
+const surBranche = []; // { id, branche } : chaque cadrage non livré, sur chaque branche qui le porte
+for (const branche of branchesEnCours) {
   let ids = [];
   try {
     ids = git('ls-tree', '--name-only', `${branche}:${D_CADRAGES}`).split('\n').filter((n) => /^\d{4}-\d{3}$/.test(n));
   } catch { /* pas de cadrages sur cette branche */ }
-  for (const id of ids) {
-    if (!idsLivres.has(id) && !aLireEnCours.some((e) => e.id === id)) aLireEnCours.push({ id, branche });
+  for (const id of ids) if (!idsLivres.has(id)) surBranche.push({ id, branche });
+}
+
+/** Un commit descend-il d'un autre ? Une branche illisible ne contient rien. */
+function estAncetre(ancetre, descendant) {
+  try {
+    git('merge-base', '--is-ancestor', ancetre, descendant);
+    return true;
+  } catch {
+    return false; // git sort en erreur pour « non » comme pour un commit illisible
   }
+}
+
+/**
+ * Deux branches portent le même cadrage. Leur nom ne départage rien
+ * (2026-025/01), la date d'un commit non plus : un rebase la réécrit. Seul le
+ * contenu dit s'il y a deux versions, et seule l'ascendance dit si l'une contient
+ * l'autre — son dernier commit sur le dossier du cadrage descend alors de celui
+ * de l'autre. Celle-là se lit seule. Deux versions dont aucune ne contient
+ * l'autre se nomment toutes deux : chacune porte ce que l'autre n'a pas.
+ */
+const arbres = empreintesEnLot(surBranche.map(({ id, branche }) => `${branche}:${D_CADRAGES}/${id}`));
+const aLireEnCours = [];
+for (const id of new Set(surBranche.map((e) => e.id))) {
+  const versions = new Map(); // arbre du dossier → branches qui le portent
+  for (const { branche } of surBranche.filter((e) => e.id === id)) {
+    const arbre = arbres.get(`${branche}:${D_CADRAGES}/${id}`);
+    if (arbre) versions.set(arbre, [...(versions.get(arbre) ?? []), branche]);
+  }
+  if (versions.size === 1) {
+    aLireEnCours.push({ id, branche: [...versions.values()][0][0], concurrentes: [] });
+    continue;
+  }
+  // Plusieurs versions : on ne lit leurs commits que dans ce cas, un appel par branche.
+  const parVersion = [...versions.values()].map((branches) => branches.map((branche) => {
+    const [commit, date, ct] = git('log', '-1', '--format=%H %cs %ct', branche, '--', `${D_CADRAGES}/${id}`).trim().split(' ');
+    return { branche, commit, date, ct: Number(ct) };
+  }));
+  const contient = (v, w) => w.some((a) => v.some((d) => estAncetre(a.commit, d.commit)));
+  const [retenue, ...concurrentes] = parVersion
+    .filter((w) => !parVersion.some((v) => v !== w && contient(v, w)))
+    // Entre versions concurrentes, la date ne choisit que celle qui ouvre la ligne.
+    .map((v) => v.sort((a, b) => b.ct - a.ct)[0])
+    .sort((a, b) => b.ct - a.ct);
+  aLireEnCours.push({ id, branche: retenue.branche, date: retenue.date, concurrentes });
 }
 
 /**
@@ -352,19 +414,29 @@ const decisions = charger(D_DECISIONS);
 const architecture = charger(D_ARCHITECTURE);
 const livres = charger(D_CADRAGES);
 const enCours = aLireEnCours
-  .map(({ id, branche }) => {
+  .map(({ id, branche, date, concurrentes }) => {
     const c = analyser(lus.get(`${branche}:${fichierCadrage(id)}`));
-    return c && { ...c, branche };
+    return c && { ...c, branche, date, concurrentes };
   })
   .filter(Boolean);
+
 const decisionsDe = (id) => (decisionsACharger.get(id) ?? [])
   .map((objet) => ({ objet, d: analyser(lus.get(objet)) }))
   .filter(({ d }) => d);
 
 // ── Restitution ──────────────────────────────────────────────────────────────
 
-const ligneCadrage = (c, etiquette) =>
+function ligneCadrage(c, etiquette) {
   dire(`  ${etiquette} ${c.id} | ${c.libelle} | domaines: ${(c.domaines ?? []).join(', ')}${c.branche ? ` | ${c.branche}` : ''}`);
+  direVersions(c, '    ');
+}
+
+/** Les versions d'un cadrage en cours que celle qu'on lit ne contient pas, à lire aussi. */
+function direVersions(c, retrait) {
+  for (const v of c.concurrentes ?? []) {
+    dire(`${retrait}VERSION_CONCURRENTE ${v.branche} (${v.date}) — ni elle ni ${c.branche} (${c.date}) ne contient l’autre — --lire ${v.branche}:${fichierCadrage(c.id)}`);
+  }
+}
 
 /**
  * Ce qu'un cadrage en cours changerait aux règles n'apparaît nulle part
@@ -463,22 +535,51 @@ for (const issue of issues) {
     bloc();
     dire(`ISSUE ${issue} → CADRAGE ${c.id} | ${c.libelle} | ${c.branche ? `en cours sur ${c.branche}` : 'livré'}`);
     dire(`  lire : --lire ${c.branche ?? REF}:${fichierCadrage(c.id)}`);
+    direVersions(c, '  ');
     direImpacts(c, '  ');
     direDecisions(c, '  ');
   }
 }
 
 /**
- * Une branche de cadrage porte aussi les cadrages livrés avant qu'elle ne
- * parte : n'y chercher que dans son propre cadrage, sans quoi chaque cadrage
- * livré reviendrait une fois par branche ouverte depuis.
+ * Un terme se cherche sans ses accents ni sa casse, et par sa racine : la
+ * consultation ne doit pas dépendre du mot que l'agent choisit. « supprimer »
+ * trouve « supprimé », « depot » trouve « dépôt », « archiver » trouve
+ * « archivage ». La racine retire une terminaison courante, sans descendre
+ * sous quatre lettres : « pose » ne doit pas trouver « possible ».
  */
-function chercher(ref, chemins, terme) {
-  try {
-    return git('grep', '-i', '-n', '-F', '-e', terme, ref, '--', ...chemins).split('\n').filter(Boolean);
-  } catch {
-    return []; // git grep sort en erreur quand il ne trouve rien
+const sansAccents = (t) => t.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+const TERMINAISONS = ['issements', 'issement', 'ements', 'ement', 'ations', 'ation', 'euses', 'euse', 'eurs', 'eur', 'ages', 'age', 'ees', 'ee', 'es', 'er', 'ez', 'e', 's', 'x'];
+function racineDuMot(mot) {
+  const t = TERMINAISONS.find((f) => mot.endsWith(f) && mot.length - f.length >= 4);
+  return t ? mot.slice(0, -t.length) : mot;
+}
+function motifEnExpression(terme) {
+  const mots = sansAccents(terme).split(/[^\p{L}\p{N}]+/u).filter(Boolean).map((m) => echapper(racineDuMot(m)));
+  return new RegExp(`(?<![\\p{L}\\p{N}])${mots.join('[\\p{L}\\p{N}]*[^\\p{L}\\p{N}]+')}`, 'u');
+}
+
+/**
+ * Où chercher. Sur main : les règles, les décisions, l'architecture, les
+ * fonctionnalités, les domaines et les cadrages. Sur une branche : son seul
+ * cadrage — elle porte aussi les cadrages livrés avant qu'elle ne parte, qui
+ * reviendraient sinon une fois par branche ouverte depuis —, et ses versions
+ * concurrentes.
+ */
+function objetsOuChercher() {
+  const dossiers = [D_REGLES, D_DECISIONS, D_ARCHITECTURE, D_FONCTIONNALITES, D_DOMAINES, D_CADRAGES];
+  const livres = surMain.filter((f) => f.endsWith('.md') && dossiers.includes(f.split('/')[0])).map((f) => `${REF}:${f}`);
+  const enCoursObjets = [];
+  for (const c of enCours) {
+    for (const branche of [c.branche, ...c.concurrentes.map((v) => v.branche)]) {
+      try {
+        for (const f of git('ls-tree', '-r', '--name-only', branche, '--', `${D_CADRAGES}/${c.id}`).split('\n')) {
+          if (f.endsWith('.md')) enCoursObjets.push(`${branche}:${f}`);
+        }
+      } catch { /* branche illisible */ }
+    }
   }
+  return { livres, enCours: enCoursObjets };
 }
 const couper = (l) => (l.length > 200 ? `${l.slice(0, 199)}…` : l);
 
@@ -486,25 +587,32 @@ const couper = (l) => (l.length > 200 ? `${l.slice(0, 199)}…` : l);
  * Regroupé par fichier : un terme courant revient des dizaines de fois dans un
  * même cadrage, et c'est le fichier qu'il faut ouvrir, non chaque ligne.
  */
-function parFichier(lignes) {
+function chercher(objets, textes, expression) {
   const fichiers = new Map();
-  for (const l of lignes) {
-    const m = l.match(/^([^:]+:[^:]+):(\d+):(.*)$/);
-    if (!m) continue;
-    const f = fichiers.get(m[1]) ?? { n: 0, premiere: `${m[2]}: ${m[3].trim()}` };
-    f.n++;
-    fichiers.set(m[1], f);
+  for (const objet of objets) {
+    const lignesDuFichier = (textes.get(objet) ?? '').split('\n');
+    lignesDuFichier.forEach((l, k) => {
+      if (!expression.test(sansAccents(l))) return;
+      const f = fichiers.get(objet) ?? { n: 0, premiere: `${k + 1}: ${l.trim()}` };
+      f.n++;
+      fichiers.set(objet, f);
+    });
   }
   return fichiers;
 }
 
-for (const terme of motifs) {
-  const livresTrouves = parFichier(chercher(REF, [D_REGLES, D_DECISIONS, D_ARCHITECTURE, D_CADRAGES], terme));
-  const enCoursTrouves = parFichier(enCours.flatMap((c) => chercher(c.branche, [`${D_CADRAGES}/${c.id}`], terme)));
-  bloc();
-  dire(`MOTIF ${terme} | fichiers livrés: ${livresTrouves.size} | fichiers en cours: ${enCoursTrouves.size}`);
-  for (const [f, { n, premiere }] of livresTrouves) dire(`  LIVRE ${f} (${n}) | ${couper(premiere)}`);
-  for (const [f, { n, premiere }] of enCoursTrouves) dire(`  EN_COURS ${f} (${n}) | ${couper(premiere)}`);
+if (motifs.length > 0) {
+  const ou = objetsOuChercher();
+  const textes = lireEnLot([...ou.livres, ...ou.enCours]);
+  for (const terme of motifs) {
+    const expression = motifEnExpression(terme);
+    const livresTrouves = chercher(ou.livres, textes, expression);
+    const enCoursTrouves = chercher(ou.enCours, textes, expression);
+    bloc();
+    dire(`MOTIF ${terme} | fichiers livrés: ${livresTrouves.size} | fichiers en cours: ${enCoursTrouves.size}`);
+    for (const [f, { n, premiere }] of livresTrouves) dire(`  LIVRE ${f} (${n}) | ${couper(premiere)}`);
+    for (const [f, { n, premiere }] of enCoursTrouves) dire(`  EN_COURS ${f} (${n}) | ${couper(premiere)}`);
+  }
 }
 
 // ── Lecture condensée ────────────────────────────────────────────────────────
