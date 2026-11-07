@@ -4,3 +4,6 @@ node_modules/
 
 # tarballs produits par npm pack
 *.tgz
+
+# référence API générée par TypeDoc
+reference-api/site/

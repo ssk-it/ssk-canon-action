@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "module": "nodenext",
+    "strict": true,
+    "noEmit": true
+  },
+  "files": [
+    "../src/verifier.d.ts",
+    "../src/format.d.ts",
+    "../src/identite.d.ts",
+    "../src/pistes.d.ts",
+    "../src/noms.d.ts",
+    "../src/citations.d.ts"
+  ]
+}

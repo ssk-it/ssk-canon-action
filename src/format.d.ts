@@ -1,3 +1,8 @@
+/**
+ * Le découpage du frontmatter et l'extraction des énoncés, pour construire un référentiel depuis des fichiers Markdown.
+ *
+ * @module @ssk-it/canon-check/format
+ */
 import type { Anomalie } from './verifier.js';
 
 /** Un frontmatter lu, ou la raison pour laquelle il ne l'est pas. */

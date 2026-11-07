@@ -1,6 +1,11 @@
 // Déclarations de `citations.mjs` — RG-regle-du-socle-citee,
 // RG-citation-signalee-chez-le-citant, RG-prefixe-projet.
 
+/**
+ * La citation d'un autre référentiel : lecture, résolution du préfixe, état de chaque citation. Repris à la racine du paquet.
+ *
+ * @module @ssk-it/canon-check/citations
+ */
 import type { Anomalie } from './verifier.js';
 
 /** Un préfixe de projet : des lettres, chiffres ou « _ », commençant par une lettre. */

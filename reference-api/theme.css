@@ -1,0 +1,39 @@
+/*
+ * La palette de Skanon (skanon-product-website, src/styles/global.css) posée
+ * sur les variables du thème par défaut de TypeDoc, en clair et en sombre.
+ * Les couleurs des genres de déclaration restent celles de TypeDoc : le test
+ * d'accessibilité dit si l'une d'elles manque de contraste sur ces fonds.
+ */
+:root {
+  --light-color-background: #ffffff;
+  --light-color-background-secondary: #f6f7f8;
+  --light-color-background-active: #dff5ef;
+  --light-color-accent: #c9d1dc;
+  --light-color-text: #10233f;
+  --light-color-contrast-text: #10233f;
+  --light-color-text-aside: #3b4b63;
+  --light-color-link: #00745f;
+  --light-color-focus-outline: #00745f;
+
+  --dark-color-background: #122640;
+  --dark-color-background-secondary: #0b1626;
+  --dark-color-background-active: #123f37;
+  --dark-color-accent: #284465;
+  --dark-color-text: #e8eef6;
+  --dark-color-contrast-text: #ffffff;
+  --dark-color-text-aside: #b4c0d0;
+  --dark-color-link: #7fe0c8;
+  --dark-color-focus-outline: #7fe0c8;
+}
+
+/*
+ * Un lien au fil du texte ne se distingue pas par sa seule couleur (WCAG 1.4.1) :
+ * en sombre, le thème par défaut n'atteint pas le contraste de 3:1 avec le texte
+ * qui l'entoure — commentaires, pied de page, et propriétés d'une signature.
+ */
+.tsd-typography a,
+.tsd-comment a,
+.tsd-generator a,
+.tsd-signature a {
+  text-decoration: underline;
+}

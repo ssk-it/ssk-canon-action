@@ -1,3 +1,8 @@
+/**
+ * La lecture des étiquettes d'une piste et son contrôle, pour qu'une application qui affiche les pistes les rattache comme l'Action les vérifie.
+ *
+ * @module @ssk-it/canon-check/pistes
+ */
 import type { Anomalie } from './verifier.js';
 
 /** Une étiquette, telle que la plateforme la donne ou par son seul nom. */
