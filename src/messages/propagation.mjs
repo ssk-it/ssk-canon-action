@@ -1,4 +1,4 @@
-// Les messages de la propagation (`propagate.mjs`, `propagation-en-attente.mjs`).
+// The messages of the propagation (`propagate.mjs`, `pending-propagation.mjs`).
 
 export const propagation = {
   fr: {
@@ -7,16 +7,16 @@ export const propagation = {
     'regle-creee-sans-rattachement': (p) =>
       `règle ${p.regle} : créée par un cadrage mais rattachée à aucune fonctionnalité — ` +
       `créer le fichier avec son rattachement avant de livrer`,
-    'integrite-avant-propagation': (p, dire) => `intégrité : ${dire(p.anomalie)}`,
+    'integrite-avant-propagation': (p, tell) => `intégrité : ${tell(p.anomalie)}`,
 
-    // le rapport de la propagation en ligne de commande
+    // the command-line propagation report
     'rapport-propagation-problemes': (p) => `${p.nombre} problème(s) — aucune écriture effectuée :`,
     'rapport-propagation-a-jour': () => 'Référentiel déjà à jour — rien à propager.',
     'rapport-propagation-ecritures': (p) =>
       `${p.nombre} règle(s) ${p.simulation ? 'à écrire' : 'écrites'} :`,
     'rapport-propagation-simulation': () => '(simulation — aucun fichier modifié)',
 
-    // ce que l'Action écrit après la propagation
+    // what the Action writes after the propagation
     'action-rien-a-commiter': () => 'Référentiel déjà à jour — rien à commiter.',
     'action-ecritures-poussees': () => 'Écritures poussées sur la branche principale.',
     'action-propagation-en-attente': () =>
@@ -39,7 +39,7 @@ export const propagation = {
     'regle-creee-sans-rattachement': (p) =>
       `rule ${p.regle}: created by a scoping but attached to no feature — ` +
       `create the file with its attachment before delivering`,
-    'integrite-avant-propagation': (p, dire) => `integrity: ${dire(p.anomalie)}`,
+    'integrite-avant-propagation': (p, tell) => `integrity: ${tell(p.anomalie)}`,
 
     'rapport-propagation-problemes': (p) => `${p.nombre} problem(s) — nothing written:`,
     'rapport-propagation-a-jour': () => 'Specification already up to date — nothing to propagate.',

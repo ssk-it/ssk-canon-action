@@ -1,8 +1,8 @@
-// Vérification d'intégrité d'un dépôt de projet, depuis le système de fichiers.
+// Integrity check of a project repo, from the file system.
 //
-// Les règles elles-mêmes vivent dans `verifier.mjs`, qui ne dépend d'aucun
-// système de fichiers et s'exécute aussi dans un navigateur. Ce module ne fait
-// que charger le dépôt et lui passer le relais.
+// The rules themselves live in `verifier.mjs`, which depends on no file system
+// and also runs in a browser. This module only loads the repo and hands it
+// over.
 //
 //   node src/check.mjs [chemin-du-depot] [--base <ref>] [--sans-immuabilite] [--livraison] [--cites <dossier>]
 
@@ -13,18 +13,18 @@ import { join } from 'node:path';
 import { load } from 'js-yaml';
 import { loadRepo } from './parse.mjs';
 import { checkRepo } from './verifier.mjs';
-import { erreur, avertissement, enTexte, formaterAnomalie, langueDuDepot } from './anomalies.mjs';
+import { createError, createWarning, enTexte, formaterAnomalie, langueDuDepot } from './anomalies.mjs';
 import { resoudreNoms } from './noms.mjs';
 import { referentielsCites } from './citations.mjs';
 import {
-  lireFichierA,
-  dossierPresentA,
-  listCadragesLivres,
-  listCadragesPortes,
-  listFichiersModifies,
-  findCadragesLivresModifies,
-  pointDeFusion,
-} from './livraison.mjs';
+  readFileAt,
+  folderExistsAt,
+  listDeliveredScopings,
+  listCarriedScopings,
+  listChangedFiles,
+  findModifiedDeliveredScopings,
+  mergeBase,
+} from './delivery.mjs';
 
 export { checkRepo };
 
@@ -35,134 +35,136 @@ export { checkRepo };
 export function check(root, options = {}) {
   const {
     base,
-    livres: livresFournis,
-    immuabilite = true,
-    livraison = false,
-    dossierCites,
-    cloner = true,
-    ...reste
+    livres: givenDelivered,
+    immuabilite: immutability = true,
+    livraison: delivery = false,
+    dossierCites: citedFolder,
+    cloner: clone = true,
+    ...rest
   } = options;
 
-  // Le statut d'un cadrage n'est pas déclaré : il se déduit du dépôt, et la
-  // branche principale est ce qui établit la livraison. Hors dépôt Git — un
-  // référentiel vérifié depuis une archive — aucun cadrage n'est tenu pour
-  // livré, ce que `checkRepo` traite comme un cas normal.
+  // A scoping's status is not declared: it is deduced from the repo, and the
+  // main branch is what establishes delivery. Outside a Git repo — a
+  // specification checked from an archive — no scoping is held to be
+  // delivered, which `checkRepo` treats as a normal case.
   const reference = base ?? 'origin/main';
   const repo = loadRepo(root);
-  const dossier = repo.noms.dossiers.cadrages;
-  const livres = livresFournis ?? listCadragesLivres(root, reference, dossier) ?? new Set();
+  const folder = repo.noms.dossiers.cadrages;
+  const delivered = givenDelivered ?? listDeliveredScopings(root, reference, folder) ?? new Set();
 
-  // Une branche que la référence a déjà fusionnée y trouve son propre cadrage
-  // livré, sans la propagation qui suit la fusion : ses index dérivés sont en
-  // attente, non faux. Les réclamer au rédacteur lui ferait chercher une erreur
-  // qui n'existe pas — c'est la propagation qui en répond, RG-propagation-verifiee.
-  // La fusion se dit, sans rien bloquer — RG-branches-survivantes-signalees.
-  const fusion = livresFournis ? null : pointDeFusion(root, reference);
+  // A branch the reference has already merged finds its own scoping delivered
+  // there, without the propagation that follows the merge: its derived indexes
+  // are pending, not wrong. Demanding them from the author would make them hunt
+  // for an error that does not exist — the propagation answers for it,
+  // RG-propagation-verifiee. The merge is reported, without blocking anything —
+  // RG-branches-survivantes-signalees.
+  const merge = givenDelivered ? null : mergeBase(root, reference);
 
-  // Les référentiels cités, lus sur leur branche principale : ce qui n'a pas
-  // pu l'être se dit non vérifié — RG-citation-signalee-chez-le-citant.
+  // The cited specifications, read on their main branch: what could not be read
+  // is reported as unchecked — RG-citation-signalee-chez-le-citant.
   const clones = [];
-  let cites;
+  let cited;
   try {
-    cites = chargerReferentielsCites(repo.config, {
-      obtenir: obtenirReferentielCite({ dossierCites, cloner, clones }),
+    cited = loadCitedSpecifications(repo.config, {
+      obtenir: getCitedSpecification({ citedFolder, clone, clones }),
     });
   } finally {
     for (const c of clones) rmSync(c, { recursive: true, force: true });
   }
 
-  const resultat = checkRepo(repo, {
-    ...reste,
-    livres,
-    cites,
-    ...(fusion ? { ignorerIndexDerives: true } : {}),
+  const result = checkRepo(repo, {
+    ...rest,
+    livres: delivered,
+    cites: cited,
+    ...(merge ? { ignorerIndexDerives: true } : {}),
   });
-  const avertissementFusion = fusion
-    ? [avertissement('branche-deja-fusionnee', { reference, fusion })]
+  const mergeWarning = merge
+    ? [createWarning('branche-deja-fusionnee', { reference, fusion: merge })]
     : [];
 
-  // L'immuabilité ne se contrôle que face à une base explicite, c'est-à-dire sur
-  // une demande de fusion. La propagation, elle, s'exécute après la fusion : son
-  // écart avec la branche principale est le cadrage qu'on vient de livrer, et
-  // l'y contrôler refuserait toute livraison.
+  // Immutability is only checked against an explicit base, that is on a pull
+  // request. The propagation, for its part, runs after the merge: its
+  // difference with the main branch is the scoping just delivered, and checking
+  // it there would refuse every delivery.
   //
-  // Un référentiel peut avoir à le suspendre le temps d'une reprise de format :
-  // le cadrage qui institue l'immuabilité doit lui-même toucher les cadrages
-  // livrés, faute de quoi il ne peut pas être livré. La suspension se déclare, se
-  // relit dans le workflow, et n'a pas à être retirée du code puis remise.
-  const erreursImmuabilite =
-    base && immuabilite ? checkImmuabilite(root, base, livres, dossier) : [];
+  // A specification may have to suspend it for the duration of a format
+  // migration: the scoping that institutes immutability must itself touch the
+  // delivered scopings, otherwise it cannot be delivered. The suspension is
+  // declared, re-read in the workflow, and does not have to be removed from the
+  // code and then put back.
+  const immutabilityErrors =
+    base && immutability ? checkImmutability(root, base, delivered, folder) : [];
 
-  // Ce que la fusion exigera, réclamé tant qu'il est encore temps de l'écrire —
-  // RG-controle-de-livraison.
-  const erreursLivraison =
-    livraison && base ? checkLivraison(root, base, livres, resultat, dossier) : [];
+  // What the merge will require, demanded while there is still time to write it
+  // — RG-controle-de-livraison.
+  const deliveryErrors =
+    delivery && base ? checkDelivery(root, base, delivered, result, folder) : [];
 
-  const erreursNoms = base ? checkNomsInchanges(root, base, repo.noms) : [];
+  const nameErrors = base ? checkNamesUnchanged(root, base, repo.noms) : [];
 
-  // Les textes se déduisent des anomalies, en français : la forme textuelle
-  // d'hier, que lisent les consommateurs qui ne connaissent pas encore les codes.
+  // The texts are derived from the anomalies, in French: yesterday's textual
+  // form, read by consumers that do not know the codes yet.
   const anomalies = [
-    ...avertissementFusion,
-    ...resultat.anomalies,
-    ...erreursNoms,
-    ...erreursImmuabilite,
-    ...erreursLivraison,
+    ...mergeWarning,
+    ...result.anomalies,
+    ...nameErrors,
+    ...immutabilityErrors,
+    ...deliveryErrors,
   ];
-  return { ...resultat, anomalies, ...enTexte(anomalies) };
+  return { ...result, anomalies, ...enTexte(anomalies) };
 }
 
 /**
- * Charge les référentiels que `config` déclare dans `referentiels_cites`.
+ * Loads the specifications that `config` declares in `referentiels_cites`.
  *
- * `obtenir(repo)` rend le répertoire où le dépôt cité se lit, ou `null` s'il
- * n'a pas pu être obtenu — faute d'accès, le plus souvent. Le résultat associe
- * à chaque préfixe le référentiel chargé, ou `null`.
+ * `obtenir(repo)` returns the directory where the cited repo can be read, or
+ * `null` if it could not be obtained — for lack of access, most often. The
+ * result maps each prefix to the loaded specification, or `null`.
  *
  * @param {object | null} config
  * @param {{ obtenir: (repo: string) => string | null }} options
  * @returns {Map<string, object | null>}
  */
-export function chargerReferentielsCites(config, { obtenir }) {
-  const cites = new Map();
-  for (const [prefixe, repo] of referentielsCites(config).cites) {
-    const chemin = obtenir(repo);
-    cites.set(prefixe, chemin ? loadRepo(chemin) : null);
+export function loadCitedSpecifications(config, { obtenir }) {
+  const cited = new Map();
+  for (const [prefix, repo] of referentielsCites(config).cites) {
+    const path = obtenir(repo);
+    cited.set(prefix, path ? loadRepo(path) : null);
   }
-  return cites;
+  return cited;
 }
 
 /**
- * Où lire un dépôt cité : sous `dossierCites/<propriétaire>/<nom>` s'il y est
- * — un workflow qui l'a récupéré lui-même, un test —, sinon par un clone
- * superficiel de sa branche par défaut.
+ * Where to read a cited repo: under `citedFolder/<owner>/<name>` if it is there
+ * — a workflow that fetched it itself, a test —, otherwise through a shallow
+ * clone of its default branch.
  *
- * Le clone passe par le jeton de `SSK_CANON_JETON_CITES` quand il est fourni :
- * le jeton d'un workflow ne lit que son propre dépôt, et un référentiel cité
- * privé en demande un autre, en lecture seule. Sans jeton, seul un dépôt public
- * se lit. Un échec, quel qu'il soit, rend `null` sans rien afficher : la sortie
- * de Git pourrait porter l'adresse, et l'adresse le jeton.
+ * The clone uses the token from `SSK_CANON_JETON_CITES` when it is provided: a
+ * workflow's token only reads its own repo, and a private cited specification
+ * requires another one, read-only. Without a token, only a public repo can be
+ * read. A failure, whatever it is, returns `null` without printing anything:
+ * Git's output could carry the URL, and the URL the token.
  */
-function obtenirReferentielCite({ dossierCites, cloner, clones }) {
+function getCitedSpecification({ citedFolder, clone, clones }) {
   return (repo) => {
-    if (dossierCites) {
-      const chemin = join(dossierCites, ...repo.split('/'));
-      if (existsSync(chemin)) return chemin;
+    if (citedFolder) {
+      const path = join(citedFolder, ...repo.split('/'));
+      if (existsSync(path)) return path;
     }
-    if (!cloner) return null;
-    const jeton = process.env.SSK_CANON_JETON_CITES;
-    const serveur = new URL(process.env.GITHUB_SERVER_URL ?? 'https://github.com');
-    if (jeton) {
-      serveur.username = 'x-access-token';
-      serveur.password = jeton;
+    if (!clone) return null;
+    const token = process.env.SSK_CANON_JETON_CITES;
+    const server = new URL(process.env.GITHUB_SERVER_URL ?? 'https://github.com');
+    if (token) {
+      server.username = 'x-access-token';
+      server.password = token;
     }
     const destination = mkdtempSync(join(tmpdir(), 'canon-cite-'));
     clones.push(destination);
     try {
-      execFileSync('git', ['clone', '--quiet', '--depth', '1', new URL(`${repo}.git`, serveur).href, destination], {
+      execFileSync('git', ['clone', '--quiet', '--depth', '1', new URL(`${repo}.git`, server).href, destination], {
         stdio: 'ignore',
         timeout: 120_000,
-        // jamais d'invite : sans accès, la vérification doit le dire, non attendre
+        // never a prompt: without access, the check must say so, not wait
         env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
       });
       return destination;
@@ -173,160 +175,162 @@ function obtenirReferentielCite({ dossierCites, cloner, clones }) {
 }
 
 /**
- * La langue d'un dépôt, lue dans son `ssk-canon.yml` — RG-langue-du-depot.
- * Une configuration illisible se lit en français : la vérification la signale.
+ * A repo's language, read from its `ssk-canon.yml` — RG-langue-du-depot.
+ * An unreadable configuration is read as French: the check reports it.
  */
-export function langueDe(root) {
+export function languageOf(root) {
   let config = null;
   try {
     config = load(readFileSync(join(root, 'ssk-canon.yml'), 'utf8'));
   } catch {
-    // illisible ou absente : la langue par défaut
+    // unreadable or missing: the default language
   }
   return langueDuDepot(config).langue;
 }
 
 /**
- * Refuse qu'un nom déclaré change, une fois que son dossier existe —
+ * Refuses that a declared name changes once its folder exists —
  * RG-noms-declares, RG-chemins-immuables.
  *
- * Le nom se choisit à la création. Le changer laisserait les fichiers sous un
- * nom que plus rien ne lit, ou les déplacerait en perdant leur historique. La
- * comparaison se fait avec la configuration de la base : c'est elle qui dit le
- * nom précédent, que l'état courant a oublié.
+ * The name is chosen at creation. Changing it would leave the files under a
+ * name nothing reads any more, or would move them and lose their history. The
+ * comparison is made with the base's configuration: it is what tells the
+ * previous name, which the current state has forgotten.
  */
-function checkNomsInchanges(root, base, noms) {
-  let configBase = null;
+function checkNamesUnchanged(root, base, names) {
+  let baseConfig = null;
   try {
-    configBase = load(lireFichierA(root, base, 'ssk-canon.yml') ?? '');
+    baseConfig = load(readFileAt(root, base, 'ssk-canon.yml') ?? '');
   } catch {
-    // une configuration de base illisible ne dit aucun nom précédent
+    // an unreadable base configuration tells no previous name
     return [];
   }
-  const avant = resoudreNoms(configBase);
-  const cadragesAvant = dossierPresentA(root, base, avant.dossiers.cadrages);
+  const before = resoudreNoms(baseConfig);
+  const scopingsBefore = folderExistsAt(root, base, before.dossiers.cadrages);
   const errors = [];
 
   for (const bloc of ['dossiers', 'fichiers'])
-    for (const [cle, nom] of Object.entries(noms[bloc])) {
-      const ancien = avant[bloc][cle];
+    for (const [cle, nom] of Object.entries(names[bloc])) {
+      const ancien = before[bloc][cle];
       if (nom === ancien) continue;
-      // Un nom de la racine compte dès que son dossier existe ; un nom interne
-      // à un cadrage, dès qu'un cadrage existe.
-      const interne = bloc === 'fichiers' || cle === 'decisions_cadrage';
-      const existe = interne ? cadragesAvant : dossierPresentA(root, base, ancien);
-      if (existe)
-        errors.push(erreur('nom-change', { bloc, cle, ancien, nom }));
+      // A root name counts as soon as its folder exists; a name internal to a
+      // scoping, as soon as a scoping exists.
+      const internal = bloc === 'fichiers' || cle === 'decisions_cadrage';
+      const exists = internal ? scopingsBefore : folderExistsAt(root, base, ancien);
+      if (exists)
+        errors.push(createError('nom-change', { bloc, cle, ancien, nom }));
     }
   return errors;
 }
 
 /**
- * Contrôle l'état qu'aura le référentiel une fois la demande de fusion fusionnée
- * — RG-controle-de-livraison.
+ * Checks the state the specification will have once the pull request is
+ * merged — RG-controle-de-livraison.
  *
- * Le référentiel est relu en tenant pour livrés les cadrages que la demande
- * porte, et seules les erreurs que cette hypothèse fait apparaître sont
- * rapportées : les autres ont déjà été dites par la vérification ordinaire, et
- * les répéter ferait douter de leur nombre.
+ * The specification is re-read holding as delivered the scopings the pull
+ * request carries, and only the errors this assumption brings out are
+ * reported: the others have already been reported by the ordinary check, and
+ * repeating them would cast doubt on their number.
  *
- * Les index dérivés sont exclus : `cree_par` et `modifie_par` sont écrits par la
- * propagation, après la fusion. Les exiger avant reviendrait à réclamer au
- * rédacteur ce que la machine doit produire.
+ * Derived indexes are excluded: `cree_par` and `modifie_par` are written by the
+ * propagation, after the merge. Requiring them before would amount to asking
+ * the author for what the machine must produce.
  */
-function checkLivraison(root, base, livres, dejaVu, dossier) {
-  const portes = listCadragesPortes(root, base, dossier);
+function checkDelivery(root, base, delivered, alreadySeen, folder) {
+  const carried = listCarriedScopings(root, base, folder);
 
-  // Ne pas savoir ce que la demande porte n'est pas une demande sans cadrage :
-  // le contrôle n'a pas eu lieu, et se taire le rendrait silencieusement
-  // inapplicable — le même piège que l'immuabilité sans historique.
-  if (portes === null) return [erreur('livraison-hors-d-atteinte', { base })];
+  // Not knowing what the pull request carries is not a pull request without a
+  // scoping: the check did not take place, and keeping quiet would make it
+  // silently inapplicable — the same trap as immutability without history.
+  if (carried === null) return [createError('livraison-hors-d-atteinte', { base })];
 
-  const nouveaux = [...portes].filter((id) => !livres.has(id));
-  if (!nouveaux.length) return [];
+  const newOnes = [...carried].filter((id) => !delivered.has(id));
+  if (!newOnes.length) return [];
 
-  const apresFusion = checkRepo(loadRepo(root), {
-    livres: new Set([...livres, ...nouveaux]),
+  const afterMerge = checkRepo(loadRepo(root), {
+    livres: new Set([...delivered, ...newOnes]),
     ignorerIndexDerives: true,
   });
 
-  // Une anomalie se reconnaît à son code et à ses paramètres, non à son texte.
-  const cle = (a) => JSON.stringify([a.code, a.params]);
-  const connues = new Set(dejaVu.anomalies.filter((a) => a.gravite === 'erreur').map(cle));
-  return apresFusion.anomalies
-    .filter((a) => a.gravite === 'erreur' && !connues.has(cle(a)))
-    .map((anomalie) => erreur('a-la-livraison', { anomalie }));
+  // An anomaly is recognised by its code and its parameters, not by its text.
+  const key = (a) => JSON.stringify([a.code, a.params]);
+  const known = new Set(alreadySeen.anomalies.filter((a) => a.gravite === 'erreur').map(key));
+  return afterMerge.anomalies
+    .filter((a) => a.gravite === 'erreur' && !known.has(key(a)))
+    .map((anomalie) => createError('a-la-livraison', { anomalie }));
 }
 
 /**
- * Refuse la modification d'un cadrage déjà livré — RG-cadrage-livre-immuable.
+ * Refuses the modification of an already delivered scoping —
+ * RG-cadrage-livre-immuable.
  *
- * Le référentiel est la projection des cadrages livrés : modifier l'un d'eux
- * change ce que le référentiel devrait contenir, sans que rien ne le repropage.
+ * The specification is the projection of the delivered scopings: modifying one
+ * of them changes what the specification should contain, without anything
+ * propagating it again.
  *
- * Le contrôle porte sur un écart entre deux états, là où les autres se
- * contentent du dernier : il n'a de sens que sur une demande de fusion, et se
- * tait sur la branche principale elle-même, où l'écart est vide par
- * construction. Une base hors d'atteinte, en revanche, se signale : le contrôle
- * n'a pas eu lieu, ce qui ne se confond pas avec un référentiel conforme.
+ * The check bears on a difference between two states, where the others settle
+ * for the latest: it only makes sense on a pull request, and keeps quiet on the
+ * main branch itself, where the difference is empty by construction. An
+ * unreachable base, on the other hand, is reported: the check did not take
+ * place, which is not to be confused with a compliant specification.
  */
-function checkImmuabilite(root, base, livres, dossier) {
-  const fichiers = listFichiersModifies(root, base);
+function checkImmutability(root, base, delivered, folder) {
+  const files = listChangedFiles(root, base);
 
-  // Une base hors d'atteinte n'est pas un référentiel conforme : c'est un
-  // contrôle qui n'a pas eu lieu. Se taire ici rendait la règle silencieusement
-  // inapplicable — un dépôt dont le workflow omet `fetch-depth: 0` croyait
-  // protéger ses cadrages livrés alors que rien ne les vérifiait.
-  if (fichiers === null) return [erreur('immuabilite-hors-d-atteinte', { base })];
+  // An unreachable base is not a compliant specification: it is a check that
+  // did not take place. Keeping quiet here made the rule silently inapplicable
+  // — a repo whose workflow omits `fetch-depth: 0` believed it protected its
+  // delivered scopings while nothing checked them.
+  if (files === null) return [createError('immuabilite-hors-d-atteinte', { base })];
 
-  if (!fichiers.length) return [];
+  if (!files.length) return [];
 
   const errors = [];
-  for (const [id, chemins] of findCadragesLivresModifies(fichiers, livres, dossier)) {
-    errors.push(erreur('cadrage-livre-modifie', { cadrage: id, chemins }));
+  for (const [id, chemins] of findModifiedDeliveredScopings(files, delivered, folder)) {
+    errors.push(createError('cadrage-livre-modifie', { cadrage: id, chemins }));
   }
   return errors;
 }
 
-// exécution directe
+// direct execution
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = process.argv.slice(2);
-  // les options qui prennent une valeur, et l'indice de cette valeur, à sauter
-  // pour trouver le chemin
-  const valeurs = new Map();
+  // the options that take a value, and the index of that value, to skip in
+  // order to find the path
+  const values = new Map();
   for (const option of ['--base', '--cites']) {
     const i = args.indexOf(option);
-    if (i !== -1) valeurs.set(i + 1, option);
+    if (i !== -1) values.set(i + 1, option);
   }
-  const valeurDe = (option) => args[[...valeurs].find(([, o]) => o === option)?.[0]];
-  const base = valeurDe('--base');
-  const dossierCites = valeurDe('--cites');
-  const root = args.find((a, i) => !a.startsWith('--') && !valeurs.has(i)) ?? '.';
+  const valueOf = (option) => args[[...values].find(([, o]) => o === option)?.[0]];
+  const base = valueOf('--base');
+  const citedFolder = valueOf('--cites');
+  const root = args.find((a, i) => !a.startsWith('--') && !values.has(i)) ?? '.';
 
   const { anomalies, counts } = check(root, {
     ...(base ? { base } : {}),
-    ...(dossierCites ? { dossierCites } : {}),
+    ...(citedFolder ? { dossierCites: citedFolder } : {}),
     immuabilite: !args.includes('--sans-immuabilite'),
     livraison: args.includes('--livraison'),
   });
 
-  // Le rapport se dit dans la langue du dépôt — RG-langue-du-depot.
-  const langue = langueDe(root);
-  const dire = (code, params = {}) => formaterAnomalie({ code, params }, langue);
-  const { errors, warnings } = enTexte(anomalies, langue);
+  // The report is given in the repo's language — RG-langue-du-depot.
+  const language = languageOf(root);
+  const say = (code, params = {}) => formaterAnomalie({ code, params }, language);
+  const { errors, warnings } = enTexte(anomalies, language);
 
-  console.log(dire('rapport-comptes', counts));
+  console.log(say('rapport-comptes', counts));
 
   if (warnings.length) {
-    console.log(`\n${dire('rapport-avertissements', { nombre: warnings.length })}`);
+    console.log(`\n${say('rapport-avertissements', { nombre: warnings.length })}`);
     for (const w of warnings) console.log(`  ~ ${w}`);
   }
 
   if (errors.length) {
-    console.log(`\n${dire('rapport-erreurs', { nombre: errors.length })}`);
+    console.log(`\n${say('rapport-erreurs', { nombre: errors.length })}`);
     for (const e of errors) console.log(`  ✗ ${e}`);
     process.exit(1);
   }
 
-  console.log(`\n${dire('rapport-integrite-verifiee')}`);
+  console.log(`\n${say('rapport-integrite-verifiee')}`);
 }

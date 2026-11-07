@@ -1,13 +1,13 @@
-# Génère la référence de l'API de @ssk-it/canon-check depuis les déclarations
-# de types, la passe au contrôle d'accessibilité, et la publie sur GitHub Pages
-# à chaque fusion sur main.
+# Generates the API reference of @ssk-it/canon-check from the type
+# declarations, runs it through the accessibility check, and publishes it on
+# GitHub Pages on every merge into main.
 #
-# Générée plutôt qu'écrite à la main : une référence rédigée à côté du code
-# prend du retard sans que rien ne le signale. Ici, une déclaration qui change
-# change la page au prochain passage sur main, et un lien de documentation
-# cassé fait échouer la demande de fusion (treatWarningsAsErrors).
+# Generated rather than written by hand: a reference written next to the code
+# falls behind without anything reporting it. Here, a declaration that changes
+# changes the page on the next pass on main, and a broken documentation link
+# fails the pull request (treatWarningsAsErrors).
 #
-# Dépôt public : runners de GitHub.
+# Public repo: GitHub's runners.
 name: Référence de l'API
 
 on:
@@ -31,8 +31,8 @@ on:
 permissions:
   contents: read
 
-# Deux publications ne se doublent pas ; celle en cours va à son terme, la
-# suivante part de l'état le plus récent de main.
+# Two publications do not overtake each other; the one in progress runs to
+# completion, the next one starts from the most recent state of main.
 concurrency:
   group: reference-api-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -41,8 +41,8 @@ jobs:
   construire:
     runs-on: ubuntu-latest
     steps:
-      # L'historique complet n'est pas utile, mais un vrai dépôt git l'est :
-      # TypeDoc y lit le commit pour lier chaque déclaration à sa source.
+      # The full history is not useful, but a real git repo is: TypeDoc reads
+      # the commit there to link each declaration to its source.
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
@@ -53,8 +53,8 @@ jobs:
       - name: Générer la référence
         run: npm run reference-api
 
-      # WCAG 2.2 AA, en clair et en sombre, sur chaque page : une page qui
-      # régresse ne part pas en ligne.
+      # WCAG 2.2 AA, in light and dark, on every page: a page that regresses
+      # does not go online.
       - name: Contrôler l'accessibilité
         run: |
           npx playwright install --with-deps --only-shell chromium

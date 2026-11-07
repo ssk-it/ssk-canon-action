@@ -1,56 +1,56 @@
 /**
- * La lecture des étiquettes d'une piste et son contrôle, pour qu'une application qui affiche les pistes les rattache comme l'Action les vérifie.
+ * Reading a roadmap item's labels and checking them, so that an application displaying roadmap items links them the way the Action checks them.
  *
  * @module @ssk-it/canon-check/pistes
  */
 import type { Anomalie } from './verifier.js';
 
-/** Une étiquette, telle que la plateforme la donne ou par son seul nom. */
+/** A label, as the platform gives it or by its name alone. */
 export type EtiquettePiste = string | { readonly name?: string };
 
-/** L'étiquette qui fait d'une issue une piste. */
+/** The label that makes an issue a roadmap item. */
 export const ETIQUETTE_PISTE: 'piste';
 
-/** Les préfixes de rattachement, et la collection du référentiel qu'ils désignent. */
+/** The link prefixes, and the specification collection they designate. */
 export const RATTACHEMENTS_PISTE: readonly [
   { readonly prefixe: 'domaine/'; readonly collection: 'domains'; readonly libelle: string; readonly connus: string },
   { readonly prefixe: 'fonctionnalite/'; readonly collection: 'features'; readonly libelle: string; readonly connus: string },
 ];
 
-/** Le marqueur caché qui ouvre le commentaire de la vérification. */
+/** The hidden marker that opens the check's comment. */
 export const MARQUEUR_PISTE: string;
 
 export interface RattachementPiste {
   readonly etiquette: string;
   readonly collection: 'domains' | 'features';
-  /** Vide pour une étiquette de rattachement sans identifiant. */
+  /** Empty for a link label without an identifier. */
   readonly id: string;
 }
 
-/** Les rattachements que portent des étiquettes, dans leur ordre. */
-export function lireRattachementsPiste(etiquettes: readonly EtiquettePiste[]): RattachementPiste[];
+/** The links carried by labels, in their order. */
+export function lireRattachementsPiste(labels: readonly EtiquettePiste[]): RattachementPiste[];
 
-/** Vrai quand les étiquettes font de l'issue une piste. */
-export function estPiste(etiquettes: readonly EtiquettePiste[]): boolean;
+/** True when the labels make the issue a roadmap item. */
+export function estPiste(labels: readonly EtiquettePiste[]): boolean;
 
 /**
- * Vérifie le rattachement d'une piste à un référentiel chargé — RG-piste-rattachee.
- * Chaque écart est un avertissement codé, dans `anomalies` (codes
+ * Checks how a roadmap item is linked to a loaded specification — RG-piste-rattachee.
+ * Each discrepancy is a coded warning, in `anomalies` (codes
  * `piste-non-rattachee`, `etiquette-piste-sans-identifiant`,
- * `etiquette-piste-inconnue`) ; `ecarts` en est le texte, dans `langue`
- * (français par défaut).
+ * `etiquette-piste-inconnue`); `ecarts` is its text, in `language`
+ * (French by default).
  */
 export function checkPiste(
-  etiquettes: readonly EtiquettePiste[],
+  labels: readonly EtiquettePiste[],
   repo: {
     readonly domains: ReadonlyMap<string, unknown>;
     readonly features: ReadonlyMap<string, unknown>;
   },
-  langue?: string,
+  language?: string,
 ): { piste: boolean; ecarts: string[]; anomalies: Anomalie[] };
 
-/** Le commentaire qui signale des écarts, marqueur en tête, dans `langue` (français par défaut). */
-export function corpsCommentairePiste(ecarts: readonly string[], langue?: string): string;
+/** The comment that reports discrepancies, marker first, in `language` (French by default). */
+export function corpsCommentairePiste(discrepancies: readonly string[], language?: string): string;
 
 export interface CommentaireIssue {
   readonly id: number;
@@ -58,18 +58,18 @@ export interface CommentaireIssue {
   readonly user?: { readonly type?: string };
 }
 
-/** Ce qu'il faut faire du commentaire de la vérification. */
+/** What to do with the check's comment. */
 export function planifierCommentairePiste(
-  commentaires: readonly CommentaireIssue[],
-  ecarts: readonly string[],
-  langue?: string,
+  comments: readonly CommentaireIssue[],
+  discrepancies: readonly string[],
+  language?: string,
 ):
   | { action: 'rien' }
   | { action: 'creer'; corps: string }
   | { action: 'modifier'; id: number; corps: string }
   | { action: 'supprimer'; id: number };
 
-/** Les étiquettes de rattachement qu'un référentiel attend, domaines puis fonctionnalités. */
+/** The link labels a specification expects, domains then features. */
 export function etiquettesRattachementPiste(repo: {
   readonly domains: ReadonlyMap<string, unknown>;
   readonly features: ReadonlyMap<string, unknown>;

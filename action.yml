@@ -1,15 +1,15 @@
-# Action composite : vérifie l'intégrité d'un référentiel SSK Canon et y
-# applique les impacts des cadrages livrés.
+# Composite action: checks the integrity of an SSK Canon specification and
+# applies to it the impacts of the delivered scopings.
 #
-# Destinée aux dépôts cadrés, qui la référencent ainsi :
+# Meant for scoping repos, which reference it like this:
 #
 #   - uses: ssk-it/ssk-canon-action@main
 #     with:
-#       referentiel: .        # racine du dépôt cadré
+#       referentiel: .        # root of the scoping repo
 #       appliquer: true
 #
-# Le propagateur étant idempotent, une exécution sur un référentiel conforme
-# n'écrit rien : l'action peut se déclencher à chaque push sans précaution.
+# The propagator being idempotent, a run on a compliant specification writes
+# nothing: the action can be triggered on every push without precaution.
 name: Propager les impacts
 description: >
   Vérifie l'intégrité d'un référentiel SSK Canon et applique les impacts
@@ -93,18 +93,18 @@ runs:
     - name: Récupérer le propagateur
       shell: bash
       run: |
-        # `github.action_path` désigne la racine de ce dépôt, que GitHub
-        # récupère en entier ; le propagateur y vit sous `src/`.
-        OUTIL="${{ github.action_path }}"
+        # `github.action_path` designates the root of this repo, which GitHub
+        # fetches in full; the propagator lives there under `src/`.
+        TOOL_DIR="${{ github.action_path }}"
 
-        if [ ! -f "$OUTIL/src/propagate.mjs" ]; then
-          echo "::error::Propagateur introuvable sous $OUTIL — la structure du dépôt outil a changé."
+        if [ ! -f "$TOOL_DIR/src/propagate.mjs" ]; then
+          echo "::error::Propagateur introuvable sous $TOOL_DIR — la structure du dépôt outil a changé."
           exit 1
         fi
 
-        # Copié hors de l'arbre de travail du dépôt appelant, pour ne rien
-        # laisser derrière soi qui serait ensuite commité.
-        cp -R "$OUTIL" "${RUNNER_TEMP}/ssk-canon-action"
+        # Copied outside the calling repo's working tree, so as to leave
+        # nothing behind that would then be committed.
+        cp -R "$TOOL_DIR" "${RUNNER_TEMP}/ssk-canon-action"
         cd "${RUNNER_TEMP}/ssk-canon-action"
         npm ci --omit=dev
 
@@ -112,20 +112,20 @@ runs:
       id: propager
       shell: bash
       env:
-        # Lu par la vérification pour cloner les référentiels cités ; jamais
-        # affiché, la sortie de Git étant tue.
+        # Read by the check to clone the cited specifications; never shown,
+        # Git's output being silenced.
         SSK_CANON_JETON_CITES: ${{ inputs.jeton-referentiels-cites }}
       run: |
         cd "${RUNNER_TEMP}/ssk-canon-action"
-        CIBLE="${GITHUB_WORKSPACE}/${{ inputs.referentiel }}"
+        TARGET="${GITHUB_WORKSPACE}/${{ inputs.referentiel }}"
 
-        # Ce que l'Action écrit se dit dans la langue du référentiel, et se lit
-        # au catalogue de la bibliothèque, comme le reste — RG-langue-du-depot.
+        # What the Action writes is given in the specification's language, and
+        # read from the library's catalogue, like the rest — RG-langue-du-depot.
         LANGUE=$(node --input-type=module -e '
-          const { langueDe } = await import(`${process.env.RUNNER_TEMP}/ssk-canon-action/src/check.mjs`);
-          console.log(langueDe(process.argv[1]));' "$CIBLE")
+          const { languageOf } = await import(`${process.env.RUNNER_TEMP}/ssk-canon-action/src/check.mjs`);
+          console.log(languageOf(process.argv[1]));' "$TARGET")
         echo "langue=$LANGUE" >> "$GITHUB_OUTPUT"
-        dire() {
+        say() {
           LANGUE="$LANGUE" node --input-type=module -e '
             const { formaterAnomalie } = await import(`${process.env.RUNNER_TEMP}/ssk-canon-action/src/anomalies.mjs`);
             const [code, params = "{}"] = process.argv.slice(1);
@@ -133,46 +133,46 @@ runs:
         }
 
         if [ "${{ inputs.appliquer }}" = "true" ]; then
-          node src/propagate.mjs "$CIBLE" | tee "${RUNNER_TEMP}/propagation.log"
+          node src/propagate.mjs "$TARGET" | tee "${RUNNER_TEMP}/propagation.log"
 
-          # Ce que la propagation vient d'écrire n'est vérifié nulle part
-          # ailleurs : son enregistrement est poussé par le jeton de
-          # l'automatisation, et une poussée faite par ce jeton ne déclenche
-          # aucun workflow. Ici, dans la même exécution, est le seul moment où
-          # l'état final peut être lu — RG-propagation-verifiee.
-          # « HEAD » et non la valeur par défaut : c'est la référence que le
-          # propagateur lui-même tient pour la livraison, et deux notions
-          # différentes de « livré » se contrediraient à une poussée près.
-          node src/check.mjs "$CIBLE" --base HEAD
+          # What the propagation has just written is checked nowhere else: its
+          # commit is pushed by the automation's token, and a push made by
+          # that token triggers no workflow. Here, in the same run, is the only
+          # moment the final state can be read — RG-propagation-verifiee.
+          # "HEAD" and not the default value: it is the reference the
+          # propagator itself holds as the delivery, and two different notions
+          # of "delivered" would contradict each other by one push.
+          node src/check.mjs "$TARGET" --base HEAD
         else
-          # La vérification compare à la branche principale : c'est le seul mode
-          # où l'immuabilité d'un cadrage livré peut se contrôler, l'écart entre
-          # une demande de fusion et sa base n'existant pas ailleurs.
-          SANS_IMMUABILITE=""
+          # The check compares with the main branch: it is the only mode where
+          # the immutability of a delivered scoping can be checked, the
+          # difference between a pull request and its base existing nowhere
+          # else.
+          NO_IMMUTABILITY=""
           if [ "${{ inputs.immuabilite }}" != "true" ]; then
-            SANS_IMMUABILITE="--sans-immuabilite"
-            echo "::warning::$(dire action-immuabilite-suspendue)"
+            NO_IMMUTABILITY="--sans-immuabilite"
+            echo "::warning::$(say action-immuabilite-suspendue)"
           fi
-          # Une demande proposée à la relecture annonce sa livraison : on lui
-          # réclame dès lors ce que la fusion exigera, tant qu'il est encore
-          # temps de l'écrire. Un brouillon en est dispensé — RG-controle-de-livraison.
-          LIVRAISON=""
+          # A pull request put up for review announces its delivery: from then
+          # on it is asked for what the merge will require, while there is still
+          # time to write it. A draft is exempt — RG-controle-de-livraison.
+          DELIVERY=""
           if [ "${{ github.event_name }}" = "pull_request" ] \
              && [ "${{ github.event.pull_request.draft }}" != "true" ]; then
-            LIVRAISON="--livraison"
+            DELIVERY="--livraison"
           fi
-          # Lancée à la demande — par la propagation sur la demande qu'elle
-          # ouvre, ou à la main —, elle juge la branche telle qu'elle serait
-          # fusionnée : aucun brouillon ne s'y annonce.
+          # Run on demand — by the propagation on the pull request it opens,
+          # or by hand —, it judges the branch as it would be merged: no draft
+          # announces itself there.
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            LIVRAISON="--livraison"
+            DELIVERY="--livraison"
           fi
-          node src/check.mjs "$CIBLE" --base "${{ inputs.base }}" $SANS_IMMUABILITE $LIVRAISON \
+          node src/check.mjs "$TARGET" --base "${{ inputs.base }}" $NO_IMMUTABILITY $DELIVERY \
             | tee "${RUNNER_TEMP}/propagation.log"
         fi
 
-        # « N règle(s) écrites » ou « rien à propager » — « N rule(s) written »
-        # en anglais : le nombre reste en tête de ligne, quelle que soit la langue
+        # « N règle(s) écrites » or « rien à propager » — « N rule(s) written »
+        # in English: the number stays at the start of the line, whatever the language
         N=$(grep -oE '^[0-9]+ (règle|rule)' "${RUNNER_TEMP}/propagation.log" | grep -oE '^[0-9]+' || echo 0)
         echo "ecritures=$N" >> "$GITHUB_OUTPUT"
 
@@ -184,8 +184,8 @@ runs:
         GH_TOKEN: ${{ github.token }}
         LANGUE: ${{ steps.propager.outputs.langue }}
       run: |
-        # le même catalogue, dans la langue que l'étape précédente a lue
-        dire() {
+        # the same catalogue, in the language the previous step read
+        say() {
           node --input-type=module -e '
             const { formaterAnomalie } = await import(`${process.env.RUNNER_TEMP}/ssk-canon-action/src/anomalies.mjs`);
             const [code, params = "{}"] = process.argv.slice(1);
@@ -193,60 +193,60 @@ runs:
         }
 
         if git diff --quiet; then
-          dire action-rien-a-commiter
+          say action-rien-a-commiter
           exit 0
         fi
-        # Le commit de propagation est distinct de celui de la livraison : le
-        # premier porte l'intention rédigée par un humain, le second l'écriture
-        # faite par la machine.
+        # The propagation commit is distinct from the delivery one: the first
+        # carries the intent written by a human, the second the write made by
+        # the machine.
         git config user.name  'github-actions[bot]'
         git config user.email 'github-actions[bot]@users.noreply.github.com'
         git add -A
-        git commit -m "${{ inputs.message }}" -m "$(dire action-commit-corps)"
+        git commit -m "${{ inputs.message }}" -m "$(say action-commit-corps)"
 
-        # Une branche protégée exige des contrôles qu'un push direct ne porte
-        # jamais : la propagation passe donc par une demande de fusion, sur
-        # laquelle elle les lance. Le push direct reste tenté d'abord — sur une branche non
-        # protégée il aboutit, et n'impose alors aucune relecture inutile.
+        # A protected branch requires checks that a direct push never carries:
+        # the propagation therefore goes through a pull request, on which it
+        # runs them. The direct push is still attempted first — on an
+        # unprotected branch it succeeds, and then imposes no needless review.
         if git push 2>/dev/null; then
-          dire action-ecritures-poussees
+          say action-ecritures-poussees
           exit 0
         fi
 
-        # Une demande de propagation déjà ouverte porte ces écritures, ou une
-        # partie : en ouvrir une seconde les doublerait, et la propagation
-        # planifiée en ouvrirait une par heure. On attend sa fusion ; l'exécution
-        # suivante propagera ce qui resterait.
-        EN_ATTENTE=$(gh pr list --base "${GITHUB_REF_NAME}" --state open --json headRefName \
-          | node "${RUNNER_TEMP}/ssk-canon-action/src/propagation-en-attente.mjs")
-        if [ "$EN_ATTENTE" = "oui" ]; then
-          echo "::notice::$(dire action-propagation-en-attente)"
+        # A propagation pull request already open carries these writes, or part
+        # of them: opening a second one would duplicate them, and the scheduled
+        # propagation would open one per hour. We wait for its merge; the next
+        # run will propagate whatever remains.
+        PENDING=$(gh pr list --base "${GITHUB_REF_NAME}" --state open --json headRefName \
+          | node "${RUNNER_TEMP}/ssk-canon-action/src/pending-propagation.mjs")
+        if [ "$PENDING" = "oui" ]; then
+          echo "::notice::$(say action-propagation-en-attente)"
           exit 0
         fi
 
-        BRANCHE="propagation/$(git rev-parse --short HEAD)"
-        echo "::notice::$(dire action-push-refuse "{\"branche\":\"$BRANCHE\"}")"
-        git switch -c "$BRANCHE"
-        git push -u origin "$BRANCHE"
+        BRANCH="propagation/$(git rev-parse --short HEAD)"
+        echo "::notice::$(say action-push-refuse "{\"branche\":\"$BRANCH\"}")"
+        git switch -c "$BRANCH"
+        git push -u origin "$BRANCH"
 
-        # `--fill` reprendrait le message du commit ; on nomme explicitement ce
-        # que la demande porte, pour qu'elle se relise sans l'ouvrir.
+        # `--fill` would reuse the commit message; what the pull request
+        # carries is named explicitly, so it can be reviewed without opening it.
         gh pr create \
           --base "${GITHUB_REF_NAME}" \
-          --head "$BRANCHE" \
+          --head "$BRANCH" \
           --title "${{ inputs.message }}" \
-          --body "$(dire action-demande-corps)"
+          --body "$(say action-demande-corps)"
 
-        # Une demande ouverte par le jeton de l'automatisation ne déclenche
-        # aucun workflow : GitHub n'en crée pour aucun événement de ce jeton,
-        # sauf `workflow_dispatch`. La vérification que la branche principale
-        # exige se lance donc d'ici, sur la branche de la demande ; sans elle,
-        # la demande resterait bloquée jusqu'à ce qu'on la ferme et la rouvre.
-        # Un dépôt dont les workflows précèdent ce lancement le refuse : on le
-        # dit, sans faire échouer une propagation déjà poussée.
-        if gh workflow run "${{ inputs.verification }}" --ref "$BRANCHE"; then
-          dire action-verification-lancee
+        # A pull request opened by the automation's token triggers no
+        # workflow: GitHub creates none for any event of that token, except
+        # `workflow_dispatch`. The check the main branch requires is therefore
+        # launched from here, on the pull request's branch; without it, the
+        # pull request would stay blocked until it is closed and reopened.
+        # A repo whose workflows predate this launch refuses it: we say so,
+        # without failing a propagation already pushed.
+        if gh workflow run "${{ inputs.verification }}" --ref "$BRANCH"; then
+          say action-verification-lancee
         else
-          echo "::warning::$(dire action-verification-non-lancee "{\"workflow\":\"${{ inputs.verification }}\"}")"
+          echo "::warning::$(say action-verification-non-lancee "{\"workflow\":\"${{ inputs.verification }}\"}")"
         fi
 

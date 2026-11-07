@@ -1,11 +1,11 @@
-// Déclarations pour les consommateurs TypeScript.
+// Declarations for TypeScript consumers.
 //
-// Écrites à la main plutôt que générées : le module est en JavaScript, et le
-// faire compiler depuis TypeScript ajouterait une étape de construction à un
-// paquet qui n'en a aucune. Sa surface est étroite et stable.
+// Written by hand rather than generated: the module is in JavaScript, and
+// compiling it from TypeScript would add a build step to a package that has
+// none. Its surface is narrow and stable.
 
 /**
- * La vérification d'intégrité d'un référentiel chargé, et la mise en texte de ses anomalies, en français ou en anglais.
+ * The integrity check of a loaded specification, and the rendering of its anomalies as text, in French or in English.
  *
  * @module @ssk-it/canon-check
  */
@@ -16,14 +16,14 @@ export * from './identite.js';
 export * from './noms.js';
 export * from './citations.js';
 
-/** Les langues dans lesquelles une anomalie se dit — RG-anomalies-codees. */
+/** The languages in which an anomaly is said — RG-anomalies-codees. */
 export type Langue = 'fr' | 'en';
 export declare const LANGUES: readonly Langue[];
 
 /**
- * Une anomalie du format : un code stable, une gravité, et des paramètres —
- * valeurs du référentiel et du format, jamais traduites. Son message se déduit
- * du code, dans chaque langue, par `formaterAnomalie`.
+ * An anomaly of the format: a stable code, a severity, and parameters —
+ * values of the specification and of the format, never translated. Its message
+ * is derived from the code, in each language, by `formaterAnomalie`.
  */
 export interface Anomalie {
   readonly code: string;
@@ -31,76 +31,77 @@ export interface Anomalie {
   readonly params: Readonly<Record<string, unknown>>;
 }
 
-/** Le message d'une anomalie dans une langue ; une langue inconnue se lit en français. */
-export function formaterAnomalie(anomalie: Anomalie, langue?: string): string;
+/** The message of an anomaly in a language; an unknown language reads as French. */
+export function formaterAnomalie(anomaly: Anomalie, language?: string): string;
 
-/** Les anomalies en textes, erreurs et avertissements séparés. */
+/** The anomalies as texts, errors and warnings separated. */
 export function enTexte(
   anomalies: readonly Anomalie[],
-  langue?: string,
+  language?: string,
 ): { errors: string[]; warnings: string[] };
 
-/** La langue que le dépôt déclare dans `ssk-canon.yml` — RG-langue-du-depot. */
+/** The language the repo declares in `ssk-canon.yml` — RG-langue-du-depot. */
 export function langueDuDepot(config: unknown): {
   langue: Langue;
   anomalies: Anomalie[];
 };
 
-/** Un référentiel chargé, quelle qu'en soit la provenance. */
+/** A loaded specification, whatever its origin. */
 export interface RepoVerifiable {
   /**
-   * La configuration du projet, telle que `ssk-canon.yml` la porte.
+   * The project configuration, as `ssk-canon.yml` carries it.
    *
-   * Absente, rien de ce qui en dépend n'est contrôlé : un référentiel vérifié
-   * hors de son dépôt reste vérifiable.
+   * When absent, nothing that depends on it is checked: a specification
+   * checked outside its repo remains checkable.
    */
   readonly config?: {
     readonly projet?: { readonly prefixe?: string };
-    /** La langue du dépôt — RG-langue-du-depot. */
+    /** The repo's language — RG-langue-du-depot. */
     readonly langue?: unknown;
-    /** Les noms déclarés — RG-noms-declares. */
+    /** The declared names — RG-noms-declares. */
     readonly dossiers?: unknown;
     readonly fichiers?: unknown;
-    /** Les référentiels cités, `{ prefixe, repo }` — RG-regle-du-socle-citee. */
+    /** The cited specifications, `{ prefixe, repo }` — RG-regle-du-socle-citee. */
     readonly referentiels_cites?: unknown;
   } | null;
   readonly domains: ReadonlyMap<string, unknown>;
   readonly features: ReadonlyMap<string, unknown>;
   readonly rules: ReadonlyMap<string, unknown>;
   /**
-   * Les cibles d'architecture, quand le référentiel en porte.
+   * The architecture targets, when the specification carries any.
    *
-   * Absentes, elles se lisent comme vides : tout impact les visant serait alors
-   * signalé comme inconnu, alors que c'est la collection qui manque.
+   * When absent, they read as empty: any impact targeting them would then be
+   * reported as unknown, whereas it is the collection that is missing.
    */
   readonly decisions?: ReadonlyMap<string, unknown>;
   readonly architecture?: ReadonlyMap<string, unknown>;
   readonly cadrages: ReadonlyMap<string, unknown>;
   /**
-   * Les fichiers du répertoire `identite/`, avec leur poids.
+   * The files of the `identite/` directory, with their size.
    *
-   * Absents, l'identité n'est pas contrôlée ; un tableau vide dit qu'il n'y en
-   * a pas.
+   * When absent, the identity is not checked; an empty array says there are
+   * none.
    */
   readonly identite?: readonly FichierIdentite[];
   /**
-   * Les fichiers du dépôt, relatifs à sa racine, séparés par « / ».
+   * The repo's files, relative to its root, separated by « / ».
    *
-   * Présents, ils révèlent un dossier déclaré introuvable alors que celui du
-   * nom du format existe encore ; absents, ce contrôle n'a pas lieu.
+   * When present, they reveal a declared folder that cannot be found while the
+   * one bearing the format's name still exists; when absent, this check does not
+   * take place.
    */
   readonly chemins?: readonly string[];
-  /** Erreurs déjà rencontrées au chargement : un texte est repris tel quel, une anomalie codée se dit dans chaque langue. */
+  /** Errors already met on loading: a text is taken as is, a coded anomaly is said in each language. */
   readonly errors?: readonly (string | Anomalie)[];
-  /** Les mêmes, codées par le chargement : préférées à `errors` quand elles sont là. */
+  /** The same, coded by the loading: preferred to `errors` when present. */
   readonly anomalies?: readonly Anomalie[];
 }
 
 export interface ResultatVerification {
-  /** En français, mot pour mot la forme d'avant les codes. */
+  /** In French, word for word the form from before codes. */
   readonly errors: string[];
   readonly warnings: string[];
-  /** Les mêmes, codées, dans l'ordre : ce qu'une interface dit dans sa langue. */
+  /** The same, coded, in order: what an interface says in its language. */
   readonly anomalies: Anomalie[];
   readonly counts: {
     readonly domaines: number;
@@ -112,24 +113,24 @@ export interface ResultatVerification {
 
 export interface OptionsVerification {
   /**
-   * Omet les contrôles portant sur `cree_par` et `modifie_par`.
+   * Skips the checks on `cree_par` and `modifie_par`.
    *
-   * Ces champs sont écrits par la propagation : les exiger corrects avant elle
-   * rendrait toute désynchronisation impossible à corriger.
+   * These fields are written by the propagation: requiring them correct
+   * before it would make any desynchronisation impossible to fix.
    */
   readonly ignorerIndexDerives?: boolean;
   /**
-   * Les cadrages tenus pour livrés.
+   * The scopings considered delivered.
    *
-   * Un cadrage ne déclare pas son statut : il se déduit de l'état du dépôt, que
-   * seul l'appelant sait lire — la branche principale pour l'Action, la
-   * plateforme pour le navigateur.
+   * A scoping does not declare its status: it is deduced from the repo's
+   * state, which only the caller knows how to read — the main branch for the
+   * Action, the platform for the browser.
    */
   readonly livres?: ReadonlySet<string>;
   /**
-   * Les référentiels cités, par préfixe, déjà chargés — ou `null` pour ceux qui
-   * n'ont pas pu l'être. Ce que l'appelant n'a pas lu rend ses citations non
-   * vérifiées : des avertissements, jamais des erreurs.
+   * The cited specifications, by prefix, already loaded — or `null` for those
+   * that could not be. What the caller has not read makes its citations
+   * unchecked: warnings, never errors.
    */
   readonly cites?: ReadonlyMap<string, ReferentielCite | null>;
 }

@@ -24,7 +24,7 @@ A discrepancy is reported by **a single comment** on the issue, found again thro
 The `ecarts` output gives the number of discrepancies found. On the command line:
 
 ```bash
-node src/verifier-piste.mjs /chemin/du/depot --evenement evenement.json --sans-commentaire
+node src/check-roadmap-item.mjs /chemin/du/depot --evenement evenement.json --sans-commentaire
 ```
 
 ## Preparing labels and milestones
@@ -36,6 +36,6 @@ npm ci
 outillage/preparer-pistes.sh <organisation>/<depot>
 ```
 
-The identifiers are read on a shallow clone of the main branch, by the loader the verification uses (`src/etiquettes-pistes.mjs`): those of the frontmatter, not the file names.
+The identifiers are read on a shallow clone of the main branch, by the loader the verification uses (`src/roadmap-item-labels.mjs`): those of the frontmatter, not the file names.
 
 Each group of writes is announced and confirmed; what exists is left as it is. Running it again after adding a domain or a feature creates the missing labels. A label that no longer designates anything is reported, never deleted: tracks may still carry it.

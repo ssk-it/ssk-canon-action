@@ -108,5 +108,5 @@ checkRepo(referentiel, { cites: new Map([['socle', referentielDuSocle], ['autre'
 Les scripts des skills tournent sans rien d'installé : `cadrage-canon` et
 `consulter-referentiel` portent une copie de `src/noms.mjs` et une lecture de
 `ssk-canon.yml` sans dépendance (`scripts/config-noms.mjs`).
-`test/skills-noms.test.mjs` garde la copie identique et confronte la lecture à
+`test/skills-names.test.mjs` garde la copie identique et confronte la lecture à
 YAML : après avoir changé `src/noms.mjs`, le recopier dans les deux skills.

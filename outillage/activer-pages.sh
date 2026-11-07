@@ -1,98 +1,98 @@
 #!/bin/bash
 #
-# Ouvre GitHub Pages au workflow « Référence de l'API »
-# (.github/workflows/reference-api.yml), qui y publie la référence de
-# @ssk-it/canon-check à chaque fusion sur main.
+# Opens GitHub Pages to the « Référence de l'API » workflow
+# (.github/workflows/reference-api.yml), which publishes the reference of
+# @ssk-it/canon-check there on every merge into main.
 #
-#   1. Pages est servi depuis GitHub Actions — le workflow publie lui-même, et
-#      aucune branche gh-pages n'est à tenir ;
-#   2. en lecture seule : la configuration est en place, et l'adresse publique
-#      qu'elle donne.
+#   1. Pages is served from GitHub Actions — the workflow publishes itself, and
+#      no gh-pages branch needs to be kept;
+#   2. read-only: the configuration is in place, and the public address it
+#      gives.
 #
-# Sans cela, le job de publication échoue à son premier passage sur main : Pages
-# n'existe pas encore pour le dépôt.
+# Without this, the publication job fails on its first run on main: Pages does
+# not exist yet for the repo.
 #
-# Usage : outillage/activer-pages.sh [<propriétaire>/<dépôt>]   (ssk-it/ssk-canon-action par défaut)
+# Usage: outillage/activer-pages.sh [<owner>/<repo>]   (ssk-it/ssk-canon-action by default)
 #
-# Aucun identifiant n'est demandé : le script passe par la session de gh, qui doit avoir
-# les droits d'administration du dépôt. Rien de secret n'est lu ni affiché.
+# No credential is asked for: the script goes through the gh session, which must have
+# admin rights on the repo. Nothing secret is read or displayed.
 #
-# L'écriture est annoncée et confirmée avant d'être faite ; un Pages déjà servi depuis
-# GitHub Actions est laissé tel quel. Le script peut donc être relancé.
+# The write is announced and confirmed before being made; a Pages already served from
+# GitHub Actions is left as is. The script can therefore be run again.
 #
-# Prérequis : gh, jq.
+# Requirements: gh, jq.
 
 set -euo pipefail
 
 ok()  { echo "  ✓ $*"; }
 ko()  { echo "  ✗ $*" >&2; exit 1; }
-dit() { echo "  · $*"; }
+say() { echo "  · $*"; }
 
-confirmer() {
-    local reponse
-    read -r -p "  → $* [o/N] " reponse
-    [ "${reponse}" = "o" ] || [ "${reponse}" = "O" ]
+confirm() {
+    local answer
+    read -r -p "  → $* [o/N] " answer
+    [ "${answer}" = "o" ] || [ "${answer}" = "O" ]
 }
 
-for outil in gh jq; do
-    command -v "${outil}" >/dev/null || ko "${outil} introuvable"
+for tool in gh jq; do
+    command -v "${tool}" >/dev/null || ko "${tool} introuvable"
 done
 
-DEPOT="${1:-ssk-it/ssk-canon-action}"
-[[ "${DEPOT}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] \
+REPO="${1:-ssk-it/ssk-canon-action}"
+[[ "${REPO}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] \
     || ko "usage : $0 [<propriétaire>/<dépôt>]"
 
 gh auth status >/dev/null 2>&1 || ko "gh n'est pas connecté — gh auth login"
 
-# Rend la configuration de Pages telle quelle, ou rien si Pages n'est pas ouvert ;
-# s'arrête sur toute autre erreur, qu'un test confondrait avec une absence.
-lire() {
-    local sortie
-    if sortie="$(gh api "repos/${DEPOT}/pages" 2>&1)"; then
-        echo "${sortie}"
-    elif grep -q "HTTP 404" <<< "${sortie}"; then
+# Returns the Pages configuration as is, or nothing if Pages is not open;
+# stops on any other error, which a test would mistake for an absence.
+read_pages() {
+    local output
+    if output="$(gh api "repos/${REPO}/pages" 2>&1)"; then
+        echo "${output}"
+    elif grep -q "HTTP 404" <<< "${output}"; then
         echo ""
     else
-        ko "Pages de ${DEPOT} illisible — droits d'administration manquants ? (${sortie})"
+        ko "Pages de ${REPO} illisible — droits d'administration manquants ? (${output})"
     fi
 }
 
-# --- 1. La source de Pages --------------------------------------------------------------
+# --- 1. The Pages source ----------------------------------------------------------------
 
-echo "1. GitHub Pages de ${DEPOT}"
-ACTUELLE="$(lire)"
-if [ -z "${ACTUELLE}" ]; then
-    dit "fermé"
-    if confirmer "ouvrir Pages, servi depuis GitHub Actions ?"; then
-        gh api -X POST "repos/${DEPOT}/pages" -f build_type=workflow >/dev/null \
-            || ko "écriture refusée — droits d'administration de ${DEPOT} manquants ?"
+echo "1. GitHub Pages de ${REPO}"
+CURRENT="$(read_pages)"
+if [ -z "${CURRENT}" ]; then
+    say "fermé"
+    if confirm "ouvrir Pages, servi depuis GitHub Actions ?"; then
+        gh api -X POST "repos/${REPO}/pages" -f build_type=workflow >/dev/null \
+            || ko "écriture refusée — droits d'administration de ${REPO} manquants ?"
         ok "ouvert"
     else
-        dit "laissé fermé"
+        say "laissé fermé"
     fi
 else
-    SOURCE="$(jq -r .build_type <<< "${ACTUELLE}")"
+    SOURCE="$(jq -r .build_type <<< "${CURRENT}")"
     if [ "${SOURCE}" = workflow ]; then
         ok "déjà servi depuis GitHub Actions : laissé tel quel"
     else
-        dit "servi depuis une branche (${SOURCE}) : le workflow n'y publierait pas"
-        if confirmer "le servir depuis GitHub Actions ?"; then
-            gh api -X PUT "repos/${DEPOT}/pages" -f build_type=workflow >/dev/null \
-                || ko "écriture refusée — droits d'administration de ${DEPOT} manquants ?"
+        say "servi depuis une branche (${SOURCE}) : le workflow n'y publierait pas"
+        if confirm "le servir depuis GitHub Actions ?"; then
+            gh api -X PUT "repos/${REPO}/pages" -f build_type=workflow >/dev/null \
+                || ko "écriture refusée — droits d'administration de ${REPO} manquants ?"
             ok "servi depuis GitHub Actions"
         else
-            dit "laissé tel quel"
+            say "laissé tel quel"
         fi
     fi
 fi
 echo
 
-# --- 2. Contrôle en lecture seule -------------------------------------------------------
+# --- 2. Read-only check -----------------------------------------------------------------
 
 echo "2. Vérification"
-APRES="$(lire)"
-if [ -n "${APRES}" ] && [ "$(jq -r .build_type <<< "${APRES}")" = workflow ]; then
-    ok "le workflow peut publier ; adresse : $(jq -r .html_url <<< "${APRES}")"
+AFTER="$(read_pages)"
+if [ -n "${AFTER}" ] && [ "$(jq -r .build_type <<< "${AFTER}")" = workflow ]; then
+    ok "le workflow peut publier ; adresse : $(jq -r .html_url <<< "${AFTER}")"
 else
     echo "  ✗ Pages fermé ou servi depuis une branche : la publication échouera" >&2
     exit 1

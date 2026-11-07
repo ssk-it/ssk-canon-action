@@ -1,28 +1,28 @@
-// Lecture du format, sans dépendance au système de fichiers.
+// Reading the format, with no dependency on the file system.
 //
-// Ce module s'exécute aussi bien dans l'Action, qui lit un répertoire, que dans
-// un navigateur, qui lit un dépôt distant. C'est ce qui permet aux deux de
-// partager une seule implémentation des règles du format — les dupliquer
-// garantirait qu'elles divergent.
+// This module runs both in the Action, which reads a directory, and in a
+// browser, which reads a remote repo. That is what lets the two share a single
+// implementation of the format's rules — duplicating them would guarantee that
+// they diverge.
 //
-// Tout ce qui touche au disque vit dans `parse.mjs`, qui s'appuie sur celui-ci.
+// Everything that touches the disk lives in `parse.mjs`, which builds on this one.
 
 import { load } from 'js-yaml';
-import { erreur, formaterAnomalie } from './anomalies.mjs';
+import { createError, formaterAnomalie } from './anomalies.mjs';
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
 
 /**
- * Sépare le frontmatter YAML du corps Markdown.
+ * Splits the YAML frontmatter from the Markdown body.
  *
- * Retourne `null` si le bloc est absent, et `{ erreur, anomalie }` s'il est
- * présent mais illisible : l'anomalie codée — RG-anomalies-codees —, et sa
- * forme française, que l'interface lit encore. Les deux cas sont distincts : le premier dit que le fichier n'est
- * pas une entité, le second qu'il en est une et qu'elle est cassée.
+ * Returns `null` if the block is missing, and `{ erreur, anomalie }` if it is
+ * present but unreadable: the coded anomaly — RG-anomalies-codees —, and its
+ * French form, which the interface still reads. The two cases are distinct: the first says the file is
+ * not an entity, the second that it is one and that it is broken.
  *
- * L'erreur n'est jamais propagée telle quelle. Une exception de la bibliothèque
- * YAML remonterait jusqu'au sommet et sortirait une trace de pile, où le lecteur
- * chercherait en vain quel fichier reprendre.
+ * The error is never propagated as is. An exception from the YAML library
+ * would bubble up to the top and print a stack trace, in which the reader
+ * would search in vain for which file to fix.
  */
 export function splitFrontmatter(text) {
   const m = FRONTMATTER.exec(text);
@@ -30,36 +30,36 @@ export function splitFrontmatter(text) {
   try {
     return { data: load(m[1]) ?? {}, body: m[2] };
   } catch (e) {
-    const anomalie = anomalieYaml(e);
-    return { erreur: formaterAnomalie(anomalie, 'fr'), anomalie, body: m[2] };
+    const anomaly = yamlAnomaly(e);
+    return { erreur: formaterAnomalie(anomaly, 'fr'), anomalie: anomaly, body: m[2] };
   }
 }
 
 /**
- * L'anomalie d'une erreur de la bibliothèque YAML.
+ * The anomaly of a YAML library error.
  *
- * Elle porte la ligne et la colonne fautives dans `mark`, mais son `message`
- * embarque aussi un extrait multiligne du document qui, recopié dans une liste
- * d'erreurs, la rend illisible. On garde la première ligne et les coordonnées,
- * qui suffisent à retrouver le point exact.
+ * It carries the faulty line and column in `mark`, but its `message` also
+ * embeds a multi-line excerpt of the document which, copied into a list of
+ * errors, makes it unreadable. We keep the first line and the coordinates,
+ * which are enough to find the exact spot.
  */
-function anomalieYaml(e) {
-  // La raison reste celle de la bibliothèque, en anglais : c'est une valeur
-  // qu'on cite, non un message qu'on rédige.
-  const raison = String(e?.reason ?? e?.message ?? e).split('\n')[0].trim();
+function yamlAnomaly(e) {
+  // The reason stays the library's, in English: it is a value we quote, not a
+  // message we write.
+  const reason = String(e?.reason ?? e?.message ?? e).split('\n')[0].trim();
   const l = e?.mark?.line;
-  // `line` est indexée à zéro et relative au bloc : le `---` d'ouverture
-  // décale d'une ligne de plus pour retrouver le numéro dans le fichier.
-  const params = { ligne: typeof l === 'number' ? l + 2 : null, raison };
+  // `line` is zero-based and relative to the block: the opening `---` shifts
+  // it by one more line to get the line number in the file.
+  const params = { ligne: typeof l === 'number' ? l + 2 : null, raison: reason };
 
-  // Cause de loin la plus fréquente, et dont le message d'origine ne dit rien :
-  // un `:` suivi d'une espace dans une valeur non quotée, que YAML lit comme un
-  // séparateur. Un titre de décision en contient presque toujours un.
-  if (/bad indentation of a mapping entry/.test(raison)) return erreur('frontmatter-deux-points', params);
-  return erreur('frontmatter-illisible', params);
+  // By far the most frequent cause, and one the original message says nothing
+  // about: a `:` followed by a space in an unquoted value, which YAML reads as a
+  // separator. A decision title almost always contains one.
+  if (/bad indentation of a mapping entry/.test(reason)) return createError('frontmatter-deux-points', params);
+  return createError('frontmatter-illisible', params);
 }
 
-/** Extrait les identifiants de règles titrés dans la section `## Énoncés`. */
+/** Extracts the rule identifiers titled in the `## Énoncés` section. */
 export function extractEnonces(body) {
   const section = /^##[ \t]+Énoncés[ \t]*$([\s\S]*?)(?=^##[ \t]|$(?![\s\S]))/m.exec(body);
   if (!section) return new Map();

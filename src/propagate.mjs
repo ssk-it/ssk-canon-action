@@ -1,32 +1,33 @@
-// Application des impacts au référentiel.
+// Application of the impacts to the specification.
 //
-// Déclenchée au merge d'un cadrage sur la branche principale. Le principe :
-// l'Action ne rejoue pas un historique, elle **compare l'état déclaré par les
-// cadrages livrés à l'état réel du référentiel**, et n'écrit que l'écart.
+// Triggered when a scoping is merged into the main branch. The principle: the
+// Action does not replay a history, it **compares the state declared by the
+// delivered scopings with the actual state of the specification**, and writes
+// only the difference.
 //
-// Deux propriétés en découlent :
+// Two properties follow:
 //
-// - **Idempotence** : relancer la propagation sur un référentiel à jour ne
-//   produit aucune écriture. On peut donc la rejouer sans risque après un échec,
-//   ou pour rattraper une propagation manquée.
-// - **Tout ou rien** : les écritures sont calculées d'abord, appliquées ensuite.
-//   Une incohérence interrompt avant toute écriture, laissant le référentiel
-//   dans son état précédent, qui est cohérent.
+// - **Idempotence**: running the propagation again on an up-to-date
+//   specification produces no write. It can therefore be replayed safely after
+//   a failure, or to catch up on a missed propagation.
+// - **All or nothing**: the writes are computed first, applied afterwards.
+//   An inconsistency stops before any write, leaving the specification in its
+//   previous state, which is consistent.
 //
 //   node src/propagate.mjs [chemin-du-depot] [--dry-run]
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { dump } from 'js-yaml';
-import { loadRepo, lireNoms, splitFrontmatter, extractEnonces } from './parse.mjs';
+import { loadRepo, readNames, splitFrontmatter, extractEnonces } from './parse.mjs';
 import { DOSSIER_DE_COLLECTION } from './noms.mjs';
-import { check, langueDe } from './check.mjs';
-import { erreur, enTexte, formaterAnomalie } from './anomalies.mjs';
-import { cibleDe as natureDe } from './verifier.mjs';
-import { listCadragesLivres, ordreDeLivraison } from './livraison.mjs';
+import { check, languageOf } from './check.mjs';
+import { createError, enTexte, formaterAnomalie } from './anomalies.mjs';
+import { cibleDe as kindOf } from './verifier.mjs';
+import { listDeliveredScopings, deliveryOrder } from './delivery.mjs';
 
-/** Ordre des clés dans le frontmatter d'une règle, pour un diff lisible. */
-const ORDRE_CLES = [
+/** Order of the keys in a rule's frontmatter, for a readable diff. */
+const KEY_ORDER = [
   'id',
   'fonctionnalites',
   'nature',
@@ -38,43 +39,45 @@ const ORDRE_CLES = [
 ];
 
 /**
- * Calcule l'état que le référentiel devrait avoir, d'après les cadrages livrés.
+ * Computes the state the specification should have, according to the
+ * delivered scopings.
  *
- * Les cadrages sont parcourus dans l'ordre de leur livraison : c'est lui qui
- * détermine quel énoncé fait foi quand deux cadrages touchent la même règle —
- * le dernier livré, écrit en connaissant l'autre. L'identifiant ne le dit pas :
- * attribué à la préparation, il suit l'ordre des préparations, et deux cadrages
- * menés en parallèle se livrent souvent dans l'autre sens. Il ne départage que
- * deux cadrages livrés ensemble, ou dont la livraison n'a pas pu être lue.
+ * The scopings are walked in the order of their delivery: it decides which
+ * statement prevails when two scopings touch the same rule — the last
+ * delivered, written knowing the other. The identifier does not tell it:
+ * assigned at preparation, it follows the order of preparations, and two
+ * scopings carried out in parallel are often delivered the other way round. It
+ * only breaks the tie between two scopings delivered together, or whose
+ * delivery could not be read.
  *
- * @param {Map<string, number>} [ordre] rang de livraison par cadrage — voir
- *   `ordreDeLivraison`
+ * @param {Map<string, number>} [order] delivery rank per scoping — see
+ *   `deliveryOrder`
  */
-export function etatAttendu(repo, livres, ordre = new Map()) {
-  const attendu = new Map();
+export function expectedState(repo, delivered, order = new Map()) {
+  const expected = new Map();
 
-  const rang = (id) => ordre.get(String(id)) ?? Number.POSITIVE_INFINITY;
-  const cadragesLivres = [...repo.cadrages.values()]
-    .filter((c) => livres.has(c.id))
-    .sort((a, b) => rang(a.id) - rang(b.id) || String(a.id).localeCompare(String(b.id)));
+  const rank = (id) => order.get(String(id)) ?? Number.POSITIVE_INFINITY;
+  const deliveredScopings = [...repo.cadrages.values()]
+    .filter((c) => delivered.has(c.id))
+    .sort((a, b) => rank(a.id) - rank(b.id) || String(a.id).localeCompare(String(b.id)));
 
-  for (const cadrage of cadragesLivres) {
-    const enonces = extractEnonces(cadrage.body);
+  for (const scoping of deliveredScopings) {
+    const statements = extractEnonces(scoping.body);
 
-    for (const impact of cadrage.impacts ?? []) {
+    for (const impact of scoping.impacts ?? []) {
       const { operation } = impact;
-      if (operation === 'touche') continue; // ne produit aucune écriture
+      if (operation === 'touche') continue; // produces no write
 
-      // La nature est retenue avec la cible : c'est elle qui dira dans quel
-      // répertoire écrire. La déduire plus tard obligerait à deviner d'après
-      // l'identifiant, or rien n'impose qu'un préfixe le trahisse.
-      const nature = natureDe(impact);
-      if (!nature) continue; // impact sans cible : la vérification l'a déjà dit
-      const { id: nom, collection } = nature;
+      // The kind is kept with the target: it will tell which directory to
+      // write to. Deducing it later would mean guessing from the identifier,
+      // and nothing requires a prefix to give it away.
+      const kind = kindOf(impact);
+      if (!kind) continue; // impact without a target: the check has already said so
+      const { id: name, collection } = kind;
 
-      if (!attendu.has(nom)) {
-        attendu.set(nom, {
-          id: nom,
+      if (!expected.has(name)) {
+        expected.set(name, {
+          id: name,
           collection,
           statut: 'actif',
           cree_par: null,
@@ -82,206 +85,205 @@ export function etatAttendu(repo, livres, ordre = new Map()) {
           enonce: null,
         });
       }
-      const cible = attendu.get(nom);
+      const target = expected.get(name);
 
       switch (operation) {
         case 'cree':
-          cible.cree_par = cadrage.id;
-          cible.enonce = enonces.get(nom) ?? cible.enonce;
+          target.cree_par = scoping.id;
+          target.enonce = statements.get(name) ?? target.enonce;
           break;
         case 'modifie':
-          cible.modifie_par.push(cadrage.id);
-          cible.enonce = enonces.get(nom) ?? cible.enonce;
+          target.modifie_par.push(scoping.id);
+          target.enonce = statements.get(name) ?? target.enonce;
           break;
         case 'abroge':
-          cible.modifie_par.push(cadrage.id);
-          cible.statut = 'abroge';
-          // une abrogation peut réécrire l'énoncé pour expliquer pourquoi
-          if (enonces.has(nom)) cible.enonce = enonces.get(nom);
+          target.modifie_par.push(scoping.id);
+          target.statut = 'abroge';
+          // a repeal may rewrite the statement to explain why
+          if (statements.has(name)) target.enonce = statements.get(name);
           break;
       }
     }
   }
-  // L'ordre de livraison décide de l'énoncé qui fait foi, non de l'index :
-  // `modifie_par` est la liste des cadrages qui ont touché la cible, triée par
-  // identifiant, comme la vérification la recalcule.
-  for (const cible of attendu.values()) {
-    cible.modifie_par.sort((a, b) => String(a).localeCompare(String(b)));
+  // The delivery order decides which statement prevails, not the index:
+  // `modifie_par` is the list of scopings that touched the target, sorted by
+  // identifier, as the check recomputes it.
+  for (const target of expected.values()) {
+    target.modifie_par.sort((a, b) => String(a).localeCompare(String(b)));
   }
-  return attendu;
+  return expected;
 }
 
 /**
- * Sérialise une cible dans le format du référentiel.
+ * Serialises a target in the specification's format.
  *
- * `propres` porte ce que le référentiel décide et que le cadrage ne dicte pas :
- * le rattachement aux fonctionnalités pour une règle, la nature et les
- * composants reliés pour un document d'architecture. La propagation les
- * préserve sans jamais les choisir — c'est la même raison dans les deux cas.
+ * `own` carries what the specification decides and the scoping does not
+ * dictate: the link to features for a rule, the kind and the linked components
+ * for an architecture document. The propagation preserves them without ever
+ * choosing them — it is the same reason in both cases.
  */
-function ecrireRegle(regle, propres, enonce) {
-  const donnees = {
-    id: regle.id,
-    ...propres,
-    statut: regle.statut,
-    cree_par: regle.cree_par,
-    modifie_par: regle.modifie_par,
+function formatRule(rule, own, statement) {
+  const data = {
+    id: rule.id,
+    ...own,
+    statut: rule.statut,
+    cree_par: rule.cree_par,
+    modifie_par: rule.modifie_par,
   };
-  const ordonne = {};
-  for (const cle of ORDRE_CLES) {
-    if (donnees[cle] !== undefined) ordonne[cle] = donnees[cle];
+  const ordered = {};
+  for (const key of KEY_ORDER) {
+    if (data[key] !== undefined) ordered[key] = data[key];
   }
-  const frontmatter = dump(ordonne, { lineWidth: -1, flowLevel: 1 }).trimEnd();
-  return `---\n${frontmatter}\n---\n\n${enonce.trim()}\n`;
+  const frontmatter = dump(ordered, { lineWidth: -1, flowLevel: 1 }).trimEnd();
+  return `---\n${frontmatter}\n---\n\n${statement.trim()}\n`;
 }
 
 /**
- * Les cadrages livrés, tels que le dépôt les établit.
+ * The delivered scopings, as the repo establishes them.
  *
- * La propagation s'exécute après la fusion, sur la branche principale : ce qui
- * est livré est donc ce que `HEAD` porte, et non ce qu'en dit une référence
- * distante — celle-ci peut être en retard du merge qui vient de déclencher
- * l'exécution.
+ * The propagation runs after the merge, on the main branch: what is delivered
+ * is therefore what `HEAD` carries, and not what a remote reference says about
+ * it — that one may lag behind the merge that just triggered the run.
  *
- * Un dépôt hors d'atteinte fait échouer plutôt que rendre un ensemble vide :
- * sans cadrage livré, la propagation conclurait que le référentiel entier est
- * de trop.
+ * An unreachable repo fails rather than returning an empty set: without a
+ * delivered scoping, the propagation would conclude that the whole
+ * specification is superfluous.
  */
-function livresDuDepot(root, dossier) {
-  const livres = listCadragesLivres(root, 'HEAD', dossier);
-  if (livres === null)
+function deliveredInRepo(root, folder) {
+  const delivered = listDeliveredScopings(root, 'HEAD', folder);
+  if (delivered === null)
     throw new Error(
       "impossible de lire les cadrages livrés depuis Git — la propagation a besoin d'un dépôt",
     );
-  return livres;
+  return delivered;
 }
 
 /**
- * Compare l'attendu au réel et retourne les écritures nécessaires.
- * Ne modifie rien : c'est la phase de calcul du « tout ou rien ».
+ * Compares the expected with the actual and returns the necessary writes.
+ * Modifies nothing: this is the computation phase of the "all or nothing".
  */
-export function calculerEcritures(root, livres) {
+export function computeWrites(root, delivered) {
   const repo = loadRepo(root);
   const { dossiers, fichiers } = repo.noms;
-  const attendu = etatAttendu(
+  const expected = expectedState(
     repo,
-    livres ?? livresDuDepot(root, dossiers.cadrages),
-    ordreDeLivraison(root, 'HEAD', { dossier: dossiers.cadrages, fichier: fichiers.cadrage }) ??
+    delivered ?? deliveredInRepo(root, dossiers.cadrages),
+    deliveryOrder(root, 'HEAD', { folder: dossiers.cadrages, file: fichiers.cadrage }) ??
       new Map(),
   );
-  const ecritures = [];
+  const writes = [];
   const anomalies = [];
 
-  for (const [id, cible] of attendu) {
-    if (cible.enonce === null) {
-      anomalies.push(erreur('enonce-non-fourni', { cible: id }));
+  for (const [id, target] of expected) {
+    if (target.enonce === null) {
+      anomalies.push(createError('enonce-non-fourni', { cible: id }));
       continue;
     }
 
-    const collection = cible.collection ?? 'rules';
-    const existante = repo[collection]?.get(id);
+    const collection = target.collection ?? 'rules';
+    const existing = repo[collection]?.get(id);
 
-    // Ce que le référentiel décide et que le cadrage ne dicte pas. Pour une
-    // règle, le rattachement aux fonctionnalités ; pour un document
-    // d'architecture, sa nature et les composants qu'il relie ; pour une règle
-    // ou une décision, ce qu'elle applique d'un autre référentiel —
-    // RG-regle-du-socle-citee. La propagation les préserve, elle ne les
-    // choisit jamais.
-    const propres = {
+    // What the specification decides and the scoping does not dictate. For a
+    // rule, the link to features; for an architecture document, its kind and
+    // the components it links; for a rule or a decision, what it applies from
+    // another specification — RG-regle-du-socle-citee. The propagation
+    // preserves them, it never chooses them.
+    const own = {
       ...(collection === 'rules'
-        ? { fonctionnalites: existante?.fonctionnalites ?? [] }
+        ? { fonctionnalites: existing?.fonctionnalites ?? [] }
         : {
-            ...(existante?.nature !== undefined ? { nature: existante.nature } : {}),
-            ...(existante?.composants !== undefined ? { composants: existante.composants } : {}),
+            ...(existing?.nature !== undefined ? { nature: existing.nature } : {}),
+            ...(existing?.composants !== undefined ? { composants: existing.composants } : {}),
           }),
-      ...(existante?.applique !== undefined ? { applique: existante.applique } : {}),
+      ...(existing?.applique !== undefined ? { applique: existing.applique } : {}),
     };
 
-    // Une règle doit être trouvable par la navigation du référentiel, qui passe
-    // par les fonctionnalités. Les cibles d'architecture se consultent par leur
-    // répertoire : rien à exiger de ce côté.
-    if (collection === 'rules' && !existante && !propres.fonctionnalites.length) {
-      anomalies.push(erreur('regle-creee-sans-rattachement', { regle: id }));
+    // A rule must be findable through the specification's navigation, which
+    // goes through the features. Architecture targets are consulted by their
+    // directory: nothing to require on that side.
+    if (collection === 'rules' && !existing && !own.fonctionnalites.length) {
+      anomalies.push(createError('regle-creee-sans-rattachement', { regle: id }));
       continue;
     }
 
-    const contenu = ecrireRegle(cible, propres, cible.enonce);
-    const chemin = join(root, dossiers[DOSSIER_DE_COLLECTION[collection]], `${id}.md`);
-    const actuel = existante ? readFileSync(chemin, 'utf8') : null;
+    const content = formatRule(target, own, target.enonce);
+    const path = join(root, dossiers[DOSSIER_DE_COLLECTION[collection]], `${id}.md`);
+    const current = existing ? readFileSync(path, 'utf8') : null;
 
-    if (actuel !== contenu) {
-      ecritures.push({
-        chemin,
+    if (current !== content) {
+      writes.push({
+        chemin: path,
         id,
-        contenu,
-        operation: existante ? 'mise à jour' : 'création',
+        contenu: content,
+        operation: existing ? 'mise à jour' : 'création',
       });
     }
   }
 
-  // `problemes` garde la forme textuelle d'hier, en français ; `anomalies` dit
-  // la même chose par codes, pour qui la rend dans sa langue.
-  return { ecritures, problemes: enTexte(anomalies).errors, anomalies, repo };
+  // `problemes` keeps yesterday's textual form, in French; `anomalies` says
+  // the same thing through codes, for whoever renders it in their language.
+  return { ecritures: writes, problemes: enTexte(anomalies).errors, anomalies, repo };
 }
 
-/** Applique les écritures calculées. */
-export function propager(root, { dryRun = false } = {}) {
-  // La vérification d'intégrité passe d'abord : propager sur un référentiel
-  // incohérent produirait un référentiel plus incohérent encore.
+/** Applies the computed writes. */
+export function propagate(root, { dryRun = false } = {}) {
+  // The integrity check comes first: propagating onto an inconsistent
+  // specification would produce an even more inconsistent one.
   //
-  // Mais on omet les contrôles sur les index dérivés, que la propagation écrit
-  // justement : les exiger corrects ici rendrait toute désynchronisation
-  // impossible à corriger, la propagation étant bloquée par ce qu'elle répare.
-  // Lu une seule fois et passé aux deux étapes : deux lectures pourraient
-  // différer, et la vérification porterait alors sur un autre référentiel que
-  // celui qu'on propage.
-  const livres = livresDuDepot(root, lireNoms(root).dossiers.cadrages);
+  // But the checks on derived indexes are omitted, since the propagation
+  // writes them: requiring them correct here would make any desynchronisation
+  // impossible to fix, the propagation being blocked by what it repairs.
+  // Read only once and passed to both steps: two reads could differ, and the
+  // check would then bear on another specification than the one being
+  // propagated.
+  const delivered = deliveredInRepo(root, readNames(root).dossiers.cadrages);
 
-  const integrite = check(root, { ignorerIndexDerives: true, livres });
-  if (integrite.errors.length) {
-    const anomalies = integrite.anomalies
+  const integrity = check(root, { ignorerIndexDerives: true, livres: delivered });
+  if (integrity.errors.length) {
+    const anomalies = integrity.anomalies
       .filter((a) => a.gravite === 'erreur')
-      .map((anomalie) => erreur('integrite-avant-propagation', { anomalie }));
+      .map((anomalie) => createError('integrite-avant-propagation', { anomalie }));
     return { ok: false, ecritures: [], problemes: enTexte(anomalies).errors, anomalies };
   }
 
-  const { ecritures, problemes, anomalies } = calculerEcritures(root, livres);
-  if (problemes.length) {
-    return { ok: false, ecritures: [], problemes, anomalies };
+  const { ecritures: writes, problemes: problems, anomalies } = computeWrites(root, delivered);
+  if (problems.length) {
+    return { ok: false, ecritures: [], problemes: problems, anomalies };
   }
 
   if (!dryRun) {
-    for (const e of ecritures) writeFileSync(e.chemin, e.contenu, 'utf8');
+    for (const w of writes) writeFileSync(w.chemin, w.contenu, 'utf8');
   }
-  return { ok: true, ecritures, problemes: [], anomalies: [] };
+  return { ok: true, ecritures: writes, problemes: [], anomalies: [] };
 }
 
-// exécution directe
+// direct execution
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
   const root = args.find((a) => !a.startsWith('--')) ?? '.';
 
-  const { ok, ecritures, anomalies } = propager(root, { dryRun });
+  const { ok, ecritures: writes, anomalies } = propagate(root, { dryRun });
 
-  // Le rapport se dit dans la langue du dépôt — RG-langue-du-depot. L'Action
-  // y lit le nombre d'écritures, en tête de ligne : il reste le premier mot.
-  const langue = langueDe(root);
-  const dire = (code, params = {}) => formaterAnomalie({ code, params }, langue);
+  // The report is given in the repo's language — RG-langue-du-depot. The
+  // Action reads the number of writes from it, at the start of the line: it
+  // stays the first word.
+  const language = languageOf(root);
+  const say = (code, params = {}) => formaterAnomalie({ code, params }, language);
 
   if (!ok) {
-    const { errors } = enTexte(anomalies, langue);
-    console.log(`\n${dire('rapport-propagation-problemes', { nombre: errors.length })}`);
+    const { errors } = enTexte(anomalies, language);
+    console.log(`\n${say('rapport-propagation-problemes', { nombre: errors.length })}`);
     for (const p of errors) console.log(`  ✗ ${p}`);
     process.exit(1);
   }
 
-  if (!ecritures.length) {
-    console.log(dire('rapport-propagation-a-jour'));
+  if (!writes.length) {
+    console.log(say('rapport-propagation-a-jour'));
     process.exit(0);
   }
 
-  console.log(dire('rapport-propagation-ecritures', { nombre: ecritures.length, simulation: dryRun }));
-  for (const e of ecritures) console.log(`  ${e.operation === 'création' ? '+' : '~'} ${e.id}`);
-  if (dryRun) console.log(`\n${dire('rapport-propagation-simulation')}`);
+  console.log(say('rapport-propagation-ecritures', { nombre: writes.length, simulation: dryRun }));
+  for (const w of writes) console.log(`  ${w.operation === 'création' ? '+' : '~'} ${w.id}`);
+  if (dryRun) console.log(`\n${say('rapport-propagation-simulation')}`);
 }

@@ -1,45 +1,45 @@
 /**
- * La règle de l'identité visuelle : les noms, les variantes et les formats admis, la borne de poids, la lecture d'un nom et le contrôle du répertoire. Repris à la racine du paquet.
+ * The visual identity rule: the allowed names, variants and formats, the size limit, reading a name and checking the directory. Re-exported at the package root.
  *
  * @module @ssk-it/canon-check/identite
  */
 import type { Anomalie } from './verifier.js';
 
-/** Un fichier du répertoire `identite/`, tel que la plateforme ou le disque le donne. */
+/** A file of the `identite/` directory, as the platform or the disk gives it. */
 export interface FichierIdentite {
-  /** Chemin relatif au répertoire `identite/`, séparé par « / ». */
+  /** Path relative to the `identite/` directory, separated by “/”. */
   readonly chemin: string;
-  /** Poids en octets. */
+  /** Size in bytes. */
   readonly taille: number;
 }
 
-/** Un nom d'image d'identité, lu. */
+/** An identity image name, read. */
 export interface NomIdentite {
   readonly element: 'symbole' | 'logotype';
-  /** `null` pour un fichier sans suffixe, qui convient aux deux fonds. */
+  /** `null` for a file without a suffix, which suits both backgrounds. */
   readonly variante: 'clair' | 'sombre' | null;
   readonly format: 'svg' | 'webp' | 'png';
 }
 
-/** Le nom du format du répertoire qui porte l'identité, qu'un référentiel peut remplacer. */
+/** The format's name for the directory that carries the identity, which a specification can replace. */
 export const REPERTOIRE_IDENTITE: 'identite';
 export const ELEMENTS_IDENTITE: readonly ['symbole', 'logotype'];
 export const VARIANTES_IDENTITE: readonly ['clair', 'sombre'];
-/** Les formats admis, dans l'ordre de préférence. */
+/** The allowed formats, in order of preference. */
 export const FORMATS_IDENTITE: readonly ['svg', 'webp', 'png'];
-/** Le poids maximal d'un fichier, en octets : 100 Kio. */
+/** The maximum size of a file, in bytes: 100 KiB. */
 export const POIDS_MAX_IDENTITE: number;
 
-/** `null` si le fichier n'est pas une image d'identité admise. */
-export function lireNomIdentite(chemin: string): NomIdentite | null;
+/** `null` if the file is not an allowed identity image. */
+export function lireNomIdentite(path: string): NomIdentite | null;
 
 /**
- * `repertoire` : le nom déclaré du répertoire, `identite` par défaut.
- * `anomalies` : chaque cause, codée ; `errors` et `warnings` en sont la forme française.
+ * `directory`: the declared name of the directory, `identite` by default.
+ * `anomalies`: each cause, coded; `errors` and `warnings` are its French form.
  */
 export function checkIdentite(
-  fichiers: readonly FichierIdentite[],
-  repertoire?: string,
+  files: readonly FichierIdentite[],
+  directory?: string,
 ): {
   errors: string[];
   warnings: string[];

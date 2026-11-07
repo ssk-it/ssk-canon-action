@@ -1,73 +1,73 @@
-// Les anomalies du format, codées — RG-anomalies-codees.
+// The format's anomalies, coded — RG-anomalies-codees.
 //
-// Une anomalie est un code, une gravité et des paramètres ; son message s'en
-// déduit, dans chaque langue, par le catalogue de `messages.mjs`. Le message ne
-// s'écrit nulle part ailleurs : l'interface et l'automatisation disent ainsi la
-// même chose, chacune dans la langue de qui la lit, et une anomalie se
-// reconnaît à son code sans qu'on ait à lire son texte.
+// An anomaly is a code, a severity and parameters; its message derives from
+// them, in each language, through the catalogue in `messages.mjs`. The message
+// is written nowhere else: the interface and the automation thus say the same
+// thing, each in its reader's language, and an anomaly is recognised by its
+// code without having to read its text.
 
 import { MESSAGES } from './messages.mjs';
 
-/** Les langues dans lesquelles une anomalie se dit. */
+/** The languages an anomaly can be told in. */
 export const LANGUES = ['fr', 'en'];
 
-/** La langue d'un dépôt qui n'en déclare pas, et celle de la forme textuelle d'hier. */
-export const LANGUE_PAR_DEFAUT = 'fr';
+/** The language of a repo that declares none, and that of yesterday's text form. */
+export const DEFAULT_LANGUAGE = 'fr';
 
 /**
- * @param {string} code un code du catalogue, stable : il ne change jamais de sens
- * @param {Record<string, unknown>} [params] des valeurs du référentiel et du format, jamais traduites
+ * @param {string} code a catalogue code, stable: it never changes meaning
+ * @param {Record<string, unknown>} [params] values from the specification and the format, never translated
  */
-export function erreur(code, params = {}) {
+export function createError(code, params = {}) {
   return { code, gravite: 'erreur', params };
 }
 
-/** Comme `erreur`, sans bloquer la livraison. */
-export function avertissement(code, params = {}) {
+/** Like `createError`, without blocking the delivery. */
+export function createWarning(code, params = {}) {
   return { code, gravite: 'avertissement', params };
 }
 
 /**
- * Une anomalie, ou un message que l'appelant a déjà rédigé — une erreur de
- * chargement qu'il a reçue en texte. Ce dernier se rend tel quel : la
- * bibliothèque ne sait pas le dire autrement.
+ * An anomaly, or a message the caller has already written — a loading error
+ * it received as text. The latter is returned as is: the library cannot tell
+ * it any other way.
  */
-export function versAnomalie(x, gravite = 'erreur') {
-  return typeof x === 'string' ? { code: 'message', gravite, params: { texte: x } } : x;
+export function toAnomaly(x, severity = 'erreur') {
+  return typeof x === 'string' ? { code: 'message', gravite: severity, params: { texte: x } } : x;
 }
 
 /**
- * Le message d'une anomalie, dans une langue. Une langue inconnue se lit en
- * français : une langue mal déclarée ne doit pas rendre un rapport illisible.
+ * The message of an anomaly, in a language. An unknown language reads as
+ * French: a badly declared language must not make a report unreadable.
  */
-export function formaterAnomalie(anomalie, langue = LANGUE_PAR_DEFAUT) {
-  const l = LANGUES.includes(langue) ? langue : LANGUE_PAR_DEFAUT;
-  const message = MESSAGES[l][anomalie.code];
-  // Un code hors catalogue est un défaut de la bibliothèque, que ses tests
-  // attrapent ; ici, mieux vaut un rapport qui nomme le code qu'un rapport muet.
-  if (!message) return `${anomalie.code} ${JSON.stringify(anomalie.params ?? {})}`;
-  return message(anomalie.params ?? {}, (a) => formaterAnomalie(a, l));
+export function formaterAnomalie(anomaly, language = DEFAULT_LANGUAGE) {
+  const l = LANGUES.includes(language) ? language : DEFAULT_LANGUAGE;
+  const message = MESSAGES[l][anomaly.code];
+  // A code outside the catalogue is a library defect, which its tests catch;
+  // here, a report naming the code beats a silent report.
+  if (!message) return `${anomaly.code} ${JSON.stringify(anomaly.params ?? {})}`;
+  return message(anomaly.params ?? {}, (a) => formaterAnomalie(a, l));
 }
 
-/** Les anomalies en textes, erreurs et avertissements séparés. */
-export function enTexte(anomalies, langue = LANGUE_PAR_DEFAUT) {
-  const dire = (gravite) =>
-    anomalies.filter((a) => a.gravite === gravite).map((a) => formaterAnomalie(a, langue));
-  return { errors: dire('erreur'), warnings: dire('avertissement') };
+/** The anomalies as texts, errors and warnings apart. */
+export function enTexte(anomalies, language = DEFAULT_LANGUAGE) {
+  const tell = (severity) =>
+    anomalies.filter((a) => a.gravite === severity).map((a) => formaterAnomalie(a, language));
+  return { errors: tell('erreur'), warnings: tell('avertissement') };
 }
 
 /**
- * La langue d'un dépôt, déclarée dans `ssk-canon.yml` — RG-langue-du-depot.
+ * The language of a repo, declared in `ssk-canon.yml` — RG-langue-du-depot.
  *
- * Une langue inconnue se signale, et le dépôt se lit en français : une faute de
- * frappe dans un réglage d'affichage ne justifie pas de bloquer une livraison.
+ * An unknown language is reported, and the repo reads in French: a typo in a
+ * display setting does not justify blocking a delivery.
  */
 export function langueDuDepot(config) {
-  const valeur = config?.langue;
-  if (valeur === undefined || valeur === null) return { langue: LANGUE_PAR_DEFAUT, anomalies: [] };
-  if (LANGUES.includes(valeur)) return { langue: valeur, anomalies: [] };
+  const value = config?.langue;
+  if (value === undefined || value === null) return { langue: DEFAULT_LANGUAGE, anomalies: [] };
+  if (LANGUES.includes(value)) return { langue: value, anomalies: [] };
   return {
-    langue: LANGUE_PAR_DEFAUT,
-    anomalies: [avertissement('langue-inconnue', { valeur: String(valeur), langues: LANGUES })],
+    langue: DEFAULT_LANGUAGE,
+    anomalies: [createWarning('langue-inconnue', { valeur: String(value), langues: LANGUES })],
   };
 }

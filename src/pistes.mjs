@@ -1,144 +1,143 @@
-// Rattachement d'une piste, sans dépendance au système de fichiers.
+// Linking a roadmap item, with no file-system dependency.
 //
-// Une piste est une issue du dépôt de référentiel, étiquetée `piste`, rattachée
-// à des domaines et des fonctionnalités par des étiquettes `domaine/<id>` et
-// `fonctionnalite/<id>` — RG-piste-definition, RG-piste-rattachee. Elle ne passe
-// par aucune demande de fusion : sa vérification se fait à l'événement de
-// l'issue, et se signale par un commentaire.
+// A roadmap item is an issue of the specification repo, labelled `piste`,
+// linked to domains and features by `domaine/<id>` and `fonctionnalite/<id>`
+// labels — RG-piste-definition, RG-piste-rattachee. It goes through no pull
+// request: it is checked on the issue event, and reported by a comment.
 //
-// La lecture des étiquettes vit ici, à côté de celle du format, pour la même
-// raison : l'Action qui vérifie une piste et l'application qui l'affiche doivent
-// la lire de la même façon, et deux lectures finiraient par diverger.
+// Reading the labels lives here, next to reading the format, for the same
+// reason: the Action that checks a roadmap item and the application that
+// displays it must read it the same way, and two readings would end up
+// diverging.
 //
-// Un écart est une anomalie codée (RG-anomalies-codees) ; sa forme textuelle,
-// `ecarts`, se dit dans la langue qu'on demande, en français par défaut.
+// A discrepancy is a coded anomaly (RG-anomalies-codees); its textual form,
+// `ecarts`, is said in the requested language, French by default.
 
-import { avertissement, formaterAnomalie, LANGUE_PAR_DEFAUT } from './anomalies.mjs';
+import { createWarning, formaterAnomalie, DEFAULT_LANGUAGE } from './anomalies.mjs';
 
-/** L'étiquette qui fait d'une issue une piste. */
+/** The label that makes an issue a roadmap item. */
 export const ETIQUETTE_PISTE = 'piste';
 
 /**
- * Les préfixes de rattachement, et ce qu'ils désignent dans un référentiel
- * chargé. Une table, comme les cibles d'un impact : un rattachement ajouté
- * demain hérite des contrôles sans qu'on ait à penser à chacun.
+ * The link prefixes, and what they designate in a loaded specification. A
+ * table, like the targets of an impact: a link added tomorrow inherits the
+ * checks without having to think of each one.
  *
- * `libelle` et `connus` restent pour qui les lisait : les messages, eux, se
- * disent par le catalogue (`messages/pistes.mjs`), dans chaque langue.
+ * `libelle` and `connus` remain for whoever read them: the messages are said
+ * through the catalogue (`messages/roadmap-items.mjs`), in each language.
  */
 export const RATTACHEMENTS_PISTE = [
   { prefixe: 'domaine/', collection: 'domains', libelle: 'aucun domaine', connus: 'domaines connus' },
   { prefixe: 'fonctionnalite/', collection: 'features', libelle: 'aucune fonctionnalité', connus: 'fonctionnalités connues' },
 ];
 
-/** Le marqueur caché qui permet de retrouver le commentaire de la vérification. */
+/** The hidden marker used to find the check's comment again. */
 export const MARQUEUR_PISTE = '<!-- ssk-canon:piste-rattachee -->';
 
-const nomEtiquette = (e) => (typeof e === 'string' ? e : e?.name ?? '');
+const labelName = (l) => (typeof l === 'string' ? l : l?.name ?? '');
 
 /**
- * Les rattachements que portent des étiquettes, dans leur ordre.
+ * The links carried by labels, in their order.
  *
- * Une étiquette étrangère au rattachement n'y figure pas ; une étiquette de
- * rattachement sans identifiant y figure avec un identifiant vide, pour pouvoir
- * être signalée.
+ * A label unrelated to links is not included; a link label without an
+ * identifier is included with an empty identifier, so that it can be
+ * reported.
  *
- * @param {ReadonlyArray<string | { name?: string }>} etiquettes
+ * @param {ReadonlyArray<string | { name?: string }>} labels
  */
-export function lireRattachementsPiste(etiquettes) {
+export function lireRattachementsPiste(labels) {
   const out = [];
-  for (const e of etiquettes) {
-    const nom = nomEtiquette(e);
-    const r = RATTACHEMENTS_PISTE.find((r) => nom.startsWith(r.prefixe));
-    if (r) out.push({ etiquette: nom, collection: r.collection, id: nom.slice(r.prefixe.length) });
+  for (const l of labels) {
+    const name = labelName(l);
+    const r = RATTACHEMENTS_PISTE.find((r) => name.startsWith(r.prefixe));
+    if (r) out.push({ etiquette: name, collection: r.collection, id: name.slice(r.prefixe.length) });
   }
   return out;
 }
 
-/** Vrai quand les étiquettes font de l'issue une piste. */
-export function estPiste(etiquettes) {
-  return etiquettes.some((e) => nomEtiquette(e) === ETIQUETTE_PISTE);
+/** True when the labels make the issue a roadmap item. */
+export function estPiste(labels) {
+  return labels.some((l) => labelName(l) === ETIQUETTE_PISTE);
 }
 
 /**
- * Vérifie le rattachement d'une piste à un référentiel chargé.
+ * Checks how a roadmap item is linked to a loaded specification.
  *
- * Une issue qui n'est pas une piste n'est pas vérifiée. Une étiquette qui ne
- * désigne rien ne vaut pas rattachement : la piste qui n'a qu'elle n'apparaît
- * nulle part, et cela se dit aussi.
+ * An issue that is not a roadmap item is not checked. A label that designates
+ * nothing does not count as a link: the roadmap item that only has such a
+ * label appears nowhere, and that is reported too.
  *
- * Chaque écart est un avertissement codé, dans `anomalies` ; `ecarts` en est la
- * forme textuelle, dans `langue`.
+ * Each discrepancy is a coded warning, in `anomalies`; `ecarts` is its textual
+ * form, in `language`.
  *
- * @param {ReadonlyArray<string | { name?: string }>} etiquettes
+ * @param {ReadonlyArray<string | { name?: string }>} labels
  * @param {{ domains: ReadonlyMap<string, unknown>, features: ReadonlyMap<string, unknown> }} repo
- * @param {string} [langue]
+ * @param {string} [language]
  */
-export function checkPiste(etiquettes, repo, langue = LANGUE_PAR_DEFAUT) {
-  if (!estPiste(etiquettes)) return { piste: false, ecarts: [], anomalies: [] };
+export function checkPiste(labels, repo, language = DEFAULT_LANGUAGE) {
+  if (!estPiste(labels)) return { piste: false, ecarts: [], anomalies: [] };
 
   const anomalies = [];
-  let rattachee = false;
-  for (const { etiquette, collection, id } of lireRattachementsPiste(etiquettes)) {
-    if (!id) anomalies.push(avertissement('etiquette-piste-sans-identifiant', { etiquette }));
+  let linked = false;
+  for (const { etiquette, collection, id } of lireRattachementsPiste(labels)) {
+    if (!id) anomalies.push(createWarning('etiquette-piste-sans-identifiant', { etiquette }));
     else if (!repo[collection]?.has(id)) {
       const connus = [...(repo[collection]?.keys() ?? [])].sort();
-      anomalies.push(avertissement('etiquette-piste-inconnue', { etiquette, collection, connus }));
-    } else rattachee = true;
+      anomalies.push(createWarning('etiquette-piste-inconnue', { etiquette, collection, connus }));
+    } else linked = true;
   }
 
-  if (!rattachee) anomalies.unshift(avertissement('piste-non-rattachee'));
+  if (!linked) anomalies.unshift(createWarning('piste-non-rattachee'));
 
-  return { piste: true, ecarts: anomalies.map((a) => formaterAnomalie(a, langue)), anomalies };
+  return { piste: true, ecarts: anomalies.map((a) => formaterAnomalie(a, language)), anomalies };
 }
 
-/** Le commentaire qui signale des écarts, marqueur en tête, dans `langue`. */
-export function corpsCommentairePiste(ecarts, langue = LANGUE_PAR_DEFAUT) {
-  const dire = (code) => formaterAnomalie({ code, params: {} }, langue);
+/** The comment that reports discrepancies, marker first, in `language`. */
+export function corpsCommentairePiste(discrepancies, language = DEFAULT_LANGUAGE) {
+  const say = (code) => formaterAnomalie({ code, params: {} }, language);
   return [
     MARQUEUR_PISTE,
-    dire('piste-commentaire-titre'),
+    say('piste-commentaire-titre'),
     '',
-    ...ecarts.map((e) => `- ${e}`),
+    ...discrepancies.map((d) => `- ${d}`),
     '',
-    dire('piste-commentaire-regle'),
+    say('piste-commentaire-regle'),
   ].join('\n');
 }
 
 /**
- * Ce qu'il faut faire du commentaire de la vérification, d'après les
- * commentaires de l'issue et les écarts trouvés.
+ * What to do with the check's comment, given the issue's comments and the
+ * discrepancies found.
  *
- * Un seul commentaire, tenu à jour : le répéter à chaque étiquette posée
- * noierait la discussion. Seul un commentaire d'automate qui commence par le
- * marqueur est le sien — celui d'une personne qui le cite n'est jamais repris.
+ * A single comment, kept up to date: repeating it on each label set would
+ * drown the discussion. Only a bot comment that starts with the marker is its
+ * own — that of a person quoting it is never taken over.
  *
- * @param {ReadonlyArray<{ id: number, body?: string, user?: { type?: string } }>} commentaires
- * @param {readonly string[]} ecarts
- * @param {string} [langue] celle du commentaire, qui est celle du dépôt
+ * @param {ReadonlyArray<{ id: number, body?: string, user?: { type?: string } }>} comments
+ * @param {readonly string[]} discrepancies
+ * @param {string} [language] the comment's, which is the repo's
  * @returns {{ action: 'rien' } | { action: 'creer', corps: string }
  *   | { action: 'modifier', id: number, corps: string } | { action: 'supprimer', id: number }}
  */
-export function planifierCommentairePiste(commentaires, ecarts, langue = LANGUE_PAR_DEFAUT) {
-  const existant = commentaires.find(
+export function planifierCommentairePiste(comments, discrepancies, language = DEFAULT_LANGUAGE) {
+  const existing = comments.find(
     (c) => c.user?.type === 'Bot' && (c.body ?? '').startsWith(MARQUEUR_PISTE),
   );
-  if (!ecarts.length) return existant ? { action: 'supprimer', id: existant.id } : { action: 'rien' };
+  if (!discrepancies.length) return existing ? { action: 'supprimer', id: existing.id } : { action: 'rien' };
 
-  const corps = corpsCommentairePiste(ecarts, langue);
-  if (!existant) return { action: 'creer', corps };
-  if (existant.body === corps) return { action: 'rien' };
-  return { action: 'modifier', id: existant.id, corps };
+  const corps = corpsCommentairePiste(discrepancies, language);
+  if (!existing) return { action: 'creer', corps };
+  if (existing.body === corps) return { action: 'rien' };
+  return { action: 'modifier', id: existing.id, corps };
 }
 
 /**
- * Les étiquettes de rattachement qu'un référentiel attend : une par domaine, puis
- * une par fonctionnalité, dans l'ordre des identifiants.
+ * The link labels a specification expects: one per domain, then one per
+ * feature, in identifier order.
  *
- * Les identifiants sont ceux que le chargeur a lus dans le frontmatter — les mêmes
- * que la vérification accepte. Les tirer des noms de fichiers créerait, pour un
- * fichier qui ne porte pas le nom de son identifiant, une étiquette que la
- * vérification refuserait.
+ * The identifiers are those the loader read in the frontmatter — the same ones
+ * the check accepts. Taking them from file names would create, for a file not
+ * named after its identifier, a label the check would reject.
  *
  * @param {{ domains: ReadonlyMap<string, unknown>, features: ReadonlyMap<string, unknown> }} repo
  */
