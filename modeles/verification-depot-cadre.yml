@@ -57,7 +57,7 @@ jobs:
           referentiel: '.'
           appliquer: 'false'
           # Lit les référentiels cités dans `referentiels_cites`, quand l'un est
-          # privé : un jeton en lecture seule sur ces dépôts (voir le README,
+          # privé : un jeton en lecture seule sur ces dépôts (voir docs/citations.md,
           # « Citer un autre référentiel »). Absent, leurs citations se disent
           # non vérifiées, sans rien faire échouer.
           jeton-referentiels-cites: ${{ secrets.SSK_CANON_JETON_CITES }}

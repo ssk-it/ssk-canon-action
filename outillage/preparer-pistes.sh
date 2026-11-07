@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Prépare un dépôt cadré à porter sa roadmap — README, « Rattachement des pistes » ;
+# Prépare un dépôt cadré à porter sa roadmap — docs/pistes.md ;
 # cadrage ssk-canon 2026-058.
 #
 #   1. l'étiquette « piste », qui fait d'une issue une piste — RG-piste-definition ;

@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Pose sur un dépôt cadré le secret SSK_CANON_JETON_CITES, avec lequel sa vérification
-# lit les référentiels qu'il cite — README, « Citer un autre référentiel ».
+# lit les référentiels qu'il cite — docs/citations.md.
 #
 #   1. en lecture seule : les référentiels que le dépôt déclare dans `referentiels_cites`
 #      de son ssk-canon.yml, sur sa branche par défaut, et ceux d'entre eux qui sont
@@ -19,7 +19,7 @@
 # Fine-grained tokens : propriétaire de la ressource, l'organisation des référentiels
 # cités ; accès aux seuls dépôts cités ; permission Contents en lecture seule, rien
 # d'autre. Un jeton à grain fin ne porte que sur un propriétaire : des référentiels cités
-# chez deux propriétaires demandent un autre moyen (README).
+# chez deux propriétaires demandent un autre moyen (docs/citations.md).
 #
 # Usage : outillage/jeton-referentiels-cites.sh <propriétaire>/<dépôt-cadré>
 #
