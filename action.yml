@@ -77,6 +77,23 @@ inputs:
       échouer. Un référentiel cité public se lit sans jeton.
     required: false
     default: ''
+
+  application-id:
+    description: >
+      L'identifiant client (« Client ID ») de l'application GitHub de
+      l'automatisation — variable SSK_CANON_APP_ID. Avec sa clé, la propagation ouvre sa demande de fusion
+      sous cette identité et en demande la fusion automatique : une demande
+      ouverte par le jeton du workflow verrait ses contrôles attendre une
+      approbation humaine (RG-propagation-identite-dediee). Sans elle, la
+      propagation se replie sur le jeton du workflow, et le dit.
+    required: false
+    default: ''
+  application-cle:
+    description: >
+      La clé privée de cette application — secret SSK_CANON_APP_CLE. Elle ne
+      sert qu'à obtenir un jeton d'installation, qui vit une heure.
+    required: false
+    default: ''
 outputs:
   ecritures:
     description: Nombre de règles écrites (ou qui le seraient en simulation).
@@ -176,12 +193,33 @@ runs:
         N=$(grep -oE '^[0-9]+ (règle|rule)' "${RUNNER_TEMP}/propagation.log" | grep -oE '^[0-9]+' || echo 0)
         echo "ecritures=$N" >> "$GITHUB_OUTPUT"
 
+    # The installation token of the automation's app, scoped to this repo and
+    # valid for an hour. An app not installed on the repo, or a wrong key, must
+    # not fail a propagation that can still go through the workflow token: the
+    # next step falls back on it and says why.
+    - name: Obtenir le jeton de l'application
+      id: application
+      if: >-
+        inputs.appliquer == 'true' && inputs.commiter == 'true'
+        && inputs.application-id != '' && inputs.application-cle != ''
+      continue-on-error: true
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.application-id }}
+        private-key: ${{ inputs.application-cle }}
+        # what the propagation does, and nothing else: write the branch, open
+        # the pull request, ask for its merge
+        permission-contents: write
+        permission-pull-requests: write
+
     - name: Commiter les écritures
       if: inputs.appliquer == 'true' && inputs.commiter == 'true'
       shell: bash
       working-directory: ${{ github.workspace }}
       env:
         GH_TOKEN: ${{ github.token }}
+        APP_TOKEN: ${{ steps.application.outputs.token }}
+        APP_OUTCOME: ${{ steps.application.outcome }}
         LANGUE: ${{ steps.propager.outputs.langue }}
       run: |
         # the same catalogue, in the language the previous step read
@@ -213,13 +251,40 @@ runs:
           exit 0
         fi
 
+        # The identity the pull request is opened under. Opened with the
+        # workflow token, its `pull_request` runs wait for a human's approval,
+        # and that pending run blocks the merge even once the required check is
+        # green: the automation's app opens it instead, its token triggering the
+        # checks like any contributor's — RG-propagation-identite-dediee.
+        # Without the app, the previous behaviour, said as such.
+        if [ -n "${APP_TOKEN}" ]; then
+          PR_TOKEN="${APP_TOKEN}"
+        else
+          PR_TOKEN="${GH_TOKEN}"
+          if [ "${APP_OUTCOME}" = "failure" ]; then
+            echo "::warning::$(say action-identite-indisponible)"
+          else
+            echo "::warning::$(say action-identite-absente)"
+          fi
+        fi
+
         # A propagation pull request already open carries these writes, or part
         # of them: opening a second one would duplicate them, and the scheduled
         # propagation would open one per hour. We wait for its merge; the next
         # run will propagate whatever remains.
-        PENDING=$(gh pr list --base "${GITHUB_REF_NAME}" --state open --json headRefName \
-          | node "${RUNNER_TEMP}/ssk-canon-action/src/pending-propagation.mjs")
+        OPEN=$(gh pr list --base "${GITHUB_REF_NAME}" --state open --json number,headRefName,mergeStateStatus)
+        PENDING=$(node "${RUNNER_TEMP}/ssk-canon-action/src/pending-propagation.mjs" <<< "$OPEN")
         if [ "$PENDING" = "oui" ]; then
+          # A scoping merged in the meantime puts it behind its base: a main
+          # branch that requires an up-to-date branch would then keep it
+          # waiting for an update nobody makes.
+          for NUMBER in $(node "${RUNNER_TEMP}/ssk-canon-action/src/pending-propagation.mjs" --en-retard <<< "$OPEN"); do
+            if GH_TOKEN="${PR_TOKEN}" gh pr update-branch "$NUMBER"; then
+              say action-demande-mise-a-jour "{\"numero\":$NUMBER}"
+            else
+              echo "::warning::$(say action-demande-non-mise-a-jour "{\"numero\":$NUMBER}")"
+            fi
+          done
           echo "::notice::$(say action-propagation-en-attente)"
           exit 0
         fi
@@ -227,26 +292,50 @@ runs:
         BRANCH="propagation/$(git rev-parse --short HEAD)"
         echo "::notice::$(say action-push-refuse "{\"branche\":\"$BRANCH\"}")"
         git switch -c "$BRANCH"
-        git push -u origin "$BRANCH"
+        if [ -n "${APP_TOKEN}" ]; then
+          # The checkout's credentials are the workflow token's, sent as an
+          # extra header that would win over the URL's: an empty value resets
+          # it, and the branch is pushed under the app's identity too.
+          git -c "http.${GITHUB_SERVER_URL}/.extraheader=" push \
+            "https://x-access-token:${APP_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git" \
+            "$BRANCH"
+        else
+          git push -u origin "$BRANCH"
+        fi
 
         # `--fill` would reuse the commit message; what the pull request
         # carries is named explicitly, so it can be reviewed without opening it.
-        gh pr create \
+        GH_TOKEN="${PR_TOKEN}" gh pr create \
           --base "${GITHUB_REF_NAME}" \
           --head "$BRANCH" \
           --title "${{ inputs.message }}" \
           --body "$(say action-demande-corps)"
 
-        # A pull request opened by the automation's token triggers no
-        # workflow: GitHub creates none for any event of that token, except
-        # `workflow_dispatch`. The check the main branch requires is therefore
-        # launched from here, on the pull request's branch; without it, the
-        # pull request would stay blocked until it is closed and reopened.
-        # A repo whose workflows predate this launch refuses it: we say so,
-        # without failing a propagation already pushed.
-        if gh workflow run "${{ inputs.verification }}" --ref "$BRANCH"; then
-          say action-verification-lancee
+        if [ -n "${APP_TOKEN}" ]; then
+          # The platform merges once the required checks are green, and never
+          # before: the propagation does not wait for them, and bypasses none
+          # of the main branch's rules. The method is the one the repo allows,
+          # a merge commit unless it forbids them.
+          METHOD=$(gh api "repos/${GITHUB_REPOSITORY}" --jq '
+            if .allow_merge_commit == false and .allow_squash_merge == true then "--squash"
+            elif .allow_merge_commit == false and .allow_rebase_merge == true then "--rebase"
+            else "--merge" end')
+          if GH_TOKEN="${PR_TOKEN}" gh pr merge "$BRANCH" --auto "$METHOD"; then
+            say action-fusion-automatique-demandee
+          else
+            echo "::warning::$(say action-fusion-automatique-refusee)"
+          fi
         else
-          echo "::warning::$(say action-verification-non-lancee "{\"workflow\":\"${{ inputs.verification }}\"}")"
+          # A pull request opened by the workflow token gets its runs only once
+          # a human approves them; `workflow_dispatch` is the one event of that
+          # token that creates a run at once. The check is therefore launched
+          # from here, on the pull request's branch, so that its result is
+          # there when the human comes. A repo whose workflows predate this
+          # launch refuses it: we say so, without failing a propagation already
+          # pushed.
+          if gh workflow run "${{ inputs.verification }}" --ref "$BRANCH"; then
+            say action-verification-lancee
+          else
+            echo "::warning::$(say action-verification-non-lancee "{\"workflow\":\"${{ inputs.verification }}\"}")"
+          fi
         fi
-

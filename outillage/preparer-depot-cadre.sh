@@ -7,7 +7,16 @@
 #   1. workflows' default permissions read and write, and GitHub Actions
 #      allowed to create pull requests — if the organisation does not forbid it;
 #   2. deletion of a pull request's branch when it is merged;
-#   3. read-only: the settings are in place.
+#   3. automatic merge allowed, which the propagation asks for on its pull request;
+#   4. the propagation workflow passes the identity of the automation's app
+#      (SSK_CANON_APP_ID, SSK_CANON_APP_CLE) to the action — by a pull request, the
+#      main branch refusing direct pushes;
+#   5. read-only: the settings are in place.
+#
+# Without the app's identity, the propagation opens its pull request with the
+# workflow token, whose checks wait for a human's approval: on ssk-terrarium-cadrage,
+# #24 and #25 waited on 8 November 2026 — RG-propagation-identite-dediee. The app,
+# its variable and its secret are posted once by outillage/application-propagation.sh.
 #
 # Without permission to create pull requests, a protected main branch refuses the propagation's
 # direct push, which then pushes its « propagation/<sha> » branch and fails on
@@ -117,12 +126,134 @@ else
 fi
 echo
 
-# --- 3. Read-only check -----------------------------------------------------------------
+# --- 3. Automatic merge -----------------------------------------------------------------
 
-echo "3. Vérification"
+auto_merge() {
+    gh api "repos/${REPO}" -q .allow_auto_merge 2>/dev/null \
+        || ko "réglages de ${REPO} illisibles"
+}
+
+echo "3. Fusion automatique"
+# The propagation asks for the automatic merge of its pull request, which the platform
+# makes once the required checks are green, and never before — RG-propagation-verifiee.
+AUTO_MERGE="$(auto_merge)"
+say "autoriser la fusion automatique : ${AUTO_MERGE}"
+if [ "${AUTO_MERGE}" = true ]; then
+    ok "déjà en place : laissé tel quel"
+else
+    say "à écrire : autoriser la fusion automatique des demandes de fusion"
+    say "les contrôles requis restent requis : une demande ne fusionne qu'une fois verte"
+    if confirm "régler ${REPO} ainsi ?"; then
+        jq -n '{ allow_auto_merge: true }' \
+            | gh api -X PATCH "repos/${REPO}" --input - >/dev/null \
+            || ko "écriture refusée — droits d'administration de ${REPO} manquants ?"
+        ok "réglé"
+    else
+        say "laissé tel quel"
+    fi
+fi
+echo
+
+# --- 4. The propagation workflow passes the app -----------------------------------------
+
+APP_LINES=(
+    "application-id: \${{ vars.SSK_CANON_APP_ID }}"
+    "application-cle: \${{ secrets.SSK_CANON_APP_CLE }}"
+)
+UPDATE_BRANCH=ssk-canon-application-propagation
+
+# The workflow that calls the action with `appliquer` at true: the automation is
+# recognised by its call, not by the name of its files — RG-installation-automatisation.
+propagation_workflow() {
+    local path content
+    while IFS= read -r path; do
+        content="$(gh api "repos/${REPO}/contents/${path}" -q .content 2>/dev/null | base64 -d 2>/dev/null)" || continue
+        if grep -q 'uses: ssk-it/ssk-canon-action@' <<< "${content}" \
+            && grep -Eq "appliquer: *['\"]?true" <<< "${content}"; then
+            echo "${path}"
+            return 0
+        fi
+    done < <(gh api "repos/${REPO}/contents/.github/workflows" -q '.[] | select(.type == "file") | .path' 2>/dev/null)
+    return 0
+}
+
+echo "4. Identité de l'application transmise à la propagation"
+WORKFLOW="$(propagation_workflow)"
+if [ -z "${WORKFLOW}" ]; then
+    echo "  ✗ aucun workflow n'appelle la propagation (ssk-it/ssk-canon-action, appliquer: true) — l'automatisation est-elle installée ?" >&2
+else
+    CONTENT="$(gh api "repos/${REPO}/contents/${WORKFLOW}" -q .content | base64 -d)"
+    if grep -q 'application-id:' <<< "${CONTENT}"; then
+        ok "${WORKFLOW} la transmet déjà"
+    elif OPEN="$(gh pr list -R "${REPO}" --head "${UPDATE_BRANCH}" --state open --json url -q '.[0].url')" && [ -n "${OPEN}" ]; then
+        ok "demande déjà ouverte : ${OPEN}"
+    else
+        # Two lines added under the `with:` of the action's step, at the indentation
+        # of its first key; nothing else in the file changes.
+        UPDATED="$(awk -v l1="${APP_LINES[0]}" -v l2="${APP_LINES[1]}" '
+            /uses: ssk-it\/ssk-canon-action@/ { step = 1 }
+            step && /^[ \t]*with:[ \t]*$/ {
+                print
+                if ((getline next_line) > 0) {
+                    match(next_line, /^[ \t]*/)
+                    indent = substr(next_line, 1, RLENGTH)
+                    print indent l1
+                    print indent l2
+                    print next_line
+                }
+                step = 0
+                next
+            }
+            { print }' <<< "${CONTENT}")"
+        if [ "$(grep -c 'application-' <<< "${UPDATED}")" != 2 ]; then
+            echo "  ✗ ${WORKFLOW} : bloc « with: » de l'action introuvable — ajouter à la main :" >&2
+            for line in "${APP_LINES[@]}"; do echo "      ${line}" >&2; done
+        else
+            say "à ajouter à ${WORKFLOW}, sous le « with: » de l'action :"
+            for line in "${APP_LINES[@]}"; do say "   ${line}"; done
+            say "par une demande de fusion depuis ${UPDATE_BRANCH}, fusionnée d'elle-même une fois verte"
+            if confirm "ouvrir cette demande sur ${REPO} ?"; then
+                DEFAULT="$(gh api "repos/${REPO}" -q .default_branch)"
+                BASE="$(gh api "repos/${REPO}/git/ref/heads/${DEFAULT}" -q .object.sha)"
+                if ! gh api "repos/${REPO}/git/ref/heads/${UPDATE_BRANCH}" >/dev/null 2>&1; then
+                    jq -n --arg ref "refs/heads/${UPDATE_BRANCH}" --arg sha "${BASE}" '{ ref: $ref, sha: $sha }' \
+                        | gh api -X POST "repos/${REPO}/git/refs" --input - >/dev/null \
+                        || ko "branche ${UPDATE_BRANCH} refusée sur ${REPO}"
+                fi
+                SHA="$(gh api "repos/${REPO}/contents/${WORKFLOW}?ref=${UPDATE_BRANCH}" -q .sha)"
+                # Writing a workflow takes the `workflow` scope of the gh session, apart
+                # from the one that writes files — RG-installation-automatisation.
+                jq -n --arg message "Transmettre l'application de l'automatisation à la propagation" \
+                    --arg content "$(base64 <<< "${UPDATED}" | tr -d '\n')" \
+                    --arg sha "${SHA}" --arg branch "${UPDATE_BRANCH}" \
+                    '{ message: $message, content: $content, sha: $sha, branch: $branch }' \
+                    | gh api -X PUT "repos/${REPO}/contents/${WORKFLOW}" --input - >/dev/null \
+                    || ko "écriture de ${WORKFLOW} refusée — la session gh a-t-elle la portée workflow ? (gh auth refresh -s workflow)"
+                URL="$(gh pr create -R "${REPO}" --base "${DEFAULT}" --head "${UPDATE_BRANCH}" \
+                    --title "Transmettre l'application de l'automatisation à la propagation" \
+                    --body "La propagation ouvre sa demande de fusion sous l'identité de l'application de l'automatisation, dont les contrôles se déclenchent sans approbation, et en demande la fusion automatique — RG-propagation-identite-dediee. Posé par \`outillage/preparer-depot-cadre.sh\` de ssk-it/ssk-canon-action.")"
+                ok "demande ouverte : ${URL}"
+                if gh pr merge "${URL}" --auto --merge >/dev/null 2>&1 \
+                    || gh pr merge "${URL}" --auto --squash >/dev/null 2>&1; then
+                    ok "fusion automatique demandée"
+                else
+                    say "fusion automatique refusée : à fusionner une fois verte"
+                fi
+            else
+                say "laissé tel quel"
+            fi
+        fi
+    fi
+fi
+echo
+
+# --- 5. Read-only check -----------------------------------------------------------------
+
+echo "5. Vérification"
 MISSING=0
 AFTER="$(read_permissions)"
 DELETION="$(branch_deletion)"
+AUTO_MERGE="$(auto_merge)"
 if [ "$(jq -r .default_workflow_permissions <<< "${AFTER}")" = write ] \
     && [ "$(jq -r .can_approve_pull_request_reviews <<< "${AFTER}")" = true ]; then
     ok "la propagation peut écrire et ouvrir sa demande de fusion"
@@ -134,6 +265,20 @@ if [ "${DELETION}" = true ]; then
     ok "une branche fusionnée est supprimée"
 else
     echo "  ✗ réglage absent : les branches fusionnées resteront" >&2
+    MISSING=1
+fi
+if [ "${AUTO_MERGE}" = true ]; then
+    ok "la demande de propagation peut se fusionner d'elle-même"
+else
+    echo "  ✗ réglage absent : la demande de propagation attendra une fusion à la main" >&2
+    MISSING=1
+fi
+if [ -n "${WORKFLOW}" ] && gh api "repos/${REPO}/contents/${WORKFLOW}" -q .content | base64 -d | grep -q 'application-id:'; then
+    ok "la propagation reçoit l'identité de l'application"
+elif [ -n "$(gh pr list -R "${REPO}" --head "${UPDATE_BRANCH}" --state open --json url -q '.[0].url')" ]; then
+    say "la propagation recevra l'identité de l'application une fois sa demande fusionnée"
+else
+    echo "  ✗ la propagation ne reçoit pas l'identité de l'application : ses demandes attendront une approbation" >&2
     MISSING=1
 fi
 [ "${MISSING}" = 0 ] || exit 1

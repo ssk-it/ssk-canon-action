@@ -27,6 +27,24 @@ export const propagation = {
       `Vérification non lancée : « ${p.workflow} » doit accepter workflow_dispatch, ` +
       'et la propagation avoir la permission actions: write — reprendre les modèles. ' +
       "D'ici là, fermer puis rouvrir la demande la déclenche.",
+    'action-identite-absente': () =>
+      "Demande ouverte avec le jeton du workflow, faute de l'application de l'automatisation : " +
+      'ses contrôles attendront une approbation humaine. Transmettre la variable SSK_CANON_APP_ID ' +
+      'et le secret SSK_CANON_APP_CLE à la propagation — outillage/application-propagation.sh.',
+    'action-identite-indisponible': () =>
+      "Jeton de l'application de l'automatisation refusé — application non installée sur ce dépôt, " +
+      'ou clé SSK_CANON_APP_CLE erronée : demande ouverte avec le jeton du workflow, ' +
+      'ses contrôles attendront une approbation humaine.',
+    'action-fusion-automatique-demandee': () =>
+      'Fusion automatique demandée : la demande se fusionnera une fois les contrôles requis verts.',
+    'action-fusion-automatique-refusee': () =>
+      'Fusion automatique refusée — à autoriser sur le dépôt (outillage/preparer-depot-cadre.sh) : ' +
+      'la demande attend une fusion à la main.',
+    'action-demande-mise-a-jour': (p) =>
+      `Demande de propagation #${p.numero} dépassée par la branche principale : mise à jour.`,
+    'action-demande-non-mise-a-jour': (p) =>
+      `Demande de propagation #${p.numero} dépassée par la branche principale, et sa mise à jour refusée : ` +
+      'la mettre à jour à la main.',
     'action-commit-corps': () => 'Écritures calculées à partir des cadrages livrés.',
     'action-demande-corps': () =>
       'Écritures calculées à partir des cadrages livrés, par la propagation.\n\n' +
@@ -57,6 +75,24 @@ export const propagation = {
       `Verification not started: “${p.workflow}” must accept workflow_dispatch, ` +
       'and the propagation needs the actions: write permission — update from the templates. ' +
       'Until then, closing and reopening the pull request triggers it.',
+    'action-identite-absente': () =>
+      'Pull request opened with the workflow token, for lack of the automation’s app: ' +
+      'its checks will wait for a human’s approval. Pass the SSK_CANON_APP_ID variable ' +
+      'and the SSK_CANON_APP_CLE secret to the propagation — outillage/application-propagation.sh.',
+    'action-identite-indisponible': () =>
+      'Token of the automation’s app refused — app not installed on this repo, ' +
+      'or wrong SSK_CANON_APP_CLE key: pull request opened with the workflow token, ' +
+      'its checks will wait for a human’s approval.',
+    'action-fusion-automatique-demandee': () =>
+      'Automatic merge requested: the pull request will merge once the required checks are green.',
+    'action-fusion-automatique-refusee': () =>
+      'Automatic merge refused — to allow on the repo (outillage/preparer-depot-cadre.sh): ' +
+      'the pull request waits for a merge by hand.',
+    'action-demande-mise-a-jour': (p) =>
+      `Propagation pull request #${p.numero} overtaken by the main branch: updated.`,
+    'action-demande-non-mise-a-jour': (p) =>
+      `Propagation pull request #${p.numero} overtaken by the main branch, and its update refused: ` +
+      'update it by hand.',
     'action-commit-corps': () => 'Writes computed from the delivered scopings.',
     'action-demande-corps': () =>
       'Writes computed from the delivered scopings, by the propagation.\n\n' +
