@@ -328,11 +328,14 @@ runs:
         else
           # A pull request opened by the workflow token gets its runs only once
           # a human approves them; `workflow_dispatch` is the one event of that
-          # token that creates a run at once. The check is therefore launched
-          # from here, on the pull request's branch, so that its result is
-          # there when the human comes. A repo whose workflows predate this
-          # launch refuses it: we say so, without failing a propagation already
-          # pushed.
+          # token that creates a run at once. The check is launched from here,
+          # on the pull request's branch, so that its result can be read before
+          # approving. It does not satisfy the required check: the pending
+          # `pull_request` run of the same workflow, more recent on the same
+          # commit, hides it from the pull request, which stays blocked until a
+          # human approves that run (images-build-cadrage#6, 11 November 2026).
+          # A repo whose workflows predate this launch refuses it: we say so,
+          # without failing a propagation already pushed.
           if gh workflow run "${{ inputs.verification }}" --ref "$BRANCH"; then
             say action-verification-lancee
           else

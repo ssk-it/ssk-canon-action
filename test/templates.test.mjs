@@ -1,11 +1,11 @@
 // Tests of the template workflows and of the action that links them.
 //
-// What they protect: a propagation pull request opened with the automation's
-// token triggers no workflow — GitHub creates none for any event of that
-// token, except `workflow_dispatch`. Without a check, the required status is
-// missing, and the pull request stays blocked until someone closes it and
-// reopens it by hand. The action therefore runs the check itself; otherwise the
-// defect would only show at the next delivery of a scoping.
+// What they protect: a propagation pull request opened with the workflow's
+// token gets its `pull_request` runs only once a human approves them, and that
+// pending run hides from the pull request the check `workflow_dispatch` ran.
+// The action therefore opens it under the identity of the automation's app,
+// and, without it, still runs the check itself so that its result can be read;
+// otherwise the defect would only show at the next delivery of a scoping.
 //
 //   node test/templates.test.mjs
 
