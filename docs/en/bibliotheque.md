@@ -8,6 +8,8 @@ The checker is also published as a package, to be run elsewhere than in continuo
 npm install @ssk-it/canon-check
 ```
 
+Every exported function, type and constant is described in the [API reference](https://ssk-it.github.io/ssk-canon-action/), generated from the type declarations on every merge to `main`. It is written in French, like the declarations it comes from.
+
 ```js
 import { checkRepo } from '@ssk-it/canon-check';
 
