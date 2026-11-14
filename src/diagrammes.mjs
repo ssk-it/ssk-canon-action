@@ -43,7 +43,11 @@ export function extraireDiagrammes(repo) {
 
   for (const [id, c] of repo.cadrages ?? []) {
     const source = c.path ?? id;
-    ajouter(source, c.body, id);
+    // A scoping read from a file carries its body; a scoping being written, in
+    // Skanon, its statements indexed by target — as `checkRepo` accepts both.
+    if (c.body === undefined && c.enonces instanceof Map)
+      for (const [cible, texte] of c.enonces) ajouter(`${source} → ${cible}`, texte, id);
+    else ajouter(source, c.body, id);
     for (const d of c.decisions ?? []) ajouter(`${source} — ${d.id}`, d.body, id);
   }
   return diagrammes;
