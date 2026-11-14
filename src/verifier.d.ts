@@ -159,9 +159,17 @@ export function extraireDiagrammes(repo: RepoVerifiable): Diagramme[];
  * `analyser` resolves for a readable diagram and rejects otherwise, with the
  * renderer's message: Skanon gives the Mermaid it draws with, so that it
  * reports while the author writes what the check will refuse. Without a parser,
- * nothing is checked. HTML entities are checked by `checkRepo` itself.
+ * nothing is checked. HTML entities are checked by `checkRepo` itself. The
+ * statements of a scoping may be given as `enonces`, as for `checkRepo`.
  */
 export function verifierDiagrammes(
   repo: RepoVerifiable,
-  options?: { readonly analyser?: (texte: string) => Promise<unknown> },
+  options?: {
+    readonly analyser?: (texte: string) => Promise<unknown>;
+    /**
+     * The scopings considered delivered, as for `checkRepo`: only a block of a
+     * scoping not yet delivered is an error, the others are warnings.
+     */
+    readonly livres?: ReadonlySet<string>;
+  },
 ): Promise<Anomalie[]>;
