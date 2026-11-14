@@ -59,6 +59,27 @@ test('each job of the templates takes the runner the organisation reserves for i
       isTrue(def['runs-on'] === RUNNER, `${name}, job ${job}: runs-on is ${JSON.stringify(def['runs-on'])}`);
 });
 
+test('the propagation pushes with the deploy key of the environment the organisation names, with the token otherwise', () => {
+  const job = propagation.jobs.propager;
+  isTrue(job.environment === "${{ vars.SSK_CANON_ENVIRONNEMENT || '' }}", `environment is ${JSON.stringify(job.environment)}`);
+  const checkout = job.steps.find((s) => s.uses?.startsWith('actions/checkout@'));
+  isTrue(checkout?.with?.['ssh-key'] === '${{ secrets.MAIN_DEPLOY_KEY }}', 'the checkout does not receive MAIN_DEPLOY_KEY');
+  const ssh = job.steps.find((s) => /openssh-client/.test(s.run ?? ''));
+  isTrue(ssh, 'no step installs the SSH client the key needs');
+  isTrue(job.steps.indexOf(ssh) < job.steps.indexOf(checkout), 'the SSH client is installed after the checkout');
+  isTrue(ssh.if === "vars.SSK_CANON_ENVIRONNEMENT != ''", `the SSH client step runs on ${JSON.stringify(ssh.if)}`);
+});
+
+// Dependabot only updates `.github/workflows/`: the templates would fall behind
+// unseen, and a repo brought back to them would go back a version.
+test('the templates check out with the version this repo’s own workflows use', () => {
+  const own = read('.github/workflows/ci.yml').match(/actions\/checkout@(v\d+)/)?.[1];
+  isTrue(own, 'no actions/checkout in ci.yml');
+  for (const [name, template] of [['verification', verification], ['propagation', propagation], ['roadmap items', roadmapItems]])
+    for (const step of Object.values(template.jobs).flatMap((j) => j.steps).filter((s) => s.uses?.startsWith('actions/checkout@')))
+      isTrue(step.uses === `actions/checkout@${own}`, `${name}: ${step.uses}, ci.yml has ${own}`);
+});
+
 test('the action reads the cited specifications with the token it is given, and the templates pass it', () => {
   const inputs = loadYaml(action).inputs;
   isTrue('jeton-referentiels-cites' in inputs, 'the action does not declare the `jeton-referentiels-cites` input');

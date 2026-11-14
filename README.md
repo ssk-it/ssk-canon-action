@@ -91,6 +91,27 @@ Puis, dans les réglages du dépôt :
 
    Une demande de propagation en attente que la branche principale a dépassée — un cadrage fusionné entre-temps — est mise à jour par l'exécution suivante : une branche principale qui exige une branche à jour la bloquerait sinon.
 
+### Branche protégée : la clé de déploiement
+
+Sur une branche principale protégée, la propagation ouvre une demande de fusion qu'il reste à fusionner à la main : jusque-là, le référentiel lu sur `origin/main` est en retard sur ses cadrages. Une organisation qui veut garder le push direct exempte de sa règle une clé de déploiement en écriture, range sa clé privée dans le secret `MAIN_DEPLOY_KEY` d'un environnement limité à la branche principale — un workflow poussé sur une autre branche ne la lit pas —, et nomme cet environnement dans la variable d'organisation `SSK_CANON_ENVIRONNEMENT`. Le modèle de propagation tourne alors dans cet environnement et pousse par la clé, en SSH. Sans la variable, il tourne sans environnement et pousse avec le jeton de l'automatisation. Un script pose la variable, visible des seuls dépôts privés :
+
+```bash
+outillage/environnement-propagation-organisation.sh <organisation> <environnement>
+```
+
+L'environnement, la clé et l'exemption restent à l'organisation (pour Vanex-Proprete, `scripts/proteger-branches-principales.sh` de prime-infra). Un push par la clé déclenche les workflows, contrairement au jeton : chaque propagation qui écrit en relance une, qui n'a plus rien à écrire.
+
+### Remettre un dépôt cadré à niveau
+
+L'installation est une copie : un modèle qui change n'atteint que les dépôts qui le recopient. Un script ouvre, sur chaque référentiel nommé — par défaut, ceux que déclare `~/.claude/cadrage-canon.json` —, une demande de fusion qui remplace ses trois workflows par les modèles de ce clone, sous leurs noms actuels, et laisse tel quel un dépôt déjà conforme. `A_BLANC=1` montre les différences sans rien pousser :
+
+```bash
+A_BLANC=1 outillage/mettre-a-niveau-modeles.sh <organisation>/<depot>
+outillage/mettre-a-niveau-modeles.sh <organisation>/<depot>
+```
+
+Le lancer depuis une branche principale à jour. Un dépôt qui s'écarte d'un modèle perd son écart à la remise à niveau : un besoin qui le justifie se porte dans le modèle, comme la clé de déploiement ci-dessus, plutôt que dans une copie.
+
 ### Pourquoi `@main` et non un tag de version
 
 Les workflows référencent `ssk-it/ssk-canon-action@main`. Un tag mobile `v1` a
