@@ -10,6 +10,7 @@
 # C'est aussi lui qui répond de la branche principale : il vérifie le référentiel
 # qu'il vient d'écrire, seul moment où l'état final peut l'être — l'enregistrement
 # qu'il pousse, fait par le jeton de l'automatisation, ne déclenche aucun workflow.
+# Poussé par la clé de déploiement, il relance ce workflow, qui n'a plus rien à écrire.
 name: Propagation des impacts
 
 on:
@@ -50,11 +51,29 @@ jobs:
     # groupe de runners refuse, et une organisation sans la variable restent sur
     # ubuntu-latest, gratuit pour eux.
     runs-on: ${{ vars.SSK_RUNNER_PRIVE && fromJSON(vars.SSK_RUNNER_PRIVE) || 'ubuntu-latest' }}
+    # Une branche principale protégée refuse le push de la propagation, qui ouvre
+    # alors une demande de fusion à fusionner à la main. Pour pousser quand même,
+    # une organisation exempte de sa règle une clé de déploiement, rangée dans le
+    # secret MAIN_DEPLOY_KEY d'un environnement limité à la branche principale, et
+    # nomme cet environnement dans la variable SSK_CANON_ENVIRONNEMENT (README,
+    # « Branche protégée : la clé de déploiement »). Sans la variable, le nom est
+    # vide : le job tourne sans environnement, et la clé, absente, laisse le push
+    # au jeton de l'automatisation.
+    environment: ${{ vars.SSK_CANON_ENVIRONNEMENT || '' }}
     steps:
-      - uses: actions/checkout@v4
+      # Le push par la clé passe en SSH : l'image de runners d'un cluster peut
+      # n'avoir aucun client SSH ; un Mac ou ubuntu-latest l'ont déjà.
+      - name: Installer le client SSH
+        if: vars.SSK_CANON_ENVIRONNEMENT != ''
+        run: command -v ssh >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends openssh-client; }
+
+      - uses: actions/checkout@v7
         with:
           # l'action a besoin de l'historique pour committer par-dessus
           fetch-depth: 0
+          # La clé de déploiement, quand l'environnement la fournit : le « git push »
+          # de l'action passe par elle. Vide, checkout garde le GITHUB_TOKEN.
+          ssh-key: ${{ secrets.MAIN_DEPLOY_KEY }}
 
       - uses: ssk-it/ssk-canon-action@main
         with:

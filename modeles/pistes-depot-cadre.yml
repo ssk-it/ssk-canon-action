@@ -45,7 +45,7 @@ jobs:
     steps:
       # Le déclenchement par une issue extrait la branche principale : c'est elle
       # dont les identifiants comptent.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ssk-it/ssk-canon-action/pistes@main
         with:
