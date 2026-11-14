@@ -1,0 +1,10 @@
+{
+  "name": "ssk-canon-analyseur-mermaid",
+  "private": true,
+  "type": "module",
+  "description": "L'analyseur des diagrammes Mermaid de l'Action, sous jsdom — cadrage 2026-074. Mermaid à la version qu'emploie Skanon : la vérification lit avec le moteur qui dessine.",
+  "dependencies": {
+    "jsdom": "30.1.3",
+    "mermaid": "12.2.0"
+  }
+}

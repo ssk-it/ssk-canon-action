@@ -74,3 +74,19 @@ checkRepo(referentiel, { cites: new Map([['socle', referentielDuSocle], ['autre'
 ```
 
 The skills' scripts run with nothing installed: `cadrage-canon` and `consulter-referentiel` carry a copy of `src/noms.mjs` and a dependency-free reading of `ssk-canon.yml` (`scripts/config-noms.mjs`). `test/skills-names.test.mjs` keeps the copy identical and checks the reading against YAML: after changing `src/noms.mjs`, copy it again into both skills.
+
+## Diagrams
+
+`checkRepo` reports HTML entities in a ` ```mermaid ` block without a renderer. The syntax needs the renderer: `verifierDiagrammes(repo, { analyser, livres })` checks it with the function the caller gives, which resolves for a readable diagram and rejects otherwise (scoping 2026-074). Skanon gives it the Mermaid that draws, and so reports while the author writes what the check will refuse:
+
+```js
+import mermaid from 'mermaid';
+import { verifierDiagrammes } from '@ssk-it/canon-check';
+
+const anomalies = await verifierDiagrammes(specification, {
+  analyser: (text) => mermaid.parse(text),
+  livres,
+});
+```
+
+Only a block of a scoping not yet delivered is an error; elsewhere, a warning.

@@ -139,3 +139,29 @@ export function checkRepo(
   repo: RepoVerifiable,
   options?: OptionsVerification,
 ): ResultatVerification;
+
+/** A Mermaid block of the specification, where it comes from and its rank there, from 1. */
+export interface Diagramme {
+  readonly source: string;
+  readonly rang: number;
+  readonly texte: string;
+}
+
+/**
+ * The Mermaid blocks of a loaded specification: rules, architecture decisions
+ * and documents, scopings and their decisions — scoping 2026-074.
+ */
+export function extraireDiagrammes(repo: RepoVerifiable): Diagramme[];
+
+/**
+ * The diagrams the given parser refuses, as `diagramme-illisible` errors.
+ *
+ * `analyser` resolves for a readable diagram and rejects otherwise, with the
+ * renderer's message: Skanon gives the Mermaid it draws with, so that it
+ * reports while the author writes what the check will refuse. Without a parser,
+ * nothing is checked. HTML entities are checked by `checkRepo` itself.
+ */
+export function verifierDiagrammes(
+  repo: RepoVerifiable,
+  options?: { readonly analyser?: (texte: string) => Promise<unknown> },
+): Promise<Anomalie[]>;

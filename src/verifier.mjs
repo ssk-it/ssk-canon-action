@@ -13,6 +13,7 @@ import { extractEnonces } from './format.mjs';
 import { checkIdentite } from './identite.mjs';
 import { resoudreNoms, verifierDossiersDeclares } from './noms.mjs';
 import { FORME_PREFIXE, verifierCitations } from './citations.mjs';
+import { verifierEntites } from './diagrammes.mjs';
 
 // The visual identity falls under the same shared rules: the application takes
 // them from here, without having to know the package's internal layout.
@@ -20,6 +21,9 @@ export * from './identite.mjs';
 export * from './noms.mjs';
 // Citing another specification — RG-regle-du-socle-citee.
 export * from './citations.mjs';
+// The diagrams, whose syntax the caller checks with its own renderer — scoping
+// 2026-074.
+export { extraireDiagrammes, verifierDiagrammes } from './diagrammes.mjs';
 // Anomalies and their messages, for whoever says them in their language —
 // RG-anomalies-codees.
 export { LANGUES, formaterAnomalie, enTexte, langueDuDepot } from './anomalies.mjs';
@@ -260,6 +264,13 @@ export function checkRepo(repo, { ignorerIndexDerives = false, livres = new Set(
         warn(createWarning('opere-sur-abrogee', { cadrage: id, cible: target.id }));
     }
   }
+
+  // --- diagrams ---
+  // An HTML entity is checked here, without a renderer: Skanon reports it while
+  // the author writes. The syntax needs the renderer, and is checked beside,
+  // by `verifierDiagrammes` — RG-verification-integrite. Blocking in a scoping
+  // under review, a warning elsewhere.
+  anomalies.push(...verifierEntites(repo, { livres }));
 
   // --- visual identity ---
   // Missing from what is passed, it is not checked: a specification loaded
