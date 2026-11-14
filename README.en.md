@@ -57,6 +57,27 @@ Then, in the repository settings:
 
 The propagation pull request, opened by the automation token, triggers no workflow: GitHub creates none for any event of that token, except `workflow_dispatch`. The propagation therefore starts the verification itself on its pull request's branch — hence `workflow_dispatch` in the verification template, and `actions: write` in the propagation one. A repository installed before this start was added keeps blocked pull requests, for lack of the required check: the propagation reports it, and taking both templates again fixes it. The action's `verification` input names the workflow, by its name — « Vérification du référentiel » by default — or by its file.
 
+### Protected branch: the deploy key
+
+On a protected main branch, the propagation opens a pull request that still has to be merged by hand: until then, the référentiel read on `origin/main` lags behind its cadrages. An organisation that wants to keep the direct push exempts a write deploy key from its rule, stores its private key in the `MAIN_DEPLOY_KEY` secret of an environment restricted to the main branch — a workflow pushed on another branch cannot read it —, and names that environment in the organisation variable `SSK_CANON_ENVIRONNEMENT`. The propagation template then runs in that environment and pushes with the key, over SSH. Without the variable, it runs without an environment and pushes with the automation token. A script sets the variable, visible to private repositories only:
+
+```bash
+outillage/environnement-propagation-organisation.sh <organisation> <environment>
+```
+
+The environment, the key and the exemption stay the organisation's own (for Vanex-Proprete, prime-infra's `scripts/proteger-branches-principales.sh`). A push by the key triggers workflows, unlike the token: each propagation that writes starts another one, which has nothing left to write.
+
+### Bringing a scoped repository back to the templates
+
+Installing is a copy: a template that changes only reaches the repositories that copy it again. A script opens, on each named référentiel — by default, those `~/.claude/cadrage-canon.json` declares —, a pull request that replaces its three workflows with this clone's templates, under their current names, and leaves alone a repository already in line. `A_BLANC=1` shows the differences without pushing anything:
+
+```bash
+A_BLANC=1 outillage/mettre-a-niveau-modeles.sh <organisation>/<repository>
+outillage/mettre-a-niveau-modeles.sh <organisation>/<repository>
+```
+
+Run it from an up-to-date main branch. A repository that departs from a template loses its departure when brought back: a need that justifies it goes into the template, like the deploy key above, rather than into a copy.
+
 ### Why `@main` and not a version tag
 
 The workflows reference `ssk-it/ssk-canon-action@main`. A moving `v1` tag existed, and it demonstrated what it is blamed for: it stayed on version 1.4.0 while the main branch got twenty-six commits ahead, so that scoped repositories consumed a checker that ignored the deduced status. Nothing reported the lag, since a tag one forgets to move does not complain.
