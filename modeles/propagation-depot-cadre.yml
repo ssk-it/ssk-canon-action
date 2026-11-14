@@ -11,6 +11,10 @@
 # qu'il vient d'écrire, seul moment où l'état final peut l'être — l'enregistrement
 # qu'il pousse, fait par le jeton de l'automatisation, ne déclenche aucun workflow.
 # Poussé par la clé de déploiement, il relance ce workflow, qui n'a plus rien à écrire.
+# Une branche principale qui refuse la poussée directe, sans clé de déploiement,
+# reçoit ces écritures par une demande de fusion, ouverte sous l'identité de
+# l'application de l'automatisation et fusionnée d'elle-même une fois la
+# vérification requise verte.
 name: Propagation des impacts
 
 on:
@@ -32,8 +36,9 @@ permissions:
   # Une branche protégée refuse le push direct de la propagation : elle ouvre
   # alors une demande de fusion.
   pull-requests: write
-  # Cette demande, ouverte par le jeton de l'automatisation, ne déclenche aucun
-  # workflow : la propagation y lance elle-même la vérification requise.
+  # Sans l'application de l'automatisation, la demande est ouverte par le jeton
+  # du workflow, dont les runs attendent une approbation : la propagation y
+  # lance alors elle-même la vérification requise.
   actions: write
 
 # Deux merges rapprochés ne doivent pas propager en parallèle : le second
@@ -52,7 +57,8 @@ jobs:
     # ubuntu-latest, gratuit pour eux.
     runs-on: ${{ vars.SSK_RUNNER_PRIVE && fromJSON(vars.SSK_RUNNER_PRIVE) || 'ubuntu-latest' }}
     # Une branche principale protégée refuse le push de la propagation, qui ouvre
-    # alors une demande de fusion à fusionner à la main. Pour pousser quand même,
+    # alors une demande de fusion, que fusionne l'application de l'automatisation —
+    # à la main sans elle. Pour pousser quand même,
     # une organisation exempte de sa règle une clé de déploiement, rangée dans le
     # secret MAIN_DEPLOY_KEY d'un environnement limité à la branche principale, et
     # nomme cet environnement dans la variable SSK_CANON_ENVIRONNEMENT (README,
@@ -85,3 +91,11 @@ jobs:
           # « Citer un autre référentiel »). Absent, leurs citations se disent
           # non vérifiées, sans rien faire échouer.
           jeton-referentiels-cites: ${{ secrets.SSK_CANON_JETON_CITES }}
+          # L'application de l'automatisation, sous laquelle s'ouvre la demande de
+          # propagation quand la branche principale refuse la poussée directe :
+          # ouverte par le jeton du workflow, ses contrôles attendraient une
+          # approbation humaine (RG-propagation-identite-dediee). Posées par
+          # outillage/application-propagation.sh ; absentes, la propagation se
+          # replie sur le jeton du workflow, et le dit.
+          application-id: ${{ vars.SSK_CANON_APP_ID }}
+          application-cle: ${{ secrets.SSK_CANON_APP_CLE }}

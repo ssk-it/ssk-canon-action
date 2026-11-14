@@ -10,7 +10,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { hasPendingPropagation } from './pending-propagation.mjs';
+import { behindPropagations, hasPendingPropagation } from './pending-propagation.mjs';
 
 let passed = 0;
 const failures = [];
@@ -50,6 +50,28 @@ test('reads the gh list on its input, and says it with oui or non', () => {
     execFileSync('node', [script], { input: JSON.stringify(input) }).toString().trim();
   equal(output([{ headRefName: 'propagation/9f9f9f9' }]), 'oui');
   equal(output([]), 'non');
+});
+
+// A pending propagation pull request that the main branch has overtaken — a
+// scoping merged in the meantime — would wait forever for an update nobody
+// makes, when the main branch requires an up-to-date branch: the propagation
+// updates it, and must therefore find it.
+test('names the propagation pull requests the main branch has overtaken', () => {
+  const list = [
+    { number: 7, headRefName: 'propagation/1a2b3c4', mergeStateStatus: 'BEHIND' },
+    { number: 8, headRefName: 'propagation/5d6e7f8', mergeStateStatus: 'BLOCKED' },
+    { number: 9, headRefName: 'cadrage-2026-020', mergeStateStatus: 'BEHIND' },
+  ];
+  equal(behindPropagations(list).join(','), '7');
+  equal(behindPropagations([]).join(','), '');
+});
+
+test('with --en-retard, prints one overtaken pull request per line', () => {
+  const script = fileURLToPath(new URL('./pending-propagation.mjs', import.meta.url));
+  const output = (input) =>
+    execFileSync('node', [script, '--en-retard'], { input: JSON.stringify(input) }).toString().trim();
+  equal(output([{ number: 12, headRefName: 'propagation/9f9f9f9', mergeStateStatus: 'BEHIND' }]), '12');
+  equal(output([{ number: 12, headRefName: 'propagation/9f9f9f9', mergeStateStatus: 'CLEAN' }]), '');
 });
 
 console.log(`${passed} passed, ${failures.length} failed`);

@@ -55,7 +55,15 @@ Then, in the repository settings:
 
 3. **Branches → protection rule on the main branch**: add the verification as a required check. Without it, the verification reports without blocking, and an inconsistent cadrage can be delivered.
 
-The propagation pull request, opened by the automation token, triggers no workflow: GitHub creates none for any event of that token, except `workflow_dispatch`. The propagation therefore starts the verification itself on its pull request's branch — hence `workflow_dispatch` in the verification template, and `actions: write` in the propagation one. A repository installed before this start was added keeps blocked pull requests, for lack of the required check: the propagation reports it, and taking both templates again fixes it. The action's `verification` input names the workflow, by its name — « Vérification du référentiel » by default — or by its file.
+4. **The automation's app.** A main branch that refuses direct pushes receives the propagation's writes through a pull request. Opened with the workflow token, that pull request gets its checks put in an approval-required state, and the pending run blocks the merge even once `verifier` is green: on ssk-terrarium-cadrage, #24 and #25 waited for it. The propagation therefore opens its pull request under the identity of a dedicated GitHub App, `ssk-canon-propagation`, whose installation token triggers the checks without approval, and asks for its automatic merge: the pull request merges by itself once `verifier` is green, and never before ([RG-propagation-identite-dediee](https://ssk-canon.s3-website.fr-par.scw.cloud/ssk-it/ssk-canon/referentiel/regle/RG-propagation-identite-dediee)). A script creates the app, once, sets its client ID (variable `SSK_CANON_APP_ID`) and its private key (secret `SSK_CANON_APP_CLE`) on the organisations — visible to their specifications only — or on each specification of a personal account, then guides its installation:
+
+   ```bash
+   outillage/application-propagation.sh
+   ```
+
+   `preparer-depot-cadre.sh` then allows automatic merge on the repository, and has the propagation workflow pass the identity, through a pull request. Without it, the propagation falls back on the workflow token and says so: it then starts the verification itself on its pull request's branch, by `workflow_dispatch`, the one event of that token that creates a run at once — hence `workflow_dispatch` in the verification template, and `actions: write` in the propagation one —, and the pull request waits for a human to approve its `pull_request` run: more recent on the same commit, that pending run hides the `workflow_dispatch` `verifier` from the pull request, which is therefore not enough to merge it. The action's `verification` input names that workflow, by its name — « Vérification du référentiel » by default — or by its file.
+
+   A pending propagation pull request that the main branch has overtaken — a cadrage merged in the meantime — is updated by the next run: a main branch that requires an up-to-date branch would block it otherwise.
 
 ### Protected branch: the deploy key
 

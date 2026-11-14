@@ -1,11 +1,11 @@
 // Tests of the template workflows and of the action that links them.
 //
-// What they protect: a propagation pull request opened with the automation's
-// token triggers no workflow — GitHub creates none for any event of that
-// token, except `workflow_dispatch`. Without a check, the required status is
-// missing, and the pull request stays blocked until someone closes it and
-// reopens it by hand. The action therefore runs the check itself; otherwise the
-// defect would only show at the next delivery of a scoping.
+// What they protect: a propagation pull request opened with the workflow's
+// token gets its `pull_request` runs only once a human approves them, and that
+// pending run hides from the pull request the check `workflow_dispatch` ran.
+// The action therefore opens it under the identity of the automation's app,
+// and, without it, still runs the check itself so that its result can be read;
+// otherwise the defect would only show at the next delivery of a scoping.
 //
 //   node test/templates.test.mjs
 
@@ -97,6 +97,44 @@ test('the action reads the cited specifications with the token it is given, and 
         `${name}: the action does not receive the SSK_CANON_JETON_CITES secret`,
       );
   }
+});
+
+// A pull request opened with the workflow's token gets its `pull_request`
+// runs in an approval-required state, and that pending run blocks the merge
+// even when `verifier`, run by `workflow_dispatch`, is green: on
+// ssk-terrarium-cadrage, #24 and #25 waited for a human. The token of a GitHub
+// App installation triggers the checks like any contributor —
+// RG-propagation-identite-dediee.
+test('the action takes the identity of the automation’s app, optional, and the template passes it', () => {
+  const inputs = loadYaml(action).inputs;
+  for (const name of ['application-id', 'application-cle']) {
+    isTrue(name in inputs, `the action does not declare the \`${name}\` input`);
+    isTrue(inputs[name].required === false, `\`${name}\` must stay optional: a repo without the app falls back on the workflow token`);
+  }
+  const step = Object.values(propagation.jobs).flatMap((j) => j.steps).find((s) => s.uses?.startsWith('ssk-it/ssk-canon-action'));
+  isTrue(step.with?.['application-id'] === '${{ vars.SSK_CANON_APP_ID }}', 'the propagation template does not pass the SSK_CANON_APP_ID variable');
+  isTrue(step.with?.['application-cle'] === '${{ secrets.SSK_CANON_APP_CLE }}', 'the propagation template does not pass the SSK_CANON_APP_CLE secret');
+});
+
+test('the action gets the app’s token without failing the propagation when it cannot', () => {
+  const token = loadYaml(action).runs.steps.find((s) => s.uses?.startsWith('actions/create-github-app-token@'));
+  isTrue(token, 'the action does not get an installation token');
+  isTrue(token['continue-on-error'] === true, 'an app not installed on the repo would fail the propagation instead of falling back');
+  isTrue(/inputs\.application-cle != ''/.test(token.if ?? ''), 'the token is asked for even without the key');
+});
+
+test('the action opens the pull request, then asks for its automatic merge, under the app’s identity', () => {
+  const opening = action.indexOf('gh pr create');
+  const merge = action.search(/gh pr merge "\$BRANCH" --auto/);
+  isTrue(merge > opening, 'the action does not ask for the automatic merge after opening the pull request');
+  isTrue(/PR_TOKEN="\$\{APP_TOKEN\}"/.test(action), 'the app’s token is not the one the pull request is opened with');
+  isTrue(/GH_TOKEN="\$\{PR_TOKEN\}" gh pr create/.test(action), 'the pull request is not opened with the chosen token');
+  isTrue(/GH_TOKEN="\$\{PR_TOKEN\}" gh pr merge/.test(action), 'the automatic merge is not asked for with the chosen token');
+});
+
+test('the action updates a pending propagation pull request the main branch has overtaken', () => {
+  isTrue(/pending-propagation\.mjs" --en-retard/.test(action), 'the action does not look for an overtaken propagation pull request');
+  isTrue(/gh pr update-branch/.test(action), 'the action does not update the overtaken pull request');
 });
 
 test('each message the action says is in the catalogue', () => {
