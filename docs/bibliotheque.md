@@ -110,3 +110,25 @@ Les scripts des skills tournent sans rien d'installé : `cadrage-canon` et
 `ssk-canon.yml` sans dépendance (`scripts/config-noms.mjs`).
 `test/skills-names.test.mjs` garde la copie identique et confronte la lecture à
 YAML : après avoir changé `src/noms.mjs`, le recopier dans les deux skills.
+
+## Les diagrammes
+
+`checkRepo` signale les entités HTML dans un bloc ` ```mermaid ` sans moteur de
+rendu. La syntaxe, elle, demande le moteur : `verifierDiagrammes(repo, { analyser,
+livres })` la contrôle avec la fonction que l'appelant lui donne, qui se résout
+pour un diagramme lisible et se rejette sinon (cadrage 2026-074). Skanon lui
+passe le Mermaid qui dessine, et signale ainsi à la rédaction ce que la
+vérification refusera :
+
+```js
+import mermaid from 'mermaid';
+import { verifierDiagrammes } from '@ssk-it/canon-check';
+
+const anomalies = await verifierDiagrammes(referentiel, {
+  analyser: (texte) => mermaid.parse(texte),
+  livres,
+});
+```
+
+Seul un bloc d'un cadrage non livré est une erreur ; ailleurs, un avertissement.
+

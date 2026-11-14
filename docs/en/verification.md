@@ -18,6 +18,16 @@
 
 What it catches, which the format alone does not guarantee: an impact on a rule that does not exist, a missing statement for a creation or a modification, a link to an unknown entity, a rule repealed by an undelivered cadrage.
 
+It also reads **the diagrams** (scoping 2026-074): each ` ```mermaid ` block of
+rules, decisions, architecture documents, scopings and their decisions. A block
+Mermaid cannot read, or that carries an HTML entity (`&lt;`, `&gt;`…), is
+refused — in a scoping not yet delivered. Elsewhere it is reported without
+blocking: a delivered scoping no longer changes, and the document it projected
+only changes when another scoping is merged. Mermaid is at the version that
+draws in Skanon, and runs in a separate step of the action, with no token in its
+environment (ADR-langage-de-diagramme). For angle brackets in a label, write
+`‹ ›`, or a Mermaid entity: `#60;` for `<`, `#62;` for `>`.
+
 It also checks the `identite/` directory, where a référentiel can hold its project's visual identity. Nothing declares it: the file names are authoritative, and a misnamed file would otherwise be ignored silently.
 
 - **Allowed names**: `symbole` and `logotype`, optionally followed by `-clair` or `-sombre` — `symbole.svg`, `logotype-sombre.png` —, and a `README.md`.

@@ -22,6 +22,12 @@ jobs:
       - name: Tester le propagateur
         run: npm test
 
+      # The Action's diagram parser, on the real Mermaid — scoping 2026-074.
+      - name: Tester l'analyseur des diagrammes
+        run: |
+          npm ci --prefix analyseur-mermaid
+          node analyseur-mermaid/analyseur.test.mjs
+
       - name: Vérifier l'intégrité de la fixture
         run: npm run check
 

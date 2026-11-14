@@ -108,6 +108,20 @@ runs:
         cd "${RUNNER_TEMP}/ssk-canon-action"
         npm ci --omit=dev
 
+    # The diagrams, read by Mermaid at the version Skanon draws with — scoping
+    # 2026-074. A step of its own, with no token in its environment: Mermaid's
+    # parser carries known vulnerabilities, accepted for text written by chosen
+    # authors (ADR-langage-de-diagramme, decision 03). Not on the propagation,
+    # after the merge: a diagram there is already delivered, and refusing it
+    # would only stop the propagation.
+    - name: Analyser les diagrammes
+      if: inputs.appliquer != 'true'
+      shell: bash
+      run: |
+        cd "${RUNNER_TEMP}/ssk-canon-action/analyseur-mermaid"
+        npm ci --omit=dev --silent
+        node verifier.mjs "${GITHUB_WORKSPACE}/${{ inputs.referentiel }}" --base "${{ inputs.base }}"
+
     - name: Vérifier et propager
       id: propager
       shell: bash

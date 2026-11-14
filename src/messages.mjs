@@ -14,8 +14,9 @@ import { delivery } from './messages/delivery.mjs';
 import { propagation } from './messages/propagation.mjs';
 import { roadmapItems } from './messages/roadmap-items.mjs';
 import { citations } from './messages/citations.mjs';
+import { diagrammes } from './messages/diagrammes.mjs';
 
-const CATALOGUES = [common, verification, reading, delivery, propagation, roadmapItems, citations];
+const CATALOGUES = [common, verification, reading, delivery, propagation, roadmapItems, citations, diagrammes];
 
 function mergeCatalogues(language) {
   const all = {};
