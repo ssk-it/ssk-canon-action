@@ -81,6 +81,21 @@ await test('the blocks are found in rules, architecture, scopings and their deci
   );
 });
 
+// Skanon gives a scoping being written as its statements, indexed by target,
+// without a body: the blocks are read there too.
+await test('the blocks of statements given as a map are found', () => {
+  const r = repo();
+  r.cadrages.set('2026-002', {
+    id: '2026-002',
+    domaines: ['d'],
+    impacts: [],
+    enonces: new Map([['RG-a', `Texte.\n\n${bloc(ENTITE)}`], ['RG-b', 'Sans diagramme.']]),
+  });
+  equal(extraireDiagrammes(r).map((d) => [d.source, d.rang, d.cadrage]), [['2026-002 → RG-a', 1, '2026-002']]);
+  const { anomalies } = checkRepo(r);
+  equal(anomalies.filter((a) => a.code === 'diagramme-entite-html').map((a) => a.gravite), ['erreur']);
+});
+
 await test('a block in another language, or an indented sample, is not a diagram', () => {
   const r = repo({ regle: '```yaml\na: b\n```\n\n    ```mermaid\n    x\n    ```' });
   equal(extraireDiagrammes(r), []);
