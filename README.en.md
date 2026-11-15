@@ -97,7 +97,7 @@ This repository being public, no access setting is needed, including from a priv
 - [Citing another référentiel](docs/en/citations.md) — `referentiels_cites`, `applique`, and read access to private cited référentiels
 - [Linking tracks](docs/en/pistes.md) — the `pistes/` action, labels and milestones
 - [As a library](docs/en/bibliotheque.md) — the `@ssk-it/canon-check` package, its submodules and `ssk-canon.yml`
-- `@ssk-it/canon-check` API reference — coming
+- [`@ssk-it/canon-check` API reference](https://ssk-it.github.io/ssk-canon-action/) — generated from the type declarations on every merge to `main`, in French
 - [Command line](docs/en/ligne-de-commande.md)
 - [Development](docs/en/developpement.md)
 - [Publishing a version](docs/en/publication.md)

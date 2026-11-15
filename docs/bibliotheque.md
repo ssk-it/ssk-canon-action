@@ -11,6 +11,10 @@ laisser le rédacteur le découvrir après coup.
 npm install @ssk-it/canon-check
 ```
 
+Chaque fonction, type et constante exportés sont décrits dans la
+[référence de l'API](https://ssk-it.github.io/ssk-canon-action/), générée depuis
+les déclarations de types à chaque fusion sur `main`.
+
 ```js
 import { checkRepo } from '@ssk-it/canon-check';
 
