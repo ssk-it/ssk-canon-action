@@ -22,8 +22,11 @@ It also reads **the diagrams** (scoping 2026-074): each ` ```mermaid ` block of
 rules, decisions, architecture documents, scopings and their decisions. A block
 Mermaid cannot read, or that carries an HTML entity (`&lt;`, `&gt;`…), is
 refused — in a scoping not yet delivered. Elsewhere it is reported without
-blocking: a delivered scoping no longer changes, and the document it projected
-only changes when another scoping is merged. Mermaid is at the version that
+blocking: the document a scoping projected only changes when another scoping is
+merged, and a delivered scoping is only caught up by a pull request that
+rewrites nothing but its faulty blocks (scoping 2026-076). Nothing else may
+change under its folder; each retouched block must have been faulty on the main
+branch, and must read now. Mermaid is at the version that
 draws in Skanon, and runs in a separate step of the action, with no token in its
 environment (ADR-langage-de-diagramme). For angle brackets in a label, write
 `‹ ›`, or a Mermaid entity: `#60;` for `<`, `#62;` for `>`.

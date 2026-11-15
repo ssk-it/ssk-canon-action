@@ -7,6 +7,7 @@
 // which lets it keep running in a browser.
 
 import { execFileSync } from 'node:child_process';
+import { comparerBlocs } from './diagrammes.mjs';
 
 /** Runs a Git command, or returns null if it fails. */
 function git(root, args) {
@@ -232,4 +233,50 @@ export function findModifiedDeliveredScopings(files, delivered, folder = 'cadrag
   }
 
   return touched;
+}
+
+/**
+ * Splits the changes a pull request makes to delivered scopings into the
+ * catch-ups of faulty diagrams and the modifications — RG-cadrage-livre-immuable,
+ * scoping 2026-076.
+ *
+ * A delivered scoping is caught up when every file changed under its folder is
+ * a Markdown file modified in place, whose only differences are Mermaid
+ * blocks; it is modified otherwise — a file added, removed or renamed, a word
+ * outside a block, a block added. Whether a retouched block was faulty, and no
+ * longer is, is judged afterwards, by `jugerRetouches`.
+ *
+ * Returns `null` when the comparison fails, like `listChangedFiles`.
+ *
+ * @returns {{retouches: {cadrage: string, chemin: string, rang: number, avant: string, apres: string}[], modifies: Map<string, string[]>} | null}
+ */
+export function listerRetouches(root, ref, delivered, folder = 'cadrages') {
+  const output = git(root, ['diff', '--name-status', '--no-renames', `${ref}...HEAD`, '--', `${folder}/`]);
+  if (output === null) return null;
+
+  const parCadrage = new Map();
+  for (const ligne of output.split('\n').filter(Boolean)) {
+    const [statut, chemin] = ligne.split('\t');
+    const id = chemin.split('/')[1];
+    if (!delivered.has(id)) continue;
+    if (!parCadrage.has(id)) parCadrage.set(id, []);
+    parCadrage.get(id).push({ statut, chemin });
+  }
+
+  const retouches = [];
+  const modifies = new Map();
+  const base = git(root, ['merge-base', ref, 'HEAD'])?.trim() ?? ref;
+  for (const [id, fichiers] of parCadrage) {
+    const blocs = [];
+    const retouche = fichiers.every(({ statut, chemin }) => {
+      if (statut !== 'M' || !chemin.endsWith('.md')) return false;
+      const changes = comparerBlocs(git(root, ['show', `${base}:${chemin}`]), git(root, ['show', `HEAD:${chemin}`]));
+      if (!changes) return false;
+      blocs.push(...changes.map((c) => ({ cadrage: id, chemin, ...c })));
+      return true;
+    });
+    if (retouche && blocs.length) retouches.push(...blocs);
+    else modifies.set(id, fichiers.map((f) => f.chemin));
+  }
+  return { retouches, modifies };
 }

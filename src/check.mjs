@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { load } from 'js-yaml';
 import { loadRepo } from './parse.mjs';
 import { checkRepo } from './verifier.mjs';
+import { jugerEntitesDesRetouches } from './diagrammes.mjs';
 import { createError, createWarning, enTexte, formaterAnomalie, langueDuDepot } from './anomalies.mjs';
 import { resoudreNoms } from './noms.mjs';
 import { referentielsCites } from './citations.mjs';
@@ -22,7 +23,7 @@ import {
   listDeliveredScopings,
   listCarriedScopings,
   listChangedFiles,
-  findModifiedDeliveredScopings,
+  listerRetouches,
   mergeBase,
 } from './delivery.mjs';
 
@@ -285,11 +286,17 @@ function checkImmutability(root, base, delivered, folder) {
 
   if (!files.length) return [];
 
+  // The one retouch a delivered scoping admits: the catch-up of a faulty
+  // diagram — scoping 2026-076. The entities are judged here; whether a block
+  // the renderer refused now reads, by the step that carries the renderer.
+  const split = listerRetouches(root, base, delivered, folder);
+  if (split === null) return [createError('immuabilite-hors-d-atteinte', { base })];
+
   const errors = [];
-  for (const [id, chemins] of findModifiedDeliveredScopings(files, delivered, folder)) {
+  for (const [id, chemins] of split.modifies) {
     errors.push(createError('cadrage-livre-modifie', { cadrage: id, chemins }));
   }
-  return errors;
+  return [...errors, ...jugerEntitesDesRetouches(split.retouches)];
 }
 
 // direct execution
