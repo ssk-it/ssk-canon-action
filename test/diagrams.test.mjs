@@ -111,15 +111,22 @@ await test('an HTML entity in a scoping under review is an error of checkRepo', 
   equal(a.params, { source: 'cadrages/2026-001/cadrage.md', rang: 1, entite: '&lt;' });
 });
 
-// A delivered scoping no longer changes, and the rule it projected only changes
-// when another scoping is merged: blocking on them would refuse every pull
-// request of the repo, the one that fixes them included. They are reported.
-await test('in a delivered scoping, or a projected document, an entity is a warning', () => {
-  const { anomalies } = checkRepo(repo({ cadrage: bloc(ENTITE), regle: bloc(ENTITE), decision: bloc(ENTITE) }), {
+// The rule a scoping projected only changes when another scoping is merged:
+// blocking on it would refuse every pull request of the repo, the one that
+// fixes it included. It is reported, and a new scoping fixes it.
+await test('in a projected document, an entity is a warning', () => {
+  const { anomalies } = checkRepo(repo({ regle: bloc(ENTITE) }), { livres: new Set(['2026-001']) });
+  equal(anomalies.filter((x) => x.code === 'diagramme-entite-html').map((a) => a.gravite), ['avertissement']);
+});
+
+// A delivered scoping no longer changes, and nothing can fix it: a warning on
+// it would only be read once, then ignored, and would hide the ones that
+// lead somewhere.
+await test('a delivered scoping, and its decisions, are not reported', () => {
+  const { anomalies } = checkRepo(repo({ cadrage: bloc(ENTITE), decision: bloc(ENTITE) }), {
     livres: new Set(['2026-001']),
   });
-  const trouves = anomalies.filter((x) => x.code === 'diagramme-entite-html');
-  equal(trouves.map((a) => a.gravite), ['avertissement', 'avertissement', 'avertissement']);
+  equal(anomalies.filter((x) => x.code === 'diagramme-entite-html'), []);
 });
 
 await test('a decision of a scoping under review blocks too', () => {
@@ -157,12 +164,21 @@ await test('a block the parser refuses is an error, with its message', async () 
   isTrue(formaterAnomalie(anomalies[0], 'fr').includes('Parse error on line 2'), formaterAnomalie(anomalies[0], 'fr'));
 });
 
-await test('outside a scoping under review, an unreadable block is a warning', async () => {
-  const anomalies = await verifierDiagrammes(repo({ regle: bloc('x'), cadrage: bloc('y') }), {
+await test('in a projected document, an unreadable block is a warning; in a delivered scoping, nothing', async () => {
+  const anomalies = await verifierDiagrammes(repo({ regle: bloc('x'), cadrage: bloc('y'), decision: bloc('z') }), {
     analyser: refuseSansFleche,
     livres: new Set(['2026-001']),
   });
-  equal(anomalies.map((a) => a.gravite), ['avertissement', 'avertissement']);
+  equal(anomalies.map((a) => [a.gravite, a.params.source]), [['avertissement', 'rules/RG-a.md']]);
+});
+
+await test('a delivered scoping is not even parsed', async () => {
+  const seen = [];
+  await verifierDiagrammes(repo({ regle: bloc('x'), cadrage: bloc('y') }), {
+    analyser: async (t) => { seen.push(t); },
+    livres: new Set(['2026-001']),
+  });
+  equal(seen, ['x']);
 });
 
 await test('without a parser, the syntax is not checked', async () => {

@@ -3,7 +3,7 @@
 // A Mermaid block that the renderer cannot read, or that carries an HTML
 // entity, used to pass the check and only showed up when Skanon displayed it,
 // in place of the drawing. A delivered scoping no longer changes: the error is
-// refused here, while it can still be fixed.
+// refused here, while it can still be fixed, and no longer reported after.
 //
 // The library knows where diagrams are and what is wrong with them; it does
 // not carry the renderer, which depends on the medium. The caller gives the
@@ -54,23 +54,32 @@ export function extraireDiagrammes(repo) {
 }
 
 /**
- * Blocks in a scoping not yet delivered — the one under review —, and only
- * there: what would stay wrong once delivered. A delivered scoping no longer
- * changes, and the document it projected only changes when another scoping is
- * merged; blocking on them would refuse every pull request of the repo, the one
- * that fixes them included. They are reported as warnings.
+ * The blocks the check looks at: all but those of a delivered scoping. A
+ * delivered scoping no longer changes (RG-cadrage-livre-immuable): nothing can
+ * fix its diagram, and a warning that leads nowhere would be read once, then
+ * ignored, along with the ones that lead somewhere. Scoping 2026-075.
  */
-function gravite(diagramme, livres) {
-  return diagramme.cadrage && !livres.has(diagramme.cadrage) ? createError : createWarning;
+function aVerifier(repo, livres) {
+  return extraireDiagrammes(repo).filter((d) => !(d.cadrage && livres.has(d.cadrage)));
+}
+
+/**
+ * A block in a scoping not yet delivered — the one under review — is an error:
+ * what would stay wrong once delivered. The document a scoping projected only
+ * changes when another scoping is merged; blocking on it would refuse every
+ * pull request of the repo, the one that fixes it included. It is a warning.
+ */
+function gravite(diagramme) {
+  return diagramme.cadrage ? createError : createWarning;
 }
 
 /** The HTML entities in diagrams, checked without a renderer. */
 export function verifierEntites(repo, { livres = new Set() } = {}) {
   const anomalies = [];
-  for (const d of extraireDiagrammes(repo)) {
+  for (const d of aVerifier(repo, livres)) {
     const trouve = d.texte.match(ENTITE);
     if (trouve)
-      anomalies.push(gravite(d, livres)('diagramme-entite-html', { source: d.source, rang: d.rang, entite: trouve[0] }));
+      anomalies.push(gravite(d)('diagramme-entite-html', { source: d.source, rang: d.rang, entite: trouve[0] }));
   }
   return anomalies;
 }
@@ -81,22 +90,22 @@ export function verifierEntites(repo, { livres = new Set() } = {}) {
  * a parser, nothing is checked: a caller that has none says nothing rather
  * than a guess. Every block is parsed, so that one run tells every fault.
  *
- * `livres` carries the delivered scopings, as for `checkRepo`: only a block of
- * a scoping under review is an error.
+ * `livres` carries the delivered scopings, as for `checkRepo`: their blocks
+ * are not parsed, and only a block of a scoping under review is an error.
  *
  * @param {{analyser?: (texte: string) => Promise<unknown>, livres?: Set<string>}} [options]
  */
 export async function verifierDiagrammes(repo, { analyser, livres = new Set() } = {}) {
   if (!analyser) return [];
   const anomalies = [];
-  for (const d of extraireDiagrammes(repo)) {
+  for (const d of aVerifier(repo, livres)) {
     try {
       await analyser(d.texte);
     } catch (e) {
       // The first line of the renderer's message says the line at fault; the
       // rest is a caret drawing and a list of expected tokens.
       const erreur = String(e?.message ?? e).split('\n')[0].trim();
-      anomalies.push(gravite(d, livres)('diagramme-illisible', { source: d.source, rang: d.rang, erreur }));
+      anomalies.push(gravite(d)('diagramme-illisible', { source: d.source, rang: d.rang, erreur }));
     }
   }
   return anomalies;
