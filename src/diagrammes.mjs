@@ -101,3 +101,77 @@ export async function verifierDiagrammes(repo, { analyser, livres = new Set() } 
   }
   return anomalies;
 }
+
+// --- the catch-up of a faulty diagram in a delivered scoping — scoping 2026-076 ---
+
+/**
+ * The blocks that changed between two versions of a file, when nothing else
+ * did: same text outside the blocks, same number of blocks. Returns `null`
+ * otherwise — the change is then a modification of the file, not a retouch of
+ * its diagrams (RG-cadrage-livre-immuable).
+ *
+ * @returns {{rang: number, avant: string, apres: string}[] | null}
+ */
+export function comparerBlocs(avant, apres) {
+  const decouper = (texte) => {
+    const blocs = [];
+    const gabarit = String(texte ?? '').replace(BLOC, (tout, contenu) => {
+      blocs.push(contenu.replace(/\n$/, ''));
+      const debut = tout.indexOf('\n') + 1;
+      return tout.slice(0, debut) + '\u0000\n' + tout.slice(debut + contenu.length);
+    });
+    return { gabarit, blocs };
+  };
+  const a = decouper(avant);
+  const b = decouper(apres);
+  if (a.gabarit !== b.gabarit || a.blocs.length !== b.blocs.length) return null;
+  return a.blocs.flatMap((texte, i) =>
+    texte === b.blocs[i] ? [] : [{ rang: i + 1, avant: texte, apres: b.blocs[i] }]);
+}
+
+/**
+ * Judges the retouched blocks of a catch-up: each must have been faulty, and
+ * must no longer be. Faulty means carrying an HTML entity, or refused by the
+ * given parser. Without a parser, only the entities are judged: a block
+ * without one, before or after, is left to the step that has the parser.
+ *
+ * @param {{cadrage: string, chemin: string, rang: number, avant: string, apres: string}[]} retouches
+ * @param {{analyser?: (texte: string) => Promise<unknown>}} [options]
+ */
+export async function jugerRetouches(retouches, { analyser } = {}) {
+  const faute = async (texte) => {
+    const entite = texte.match(ENTITE);
+    if (entite) return entite[0];
+    if (!analyser) return null;
+    try {
+      await analyser(texte);
+      return null;
+    } catch (e) {
+      return String(e?.message ?? e).split('\n')[0].trim();
+    }
+  };
+  const anomalies = [];
+  for (const r of retouches) {
+    const params = { cadrage: r.cadrage, source: r.chemin, rang: r.rang };
+    const avant = await faute(r.avant);
+    // Without a parser, a block with no entity before cannot be told faulty
+    // or readable: the judgement is left to the step that has one.
+    if (avant === null && analyser) anomalies.push(createError('rattrapage-bloc-lisible', params));
+    const apres = await faute(r.apres);
+    if (apres !== null) anomalies.push(createError('rattrapage-encore-fautif', { ...params, faute: apres }));
+  }
+  return anomalies;
+}
+
+/**
+ * The entities a catch-up leaves in its retouched blocks — what can be judged
+ * without a parser, synchronously, by the check itself.
+ */
+export function jugerEntitesDesRetouches(retouches) {
+  return retouches.flatMap((r) => {
+    const entite = r.apres.match(ENTITE);
+    return entite
+      ? [createError('rattrapage-encore-fautif', { cadrage: r.cadrage, source: r.chemin, rang: r.rang, faute: entite[0] })]
+      : [];
+  });
+}

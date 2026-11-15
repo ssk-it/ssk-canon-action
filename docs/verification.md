@@ -26,8 +26,11 @@ Elle lit aussi **les diagrammes** (cadrage 2026-074) : chaque bloc ` ```mermaid 
 des règles, des décisions, des documents d'architecture, des cadrages et de leurs
 décisions. Un bloc que Mermaid ne sait pas lire, ou qui porte une entité HTML
 (`&lt;`, `&gt;`…), est refusé — dans un cadrage qui n'est pas encore livré. Ailleurs,
-il est signalé sans bloquer : un cadrage livré ne se réécrit plus, et le document
-qu'il a projeté ne change qu'à la fusion d'un autre cadrage. Mermaid y est à la
+il est signalé sans bloquer : le document qu'un cadrage a projeté ne change qu'à
+la fusion d'un autre cadrage, et un cadrage livré ne se rattrape que par une
+demande qui ne réécrit que ses blocs fautifs (cadrage 2026-076). Rien d'autre ne
+doit changer sous son répertoire ; chaque bloc retouché doit avoir été fautif sur
+la branche principale, et se lire désormais. Mermaid y est à la
 version qui dessine dans Skanon, et tourne dans une étape à part de l'action,
 sans jeton dans son environnement (ADR-langage-de-diagramme). Pour des chevrons
 dans un libellé, écrire `‹ ›`, ou une entité de Mermaid : `#60;` pour `<`, `#62;`
