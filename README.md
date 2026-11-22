@@ -147,7 +147,7 @@ un dépôt cadré privé ou appartenant à une autre organisation.
 - [Citer un autre référentiel](docs/citations.md) — `referentiels_cites`, `applique`, et l'accès en lecture aux référentiels cités privés
 - [Rattachement des pistes](docs/pistes.md) — l'action `pistes/`, les étiquettes et les jalons
 - [Comme bibliothèque](docs/bibliotheque.md) — le paquet `@ssk-it/canon-check`, ses sous-modules et `ssk-canon.yml`
-- Référence API de `@ssk-it/canon-check` — à venir
+- [Référence de l'API de `@ssk-it/canon-check`](https://ssk-it.github.io/ssk-canon-action/) — générée depuis les déclarations de types à chaque fusion sur `main`
 - [En ligne de commande](docs/ligne-de-commande.md)
 - [Développement](docs/developpement.md)
 - [Publier une version](docs/publication.md)
