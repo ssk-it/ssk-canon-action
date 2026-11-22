@@ -37,7 +37,7 @@ Un référentiel cité **public** se lit sans rien régler. Un référentiel cit
 Le jeton se crée une fois, à la main, sur GitHub — *Settings → Developer settings → Fine-grained tokens* : propriétaire de la ressource, l'organisation des référentiels cités ; accès aux seuls dépôts cités ; permission *Contents* en lecture seule, rien d'autre. Un script le pose sur le dépôt cadré, après avoir vérifié qu'il lit chaque référentiel cité privé — le jeton se tape au clavier, sans écho, et le script se relance au renouvellement :
 
 ```bash
-outillage/jeton-referentiels-cites.sh <organisation>/<depot-cadre>
+outillage/jeton-referentiels-cites.sh --depot <organisation>/<depot-cadre>
 ```
 
 Un jeton à grain fin ne porte que sur un propriétaire. Des référentiels cités chez plusieurs propriétaires se lisent avec un jeton d'application GitHub installée sur chacun (`actions/create-github-app-token`), produit dans une étape qui précède l'action et passé à `jeton-referentiels-cites` à la place du secret. Une demande de fusion venue d'un fork ne reçoit pas les secrets : ses citations privées restent non vérifiées.

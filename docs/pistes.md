@@ -44,7 +44,7 @@ Un dépôt qui accueille des pistes a besoin de l'étiquette `piste`, d'une éti
 
 ```bash
 npm ci
-outillage/preparer-pistes.sh <organisation>/<depot>
+outillage/preparer-pistes.sh --depot <organisation>/<depot>
 ```
 
 Les identifiants sont lus sur un clone superficiel de la branche principale, par le chargeur que la vérification utilise (`src/roadmap-item-labels.mjs`) : ceux du frontmatter, et non les noms de fichiers.
