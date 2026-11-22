@@ -59,6 +59,23 @@ test('each job of the templates takes the runner the organisation reserves for i
       isTrue(def['runs-on'] === RUNNER, `${name}, job ${job}: runs-on is ${JSON.stringify(def['runs-on'])}`);
 });
 
+// A new push to a pull request cancels the check still running on the previous
+// one: on the self-hosted runners shared by a private organisation, an outdated
+// run holds a runner for nothing. A run started by hand or by the propagation
+// (`workflow_dispatch`) is never cancelled: it lands in the group of its branch,
+// apart from the pull request's.
+test('the check cancels the outdated run of a pull request, and only that one', () => {
+  isTrue(verification.concurrency, 'the check template has no `concurrency` block');
+  isTrue(
+    verification.concurrency.group === '${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
+    `group is ${JSON.stringify(verification.concurrency.group)}`,
+  );
+  isTrue(
+    verification.concurrency['cancel-in-progress'] === "${{ github.event_name == 'pull_request' }}",
+    `cancel-in-progress is ${JSON.stringify(verification.concurrency['cancel-in-progress'])}`,
+  );
+});
+
 test('the propagation pushes with the deploy key of the environment the organisation names, with the token otherwise', () => {
   const job = propagation.jobs.propager;
   isTrue(job.environment === "${{ vars.SSK_CANON_ENVIRONNEMENT || '' }}", `environment is ${JSON.stringify(job.environment)}`);
