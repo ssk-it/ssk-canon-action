@@ -81,15 +81,15 @@ Puis, dans les réglages du dépôt :
    vérification comme contrôle requis. Sans cela, elle signale sans bloquer, et
    un cadrage incohérent peut être livré.
 
-La demande de propagation, ouverte par le jeton de l'automatisation, ne
-déclenche aucun workflow : GitHub n'en crée pour aucun événement de ce jeton,
-sauf `workflow_dispatch`. La propagation lance donc elle-même la vérification
-sur la branche de sa demande — d'où `workflow_dispatch` dans le modèle de
-vérification, et `actions: write` dans celui de la propagation. Un dépôt
-installé avant ce lancement garde des demandes bloquées, faute du contrôle
-requis : la propagation le signale, et reprendre les deux modèles y remédie.
-L'entrée `verification` de l'action désigne le workflow, par son nom —
-« Vérification du référentiel » par défaut — ou par son fichier.
+4. **L'application de l'automatisation.** Une branche principale qui refuse la poussée directe reçoit les écritures de la propagation par une demande de fusion. Ouverte avec le jeton du workflow, cette demande voit ses contrôles mis en attente d'une approbation humaine, et le run en attente bloque la fusion même une fois `verifier` vert : sur ssk-terrarium-cadrage, #24 et #25 l'ont attendue. La propagation ouvre donc sa demande sous l'identité d'une application GitHub dédiée, `ssk-canon-propagation`, dont le jeton d'installation déclenche les contrôles sans approbation, et en demande la fusion automatique : la demande se fusionne d'elle-même une fois `verifier` vert, et jamais avant ([RG-propagation-identite-dediee](https://ssk-canon.s3-website.fr-par.scw.cloud/ssk-it/ssk-canon/referentiel/regle/RG-propagation-identite-dediee)). Un script crée l'application, une fois, pose son identifiant client (variable `SSK_CANON_APP_ID`) et sa clé privée (secret `SSK_CANON_APP_CLE`) sur les organisations — visibles de leurs seuls référentiels — ou sur chaque référentiel d'un compte personnel, puis guide son installation :
+
+   ```bash
+   outillage/application-propagation.sh
+   ```
+
+   `preparer-depot-cadre.sh` autorise ensuite la fusion automatique sur le dépôt, et fait transmettre l'identité au workflow de propagation par une demande de fusion. Sans elle, la propagation se replie sur le jeton du workflow et le dit : elle lance alors elle-même la vérification sur la branche de sa demande, par `workflow_dispatch`, seul événement de ce jeton qui crée un run d'emblée — d'où `workflow_dispatch` dans le modèle de vérification, et `actions: write` dans celui de la propagation —, et la demande attend qu'un humain approuve son run `pull_request` : plus récent sur le même commit, ce run en attente masque à la demande le `verifier` du `workflow_dispatch`, qui ne suffit donc pas à la fusionner. L'entrée `verification` de l'action désigne ce workflow, par son nom — « Vérification du référentiel » par défaut — ou par son fichier.
+
+   Une demande de propagation en attente que la branche principale a dépassée — un cadrage fusionné entre-temps — est mise à jour par l'exécution suivante : une branche principale qui exige une branche à jour la bloquerait sinon.
 
 ### Branche protégée : la clé de déploiement
 
