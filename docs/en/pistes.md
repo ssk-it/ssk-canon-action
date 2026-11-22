@@ -33,7 +33,7 @@ A repository that hosts tracks needs the `piste` label, one `domaine/<id>` label
 
 ```bash
 npm ci
-outillage/preparer-pistes.sh <organisation>/<depot>
+outillage/preparer-pistes.sh --depot <organisation>/<depot>
 ```
 
 The identifiers are read on a shallow clone of the main branch, by the loader the verification uses (`src/roadmap-item-labels.mjs`): those of the frontmatter, not the file names.

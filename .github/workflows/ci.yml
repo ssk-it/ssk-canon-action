@@ -52,6 +52,25 @@ jobs:
           referentiel: test/fixture-repo
           appliquer: 'false'
 
+  # The setup scripts of outillage/ — docs/pratiques.md, « Les scripts de mise
+  # en place ». The bash 3.2 of macOS, which the bash:3.2 image gives on any
+  # runner with Docker; shellcheck and musl-locales (the `locale` command, which
+  # lib/ecritures-confirmees.sh reads) come from Alpine, which the image is
+  # based on. The image is pinned by its digest: a new publication of the tag
+  # does not change the check silently. A public repo: GitHub's runners.
+  scripts:
+    name: Scripts de mise en place
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Vérifier les scripts de mise en place
+        run: >-
+          docker run --rm -v "$PWD":/src -w /src
+          bash:3.2.57@sha256:2556c2da19c32c1614d318645c73a7bf64d38be21cf69e98e3ca51f053983719
+          sh -c 'apk add -q --no-cache shellcheck musl-locales
+          && BASH_32=bash bash outillage/verifier-scripts-de-mise-en-place.sh outillage'
+
   # The roadmap item check is a second action, under `pistes/`: its wiring is
   # tested the same way, on a fictitious issue and without writing anything on
   # the platform.

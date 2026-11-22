@@ -33,11 +33,13 @@ The third one checks the tracks (*pistes*): see [Linking tracks](docs/en/pistes.
 
 Then, in the repository settings:
 
-1. **Actions → General → Workflow permissions**: *Read and write permissions*, and *Allow GitHub Actions to create and approve pull requests*. Without the first, the propagation cannot write anything; without the second, it cannot open its pull request on a protected branch — it pushes its `propagation/<sha>` branch then fails, and the merged cadrage is left without its indexes. A script sets them and checks them, with the `gh` session and admin rights on the repository:
+1. **Actions → General → Workflow permissions**: *Allow GitHub Actions to create and approve pull requests*. Without it, the propagation cannot open its pull request on a protected branch — it pushes its `propagation/<sha>` branch then fails, and the merged cadrage is left without its indexes. The default permissions can stay read-only: each template declares its own, and the propagation takes `contents`, `pull-requests` and `actions` in write there. A script sets it and checks it, with the `gh` session and admin rights on the repository:
 
    ```bash
-   outillage/preparer-depot-cadre.sh <organisation>/<depot>
+   outillage/preparer-depot-cadre.sh --depot <organisation>/<depot>
    ```
+
+   For a référentiel that does not exist on GitHub yet, the same script creates it from its clone and pushes `main` there: `--source <clone>`, with `--description <text>` and, for a public repository, `--visibilite public`. `--aide` lists its options; `--dry-run` announces each write without making any.
 
    The same script sets **General → Pull Requests → Automatically delete head branches**: otherwise every cadrage and every propagation leaves its branch behind, and a commit pushed after the merge — never delivered — gets lost among dozens of others. Above all, the référentiel consultation goes through them as work in progress: see [Consult the référentiel before scoping or developing](docs/en/skills.md#consult-the-référentiel-before-scoping-or-developing).
 
@@ -50,10 +52,16 @@ Then, in the repository settings:
 2. **Runners, for a private repository.** The templates take their runner from the organisation variable `SSK_RUNNER_PRIVE`, visible to private repositories only: without it, every run — one verification per pull request, one propagation per delivery and its hourly retry — runs on GitHub's runners and counts against the organisation's plan. A public repository, and an organisation without the variable, stay on `ubuntu-latest`. A script sets it, once per organisation, and checks that an online runner carries its labels:
 
    ```bash
-   outillage/runner-prive-organisation.sh <organisation>
+   outillage/runner-prive-organisation.sh --organisation <organisation>
    ```
 
-3. **Branches → protection rule on the main branch**: add the verification as a required check. Without it, the verification reports without blocking, and an inconsistent cadrage can be delivered.
+3. **The verification, a required check on the main branch.** Without it, the verification reports without blocking, and an inconsistent cadrage can be delivered. The same script sets a ruleset that requires it, and refuses deleting and force-pushing the branch, with nobody exempted:
+
+   ```bash
+   outillage/preparer-depot-cadre.sh --depot <organisation>/<depot> --controles verifier
+   ```
+
+   It does not require an up-to-date branch (`--a-jour false`, the default): the propagation opens its pull request from the main branch of the moment, and a cadrage merged in the meantime would block it. An organisation that already protects its main branch its own way — a deploy key exempted from its rule, below — rather adds the check to its own rule: the script's exempts nobody.
 
 The propagation pull request, opened by the automation token, triggers no workflow: GitHub creates none for any event of that token, except `workflow_dispatch`. The propagation therefore starts the verification itself on its pull request's branch — hence `workflow_dispatch` in the verification template, and `actions: write` in the propagation one. A repository installed before this start was added keeps blocked pull requests, for lack of the required check: the propagation reports it, and taking both templates again fixes it. The action's `verification` input names the workflow, by its name — « Vérification du référentiel » by default — or by its file.
 
@@ -62,17 +70,17 @@ The propagation pull request, opened by the automation token, triggers no workfl
 On a protected main branch, the propagation opens a pull request that still has to be merged by hand: until then, the référentiel read on `origin/main` lags behind its cadrages. An organisation that wants to keep the direct push exempts a write deploy key from its rule, stores its private key in the `MAIN_DEPLOY_KEY` secret of an environment restricted to the main branch — a workflow pushed on another branch cannot read it —, and names that environment in the organisation variable `SSK_CANON_ENVIRONNEMENT`. The propagation template then runs in that environment and pushes with the key, over SSH. Without the variable, it runs without an environment and pushes with the automation token. A script sets the variable, visible to private repositories only:
 
 ```bash
-outillage/environnement-propagation-organisation.sh <organisation> <environment>
+outillage/environnement-propagation-organisation.sh --organisation <organisation> --environnement <environment>
 ```
 
 The environment, the key and the exemption stay the organisation's own (for Vanex-Proprete, prime-infra's `scripts/proteger-branches-principales.sh`). A push by the key triggers workflows, unlike the token: each propagation that writes starts another one, which has nothing left to write.
 
 ### Bringing a scoped repository back to the templates
 
-Installing is a copy: a template that changes only reaches the repositories that copy it again. A script opens, on each named référentiel — by default, those `~/.claude/cadrage-canon.json` declares —, a pull request that replaces its three workflows with this clone's templates, under their current names, and leaves alone a repository already in line. `A_BLANC=1` shows the differences without pushing anything:
+Installing is a copy: a template that changes only reaches the repositories that copy it again. A script opens, on each named référentiel — by default, those `~/.claude/cadrage-canon.json` declares —, a pull request that replaces its three workflows with this clone's templates, under their current names, and leaves alone a repository already in line. `--dry-run` shows the differences without pushing anything:
 
 ```bash
-A_BLANC=1 outillage/mettre-a-niveau-modeles.sh <organisation>/<repository>
+outillage/mettre-a-niveau-modeles.sh --dry-run <organisation>/<repository>
 outillage/mettre-a-niveau-modeles.sh <organisation>/<repository>
 ```
 
@@ -101,6 +109,7 @@ This repository being public, no access setting is needed, including from a priv
 - [Command line](docs/en/ligne-de-commande.md)
 - [Development](docs/en/developpement.md)
 - [Publishing a version](docs/en/publication.md)
+- [Practices](docs/en/pratiques.md) — the setup scripts of `outillage/`
 - [The skills](docs/en/skills.md) — [scoping](docs/en/skills.md#the-scoping-skill), [keeping it up to date](docs/en/skills.md#updating-it), [scoping from a Trello card](docs/en/skills.md#scoping-from-a-trello-card), [consulting the référentiel](docs/en/skills.md#consult-the-référentiel-before-scoping-or-developing)
 
 ## The scoping skill

@@ -37,7 +37,7 @@ A **public** cited référentiel is read without any setting. A **private** cite
 The token is created once, by hand, on GitHub — *Settings → Developer settings → Fine-grained tokens*: resource owner, the organisation of the cited référentiels; access to the cited repositories only; *Contents* permission read-only, nothing else. A script sets it on the scoped repository, after checking that it reads each private cited référentiel — the token is typed at the keyboard, without echo, and the script is run again on renewal:
 
 ```bash
-outillage/jeton-referentiels-cites.sh <organisation>/<depot-cadre>
+outillage/jeton-referentiels-cites.sh --depot <organisation>/<depot-cadre>
 ```
 
 A fine-grained token only covers one owner. Cited référentiels under several owners are read with a token from a GitHub App installed on each (`actions/create-github-app-token`), produced in a step before the action and passed to `jeton-referentiels-cites` instead of the secret. A pull request from a fork does not receive secrets: its private citations stay unverified.

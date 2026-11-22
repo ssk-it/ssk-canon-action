@@ -46,17 +46,24 @@ déclarent dans le workflow.
 
 Puis, dans les réglages du dépôt :
 
-1. **Actions → General → Workflow permissions** : *Read and write
-   permissions*, et *Allow GitHub Actions to create and approve pull
-   requests*. Sans la première, la propagation ne peut rien écrire ; sans la
-   seconde, elle ne peut pas ouvrir sa demande de fusion sur une branche
-   protégée — elle pousse sa branche `propagation/<sha>` puis échoue, et le
-   cadrage fusionné reste sans ses index. Un script les règle et le vérifie,
+1. **Actions → General → Workflow permissions** : *Allow GitHub Actions to
+   create and approve pull requests*. Sans ce réglage, la propagation ne peut
+   pas ouvrir sa demande de fusion sur une branche protégée — elle pousse sa
+   branche `propagation/<sha>` puis échoue, et le cadrage fusionné reste sans
+   ses index. Les permissions par défaut peuvent rester en lecture : chaque
+   modèle déclare les siennes, et la propagation y prend `contents`,
+   `pull-requests` et `actions` en écriture. Un script le règle et le vérifie,
    avec la session de `gh` et les droits d'administration du dépôt :
 
    ```bash
-   outillage/preparer-depot-cadre.sh <organisation>/<depot>
+   outillage/preparer-depot-cadre.sh --depot <organisation>/<depot>
    ```
+
+   Pour un référentiel qui n'existe pas encore sur GitHub, le même script le
+   crée depuis son clone et y pousse `main` : `--source <clone>`, avec
+   `--description <texte>` et, pour un dépôt public, `--visibilite public`.
+   `--aide` liste ses options ; `--dry-run` annonce chaque écriture sans en
+   faire aucune.
 
    Le même script règle **General → Pull Requests → Automatically delete head
    branches** : chaque cadrage et chaque propagation laissent sinon leur branche
@@ -74,12 +81,24 @@ Puis, dans les réglages du dépôt :
 2. **Les runners, pour un dépôt privé.** Les modèles tirent leur runner de la variable d'organisation `SSK_RUNNER_PRIVE`, visible des seuls dépôts privés : sans elle, chaque exécution — une vérification par demande de fusion, une propagation par livraison et sa reprise toutes les heures — tourne sur les runners de GitHub et se décompte du forfait de l'organisation. Un dépôt public, et une organisation sans la variable, restent sur `ubuntu-latest`. Un script la pose, une fois par organisation, et vérifie qu'un runner en ligne porte ses labels :
 
    ```bash
-   outillage/runner-prive-organisation.sh <organisation>
+   outillage/runner-prive-organisation.sh --organisation <organisation>
    ```
 
-3. **Branches → règle de protection sur la branche principale** : ajouter la
-   vérification comme contrôle requis. Sans cela, elle signale sans bloquer, et
-   un cadrage incohérent peut être livré.
+3. **La vérification, contrôle requis sur la branche principale.** Sans cela,
+   elle signale sans bloquer, et un cadrage incohérent peut être livré. Le même
+   script pose un ensemble de règles qui l'exige, et refuse la suppression et la
+   poussée forcée de la branche, sans dispense :
+
+   ```bash
+   outillage/preparer-depot-cadre.sh --depot <organisation>/<depot> --controles verifier
+   ```
+
+   Il n'exige pas de branche à jour (`--a-jour false`, par défaut) : la
+   propagation ouvre sa demande depuis la branche principale du moment, et un
+   cadrage fusionné entre-temps la bloquerait. Une organisation qui protège déjà
+   sa branche principale à sa façon — une clé de déploiement exemptée de sa
+   règle, ci-dessous — ajoute plutôt le contrôle à sa propre règle : celle du
+   script n'exempte personne.
 
 La demande de propagation, ouverte par le jeton de l'automatisation, ne
 déclenche aucun workflow : GitHub n'en crée pour aucun événement de ce jeton,
@@ -96,17 +115,17 @@ L'entrée `verification` de l'action désigne le workflow, par son nom —
 Sur une branche principale protégée, la propagation ouvre une demande de fusion qu'il reste à fusionner à la main : jusque-là, le référentiel lu sur `origin/main` est en retard sur ses cadrages. Une organisation qui veut garder le push direct exempte de sa règle une clé de déploiement en écriture, range sa clé privée dans le secret `MAIN_DEPLOY_KEY` d'un environnement limité à la branche principale — un workflow poussé sur une autre branche ne la lit pas —, et nomme cet environnement dans la variable d'organisation `SSK_CANON_ENVIRONNEMENT`. Le modèle de propagation tourne alors dans cet environnement et pousse par la clé, en SSH. Sans la variable, il tourne sans environnement et pousse avec le jeton de l'automatisation. Un script pose la variable, visible des seuls dépôts privés :
 
 ```bash
-outillage/environnement-propagation-organisation.sh <organisation> <environnement>
+outillage/environnement-propagation-organisation.sh --organisation <organisation> --environnement <environnement>
 ```
 
 L'environnement, la clé et l'exemption restent à l'organisation (pour Vanex-Proprete, `scripts/proteger-branches-principales.sh` de prime-infra). Un push par la clé déclenche les workflows, contrairement au jeton : chaque propagation qui écrit en relance une, qui n'a plus rien à écrire.
 
 ### Remettre un dépôt cadré à niveau
 
-L'installation est une copie : un modèle qui change n'atteint que les dépôts qui le recopient. Un script ouvre, sur chaque référentiel nommé — par défaut, ceux que déclare `~/.claude/cadrage-canon.json` —, une demande de fusion qui remplace ses trois workflows par les modèles de ce clone, sous leurs noms actuels, et laisse tel quel un dépôt déjà conforme. `A_BLANC=1` montre les différences sans rien pousser :
+L'installation est une copie : un modèle qui change n'atteint que les dépôts qui le recopient. Un script ouvre, sur chaque référentiel nommé — par défaut, ceux que déclare `~/.claude/cadrage-canon.json` —, une demande de fusion qui remplace ses trois workflows par les modèles de ce clone, sous leurs noms actuels, et laisse tel quel un dépôt déjà conforme. `--dry-run` montre les différences sans rien pousser :
 
 ```bash
-A_BLANC=1 outillage/mettre-a-niveau-modeles.sh <organisation>/<depot>
+outillage/mettre-a-niveau-modeles.sh --dry-run <organisation>/<depot>
 outillage/mettre-a-niveau-modeles.sh <organisation>/<depot>
 ```
 
@@ -151,6 +170,7 @@ un dépôt cadré privé ou appartenant à une autre organisation.
 - [En ligne de commande](docs/ligne-de-commande.md)
 - [Développement](docs/developpement.md)
 - [Publier une version](docs/publication.md)
+- [Pratiques](docs/pratiques.md) — les scripts de mise en place d'`outillage/`
 - [Les skills](docs/skills.md) — [cadrage](docs/skills.md#le-skill-de-cadrage), [sa mise à jour](docs/skills.md#le-mettre-à-jour), [cadrer depuis une carte Trello](docs/skills.md#cadrer-depuis-une-carte-trello), [consulter le référentiel](docs/skills.md#consulter-le-référentiel-avant-de-cadrer-ou-de-développer)
 
 ## Le skill de cadrage
