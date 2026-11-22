@@ -28,6 +28,15 @@ on:
 # contretemps — celui qui n'écrit pas rapporterait l'état d'avant l'autre, et
 # échouerait à chaque livraison d'un cadrage créant une règle.
 
+# Une nouvelle poussée sur la demande de fusion annule le contrôle encore en
+# cours sur la précédente : sur les runners auto-hébergés que partage une
+# organisation privée, un run dépassé tient un runner pour rien. Un lancement à
+# la main ou par la propagation (`workflow_dispatch`) ne s'annule jamais : il
+# tombe dans le groupe de sa branche, à part de celui de la demande de fusion.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
