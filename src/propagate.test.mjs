@@ -192,13 +192,17 @@ test('a specification checked out with CRLF line endings is up to date, not rewr
   // the same, and rewriting every rule would commit nothing but line endings.
   writeBase(root);
   writeRule(root, 'RG-a', 'Périmé.');
+  // a statement over several lines: the line endings inside it are the scoping's
   writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
-    'RG-a': 'À jour.',
+    'RG-a': 'Premier paragraphe.\n\nSecond paragraphe,\nsur deux lignes.',
   });
 
   propagate(root);
-  const path = join(root, 'rules/RG-a.md');
-  writeFileSync(path, readFileSync(path, 'utf8').replace(/\n/g, '\r\n'));
+  // the scoping too: the statement the rule carries is read from it
+  for (const file of ['rules/RG-a.md', 'cadrages/2026-001/cadrage.md']) {
+    const path = join(root, file);
+    writeFileSync(path, readFileSync(path, 'utf8').replace(/\n/g, '\r\n'));
+  }
 
   const again = propagate(root);
   assert(again.ok, 'the pass failed');
