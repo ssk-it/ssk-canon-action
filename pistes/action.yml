@@ -56,35 +56,24 @@ runs:
       with:
         node-version: '22'
 
+    # Node scripts (`shell: node {0}`), like the other action's steps: no shell
+    # of the platform is needed on the runner.
     - name: Récupérer le vérificateur
-      shell: bash
-      run: |
+      shell: node {0}
+      env:
         # `github.action_path` designates this directory; the checker lives at
         # the root of the tool repo, under `src/`.
-        TOOL_DIR="${{ github.action_path }}/.."
-
-        if [ ! -f "$TOOL_DIR/src/check-roadmap-item.mjs" ]; then
-          echo "::error::Vérificateur introuvable sous $TOOL_DIR — la structure du dépôt outil a changé."
-          exit 1
-        fi
-
-        # Copied outside the calling repo's working tree, like the propagator.
-        cp -R "$TOOL_DIR" "${RUNNER_TEMP}/ssk-canon-pistes"
-        cd "${RUNNER_TEMP}/ssk-canon-pistes"
-        npm ci --omit=dev
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        require(require('node:path').join(process.env.ACTION_PATH, '..', 'src', 'action', 'launcher.cjs'))('fetch-tool', 'checker')
 
     - name: Vérifier la piste
       id: verifier
-      shell: bash
+      shell: node {0}
       env:
         GITHUB_TOKEN: ${{ inputs.jeton }}
+        INPUT_REFERENTIEL: ${{ inputs.referentiel }}
+        INPUT_EVENEMENT: ${{ inputs.evenement }}
+        INPUT_COMMENTER: ${{ inputs.commenter }}
       run: |
-        cd "${RUNNER_TEMP}/ssk-canon-pistes"
-        ARGS=("${GITHUB_WORKSPACE}/${{ inputs.referentiel }}")
-        if [ -n "${{ inputs.evenement }}" ]; then
-          ARGS+=(--evenement "${GITHUB_WORKSPACE}/${{ inputs.evenement }}")
-        fi
-        if [ "${{ inputs.commenter }}" != "true" ]; then
-          ARGS+=(--sans-commentaire)
-        fi
-        node src/check-roadmap-item.mjs "${ARGS[@]}"
+        require(require('node:path').join(process.env.RUNNER_TEMP, 'ssk-canon-pistes', 'src', 'action', 'launcher.cjs'))('check-roadmap-item')

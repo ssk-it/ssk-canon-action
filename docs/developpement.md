@@ -13,6 +13,32 @@ npm run check         # intégrité de la fixture
 npm run propagate:dry # la fixture ne doit pas dériver
 ```
 
+## Les étapes de l'action
+
+Chaque étape des actions composites (`action.yml`, `pistes/action.yml`) est un
+script Node — `shell: node {0}` — qui passe la main à un module de
+`src/action/` par `launcher.cjs`. Aucune ne s'écrit en bash, pwsh ou cmd : le
+shell que porte un runner auto-hébergé dépend de son installation (un service
+Windows n'a bash que si son PATH le dit), alors que Node est déjà requis par
+l'action.
+
+- Ce qu'une étape reçoit lui parvient par l'environnement (`env:`), jamais
+  collé dans le script : un message ou un nom de workflow qui contient un
+  guillemet ou un `$(…)` reste une chaîne.
+- Un module exporte `main(env, …)` ; ce qu'il appelle et qu'un test doit
+  remplacer (`gh`, les deux outils en ligne de commande) se passe en second
+  argument. `git` est le vrai : les tests montent de vrais dépôts, avec un
+  `origin` jetable.
+- Un outil en ligne de commande ne s'exécute que s'il est le module principal :
+  `isMainModule(import.meta.url)`, jamais une comparaison avec
+  `file://${process.argv[1]}`, fausse sous Windows et par un lien symbolique.
+- `npm` se lance par `runNpm` : sous Windows, c'est `npm.cmd`, que Node refuse
+  de démarrer sans shell.
+
+La CI joue l'action sur Linux, Windows et macOS, et les tests des étapes sur
+Windows. Un runner auto-hébergé n'a pas l'image des runners de GitHub : `git`,
+`gh` et un client SSH doivent y être installés.
+
 ## Langue du code
 
 Le code est en anglais : identifiants, commentaires, descriptions de tests,

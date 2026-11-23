@@ -25,6 +25,7 @@ import { check, languageOf } from './check.mjs';
 import { createError, enTexte, formaterAnomalie } from './anomalies.mjs';
 import { cibleDe as kindOf } from './verifier.mjs';
 import { listDeliveredScopings, deliveryOrder } from './delivery.mjs';
+import { isMainModule } from './main-module.mjs';
 
 /** Order of the keys in a rule's frontmatter, for a readable diff. */
 const KEY_ORDER = [
@@ -257,33 +258,46 @@ export function propagate(root, { dryRun = false } = {}) {
   return { ok: true, ecritures: writes, problemes: [], anomalies: [] };
 }
 
-// direct execution
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const args = process.argv.slice(2);
+/**
+ * The command-line propagation: the report, in the repo's language, and what
+ * the run decides.
+ *
+ * The Action calls it directly, and reads the number of writes from the result
+ * rather than from the printed report.
+ *
+ * @param {string[]} args the command-line arguments, without the interpreter and the script
+ * @param {(line: string) => void} [log]
+ * @returns {{ code: number, writes: number }}
+ */
+export function runCli(args, log = console.log) {
   const dryRun = args.includes('--dry-run');
   const root = args.find((a) => !a.startsWith('--')) ?? '.';
 
   const { ok, ecritures: writes, anomalies } = propagate(root, { dryRun });
 
-  // The report is given in the repo's language — RG-langue-du-depot. The
-  // Action reads the number of writes from it, at the start of the line: it
-  // stays the first word.
+  // The report is given in the repo's language — RG-langue-du-depot.
   const language = languageOf(root);
   const say = (code, params = {}) => formaterAnomalie({ code, params }, language);
 
   if (!ok) {
     const { errors } = enTexte(anomalies, language);
-    console.log(`\n${say('rapport-propagation-problemes', { nombre: errors.length })}`);
-    for (const p of errors) console.log(`  ✗ ${p}`);
-    process.exit(1);
+    log(`\n${say('rapport-propagation-problemes', { nombre: errors.length })}`);
+    for (const p of errors) log(`  ✗ ${p}`);
+    return { code: 1, writes: 0 };
   }
 
   if (!writes.length) {
-    console.log(say('rapport-propagation-a-jour'));
-    process.exit(0);
+    log(say('rapport-propagation-a-jour'));
+    return { code: 0, writes: 0 };
   }
 
-  console.log(say('rapport-propagation-ecritures', { nombre: writes.length, simulation: dryRun }));
-  for (const w of writes) console.log(`  ${w.operation === 'création' ? '+' : '~'} ${w.id}`);
-  if (dryRun) console.log(`\n${say('rapport-propagation-simulation')}`);
+  log(say('rapport-propagation-ecritures', { nombre: writes.length, simulation: dryRun }));
+  for (const w of writes) log(`  ${w.operation === 'création' ? '+' : '~'} ${w.id}`);
+  if (dryRun) log(`\n${say('rapport-propagation-simulation')}`);
+  return { code: 0, writes: writes.length };
+}
+
+// direct execution
+if (isMainModule(import.meta.url)) {
+  process.exitCode = runCli(process.argv.slice(2)).code;
 }

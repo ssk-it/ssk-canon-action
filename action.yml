@@ -90,23 +90,21 @@ runs:
       with:
         node-version: '22'
 
+    # Every step below is a Node script (`shell: node {0}`) that hands over to a
+    # module of `src/action/`: the platform's own shells are bash, pwsh and cmd,
+    # and which of them a self-hosted runner has depends on how it was installed
+    # — a Windows service has bash only if its PATH says so. Node is already
+    # required here. What a step is given reaches it as a value of its
+    # environment, never pasted into the script.
+
     - name: Récupérer le propagateur
-      shell: bash
-      run: |
+      shell: node {0}
+      env:
         # `github.action_path` designates the root of this repo, which GitHub
         # fetches in full; the propagator lives there under `src/`.
-        TOOL_DIR="${{ github.action_path }}"
-
-        if [ ! -f "$TOOL_DIR/src/propagate.mjs" ]; then
-          echo "::error::Propagateur introuvable sous $TOOL_DIR — la structure du dépôt outil a changé."
-          exit 1
-        fi
-
-        # Copied outside the calling repo's working tree, so as to leave
-        # nothing behind that would then be committed.
-        cp -R "$TOOL_DIR" "${RUNNER_TEMP}/ssk-canon-action"
-        cd "${RUNNER_TEMP}/ssk-canon-action"
-        npm ci --omit=dev
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        require(require('node:path').join(process.env.ACTION_PATH, 'src', 'action', 'launcher.cjs'))('fetch-tool', 'propagator')
 
     # The diagrams, read by Mermaid at the version Skanon draws with — scoping
     # 2026-074. A step of its own, with no token in its environment: Mermaid's
@@ -116,151 +114,37 @@ runs:
     # would only stop the propagation.
     - name: Analyser les diagrammes
       if: inputs.appliquer != 'true'
-      shell: bash
+      shell: node {0}
+      env:
+        INPUT_REFERENTIEL: ${{ inputs.referentiel }}
+        INPUT_BASE: ${{ inputs.base }}
       run: |
-        cd "${RUNNER_TEMP}/ssk-canon-action/analyseur-mermaid"
-        npm ci --omit=dev --silent
-        node verifier.mjs "${GITHUB_WORKSPACE}/${{ inputs.referentiel }}" --base "${{ inputs.base }}"
+        require(require('node:path').join(process.env.RUNNER_TEMP, 'ssk-canon-action', 'src', 'action', 'launcher.cjs'))('analyze-diagrams')
 
     - name: Vérifier et propager
       id: propager
-      shell: bash
+      shell: node {0}
       env:
         # Read by the check to clone the cited specifications; never shown,
         # Git's output being silenced.
         SSK_CANON_JETON_CITES: ${{ inputs.jeton-referentiels-cites }}
+        INPUT_REFERENTIEL: ${{ inputs.referentiel }}
+        INPUT_APPLIQUER: ${{ inputs.appliquer }}
+        INPUT_BASE: ${{ inputs.base }}
+        INPUT_IMMUABILITE: ${{ inputs.immuabilite }}
+        PR_DRAFT: ${{ github.event.pull_request.draft }}
       run: |
-        cd "${RUNNER_TEMP}/ssk-canon-action"
-        TARGET="${GITHUB_WORKSPACE}/${{ inputs.referentiel }}"
-
-        # What the Action writes is given in the specification's language, and
-        # read from the library's catalogue, like the rest — RG-langue-du-depot.
-        LANGUE=$(node --input-type=module -e '
-          const { languageOf } = await import(`${process.env.RUNNER_TEMP}/ssk-canon-action/src/check.mjs`);
-          console.log(languageOf(process.argv[1]));' "$TARGET")
-        echo "langue=$LANGUE" >> "$GITHUB_OUTPUT"
-        say() {
-          LANGUE="$LANGUE" node --input-type=module -e '
-            const { formaterAnomalie } = await import(`${process.env.RUNNER_TEMP}/ssk-canon-action/src/anomalies.mjs`);
-            const [code, params = "{}"] = process.argv.slice(1);
-            console.log(formaterAnomalie({ code, params: JSON.parse(params) }, process.env.LANGUE));' "$@"
-        }
-
-        if [ "${{ inputs.appliquer }}" = "true" ]; then
-          node src/propagate.mjs "$TARGET" | tee "${RUNNER_TEMP}/propagation.log"
-
-          # What the propagation has just written is checked nowhere else: its
-          # commit is pushed by the automation's token, and a push made by
-          # that token triggers no workflow. Here, in the same run, is the only
-          # moment the final state can be read — RG-propagation-verifiee.
-          # "HEAD" and not the default value: it is the reference the
-          # propagator itself holds as the delivery, and two different notions
-          # of "delivered" would contradict each other by one push.
-          node src/check.mjs "$TARGET" --base HEAD
-        else
-          # The check compares with the main branch: it is the only mode where
-          # the immutability of a delivered scoping can be checked, the
-          # difference between a pull request and its base existing nowhere
-          # else.
-          NO_IMMUTABILITY=""
-          if [ "${{ inputs.immuabilite }}" != "true" ]; then
-            NO_IMMUTABILITY="--sans-immuabilite"
-            echo "::warning::$(say action-immuabilite-suspendue)"
-          fi
-          # A pull request put up for review announces its delivery: from then
-          # on it is asked for what the merge will require, while there is still
-          # time to write it. A draft is exempt — RG-controle-de-livraison.
-          DELIVERY=""
-          if [ "${{ github.event_name }}" = "pull_request" ] \
-             && [ "${{ github.event.pull_request.draft }}" != "true" ]; then
-            DELIVERY="--livraison"
-          fi
-          # Run on demand — by the propagation on the pull request it opens,
-          # or by hand —, it judges the branch as it would be merged: no draft
-          # announces itself there.
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            DELIVERY="--livraison"
-          fi
-          node src/check.mjs "$TARGET" --base "${{ inputs.base }}" $NO_IMMUTABILITY $DELIVERY \
-            | tee "${RUNNER_TEMP}/propagation.log"
-        fi
-
-        # « N règle(s) écrites » or « rien à propager » — « N rule(s) written »
-        # in English: the number stays at the start of the line, whatever the language
-        N=$(grep -oE '^[0-9]+ (règle|rule)' "${RUNNER_TEMP}/propagation.log" | grep -oE '^[0-9]+' || echo 0)
-        echo "ecritures=$N" >> "$GITHUB_OUTPUT"
+        require(require('node:path').join(process.env.RUNNER_TEMP, 'ssk-canon-action', 'src', 'action', 'launcher.cjs'))('verify-and-propagate')
 
     - name: Commiter les écritures
       if: inputs.appliquer == 'true' && inputs.commiter == 'true'
-      shell: bash
+      shell: node {0}
       working-directory: ${{ github.workspace }}
       env:
         GH_TOKEN: ${{ github.token }}
+        # the language the previous step read, for the same catalogue
         LANGUE: ${{ steps.propager.outputs.langue }}
+        INPUT_MESSAGE: ${{ inputs.message }}
+        INPUT_VERIFICATION: ${{ inputs.verification }}
       run: |
-        # the same catalogue, in the language the previous step read
-        say() {
-          node --input-type=module -e '
-            const { formaterAnomalie } = await import(`${process.env.RUNNER_TEMP}/ssk-canon-action/src/anomalies.mjs`);
-            const [code, params = "{}"] = process.argv.slice(1);
-            console.log(formaterAnomalie({ code, params: JSON.parse(params) }, process.env.LANGUE));' "$@"
-        }
-
-        if git diff --quiet; then
-          say action-rien-a-commiter
-          exit 0
-        fi
-        # The propagation commit is distinct from the delivery one: the first
-        # carries the intent written by a human, the second the write made by
-        # the machine.
-        git config user.name  'github-actions[bot]'
-        git config user.email 'github-actions[bot]@users.noreply.github.com'
-        git add -A
-        git commit -m "${{ inputs.message }}" -m "$(say action-commit-corps)"
-
-        # A protected branch requires checks that a direct push never carries:
-        # the propagation therefore goes through a pull request, on which it
-        # runs them. The direct push is still attempted first — on an
-        # unprotected branch it succeeds, and then imposes no needless review.
-        if git push 2>/dev/null; then
-          say action-ecritures-poussees
-          exit 0
-        fi
-
-        # A propagation pull request already open carries these writes, or part
-        # of them: opening a second one would duplicate them, and the scheduled
-        # propagation would open one per hour. We wait for its merge; the next
-        # run will propagate whatever remains.
-        PENDING=$(gh pr list --base "${GITHUB_REF_NAME}" --state open --json headRefName \
-          | node "${RUNNER_TEMP}/ssk-canon-action/src/pending-propagation.mjs")
-        if [ "$PENDING" = "oui" ]; then
-          echo "::notice::$(say action-propagation-en-attente)"
-          exit 0
-        fi
-
-        BRANCH="propagation/$(git rev-parse --short HEAD)"
-        echo "::notice::$(say action-push-refuse "{\"branche\":\"$BRANCH\"}")"
-        git switch -c "$BRANCH"
-        git push -u origin "$BRANCH"
-
-        # `--fill` would reuse the commit message; what the pull request
-        # carries is named explicitly, so it can be reviewed without opening it.
-        gh pr create \
-          --base "${GITHUB_REF_NAME}" \
-          --head "$BRANCH" \
-          --title "${{ inputs.message }}" \
-          --body "$(say action-demande-corps)"
-
-        # A pull request opened by the automation's token triggers no
-        # workflow: GitHub creates none for any event of that token, except
-        # `workflow_dispatch`. The check the main branch requires is therefore
-        # launched from here, on the pull request's branch; without it, the
-        # pull request would stay blocked until it is closed and reopened.
-        # A repo whose workflows predate this launch refuses it: we say so,
-        # without failing a propagation already pushed.
-        if gh workflow run "${{ inputs.verification }}" --ref "$BRANCH"; then
-          say action-verification-lancee
-        else
-          echo "::warning::$(say action-verification-non-lancee "{\"workflow\":\"${{ inputs.verification }}\"}")"
-        fi
-
+        require(require('node:path').join(process.env.RUNNER_TEMP, 'ssk-canon-action', 'src', 'action', 'launcher.cjs'))('commit-writes')

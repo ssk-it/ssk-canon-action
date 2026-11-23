@@ -26,6 +26,7 @@ import {
   listerRetouches,
   mergeBase,
 } from './delivery.mjs';
+import { isMainModule } from './main-module.mjs';
 
 export { checkRepo };
 
@@ -299,9 +300,14 @@ function checkImmutability(root, base, delivered, folder) {
   return [...errors, ...jugerEntitesDesRetouches(split.retouches)];
 }
 
-// direct execution
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const args = process.argv.slice(2);
+/**
+ * The command-line check: the report, in the repo's language, and its verdict.
+ *
+ * @param {string[]} args the command-line arguments, without the interpreter and the script
+ * @param {(line: string) => void} [log]
+ * @returns {{ code: number }}
+ */
+export function runCli(args, log = console.log) {
   // the options that take a value, and the index of that value, to skip in
   // order to find the path
   const values = new Map();
@@ -326,18 +332,24 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const say = (code, params = {}) => formaterAnomalie({ code, params }, language);
   const { errors, warnings } = enTexte(anomalies, language);
 
-  console.log(say('rapport-comptes', counts));
+  log(say('rapport-comptes', counts));
 
   if (warnings.length) {
-    console.log(`\n${say('rapport-avertissements', { nombre: warnings.length })}`);
-    for (const w of warnings) console.log(`  ~ ${w}`);
+    log(`\n${say('rapport-avertissements', { nombre: warnings.length })}`);
+    for (const w of warnings) log(`  ~ ${w}`);
   }
 
   if (errors.length) {
-    console.log(`\n${say('rapport-erreurs', { nombre: errors.length })}`);
-    for (const e of errors) console.log(`  ✗ ${e}`);
-    process.exit(1);
+    log(`\n${say('rapport-erreurs', { nombre: errors.length })}`);
+    for (const e of errors) log(`  ✗ ${e}`);
+    return { code: 1 };
   }
 
-  console.log(`\n${say('rapport-integrite-verifiee')}`);
+  log(`\n${say('rapport-integrite-verifiee')}`);
+  return { code: 0 };
+}
+
+// direct execution
+if (isMainModule(import.meta.url)) {
+  process.exitCode = runCli(process.argv.slice(2)).code;
 }

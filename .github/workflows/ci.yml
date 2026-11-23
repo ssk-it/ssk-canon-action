@@ -39,8 +39,16 @@ jobs:
   # The composite action must be tested as a scoping repo uses it, and not
   # only through its scripts: the `uses:` wiring is what breaks first when the
   # repo's structure changes.
+  #
+  # On the three systems the runners of the organisations that use it run: the
+  # steps are Node scripts so that none of them depends on a shell the runner
+  # may not have.
   action:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -56,7 +64,11 @@ jobs:
   # tested the same way, on a fictitious issue and without writing anything on
   # the platform.
   pistes:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - id: piste
@@ -66,8 +78,25 @@ jobs:
           evenement: test/events/piste-mal-rattachee.json
           commenter: 'false'
       - name: Vérifier que l'écart a été vu
+        shell: bash
         run: |
           if [ "${{ steps.piste.outputs.ecarts }}" != "1" ]; then
             echo "::error::attendu 1 écart de rattachement, obtenu « ${{ steps.piste.outputs.ecarts }} »"
             exit 1
           fi
+
+  # What the Action's steps rely on, run where the paths are not POSIX: a module
+  # takes itself for the main module by comparing real paths, and the steps are
+  # launched on a script file the platform writes. The suite is not run whole
+  # here: some of its cases build a Git hook, which Windows does not run.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: node test/main-module.test.mjs
+      - run: node test/action-steps.test.mjs

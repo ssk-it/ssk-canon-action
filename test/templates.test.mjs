@@ -9,7 +9,7 @@
 //
 //   node test/templates.test.mjs
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { load as loadYaml } from 'js-yaml';
 import { MESSAGES } from '../src/messages.mjs';
 
@@ -43,11 +43,14 @@ test('the propagation is allowed to run a workflow', () => {
   isTrue(propagation.permissions?.actions === 'write', 'the propagation template does not declare `actions: write`');
 });
 
-test('the action runs the check on the branch of the pull request it has just opened', () => {
-  const opening = action.indexOf('gh pr create');
-  const launch = action.search(/gh workflow run "\$\{\{ inputs\.verification \}\}" --ref "\$BRANCH"/);
-  isTrue(opening > 0, 'the action no longer opens a propagation pull request');
-  isTrue(launch > opening, 'the action does not run the check after opening the pull request');
+// The order of the calls — pull request opened, then the check launched on its
+// branch — is run against real repos in `action-commit.test.mjs`. What is tested
+// here is the wiring: the step is given the name of the workflow to launch.
+test('the commit step is given the workflow to launch on the pull request it opens', () => {
+  const step = loadYaml(action).runs.steps.find((s) => s.name === 'Commiter les écritures');
+  isTrue(step, 'the action no longer has a commit step');
+  isTrue(step.env.INPUT_VERIFICATION === '${{ inputs.verification }}', `env: ${JSON.stringify(step.env)}`);
+  isTrue(step.env.GH_TOKEN === '${{ github.token }}', 'the step does not receive the token `gh` needs');
 });
 
 const roadmapItems = loadYaml(read('modeles/pistes-depot-cadre.yml'));
@@ -84,7 +87,11 @@ test('the propagation pushes with the deploy key of the environment the organisa
   const ssh = job.steps.find((s) => /openssh-client/.test(s.run ?? ''));
   isTrue(ssh, 'no step installs the SSH client the key needs');
   isTrue(job.steps.indexOf(ssh) < job.steps.indexOf(checkout), 'the SSH client is installed after the checkout');
-  isTrue(ssh.if === "vars.SSK_CANON_ENVIRONNEMENT != ''", `the SSH client step runs on ${JSON.stringify(ssh.if)}`);
+  // Linux only: the line is shell, which Windows would not run, and a Mac or a Windows machine has an SSH client
+  isTrue(
+    ssh.if === "vars.SSK_CANON_ENVIRONNEMENT != '' && runner.os == 'Linux'",
+    `the SSH client step runs on ${JSON.stringify(ssh.if)}`,
+  );
 });
 
 // Dependabot only updates `.github/workflows/`: the templates would fall behind
@@ -116,10 +123,52 @@ test('the action reads the cited specifications with the token it is given, and 
   }
 });
 
+const modules = readdirSync(new URL('../src/action/', import.meta.url))
+  .filter((name) => name.endsWith('.mjs'))
+  .map((name) => [name, read(`src/action/${name}`)]);
+
 test('each message the action says is in the catalogue', () => {
-  const said = [...action.matchAll(/(?:\$\(|^[ \t]+)say ([a-z][a-z0-9-]*)/gm)].map((m) => m[1]);
+  const said = modules.flatMap(([, text]) => [...text.matchAll(/\bsay\('([a-z][a-z0-9-]*)'/g)].map((m) => m[1]));
   isTrue(said.length > 3, `too few messages found (${said.length}): is the search right?`);
   for (const code of said) isTrue(code in MESSAGES.fr, `“${code}” said by the action but missing from the catalogue`);
+});
+
+// A step in a shell of the platform runs only where that shell is: a self-hosted
+// Windows runner has bash only if its service's PATH says so. A step that is a
+// Node script runs wherever the action already needs Node.
+const ACTIONS = [
+  ['action.yml', 'ssk-canon-action'],
+  ['pistes/action.yml', 'ssk-canon-pistes'],
+];
+
+test('every step of the actions is a Node script, with no shell of the platform', () => {
+  for (const [file] of ACTIONS)
+    for (const step of loadYaml(read(file)).runs.steps.filter((s) => s.run !== undefined))
+      isTrue(step.shell === 'node {0}', `${file}, “${step.name}”: shell is ${JSON.stringify(step.shell)}`);
+});
+
+test('nothing an input holds is pasted into a script: it reaches the step as an environment value', () => {
+  for (const [file] of ACTIONS)
+    for (const step of loadYaml(read(file)).runs.steps.filter((s) => s.run !== undefined))
+      isTrue(!/\$\{\{/.test(step.run), `${file}, “${step.name}”: an expression inside the script`);
+});
+
+test('each step hands over to a module that exists, through the launcher', () => {
+  for (const [file, copy] of ACTIONS)
+    for (const step of loadYaml(read(file)).runs.steps.filter((s) => s.run !== undefined)) {
+      const call = step.run.match(/launcher\.cjs'\)\)\('([a-z-]+)'/);
+      isTrue(call, `${file}, “${step.name}”: no call to the launcher`);
+      isTrue(existsSync(new URL(`../src/action/${call[1]}.mjs`, import.meta.url)), `${file}: no module “${call[1]}”`);
+      // the steps after the first run from the copy the first one made
+      if (!step.run.includes('ACTION_PATH'))
+        isTrue(step.run.includes(`'${copy}'`), `${file}, “${step.name}”: does not run from the copy “${copy}”`);
+    }
+});
+
+test('the templates paste no expression into a script either', () => {
+  for (const [name, template] of [['verification', verification], ['propagation', propagation], ['roadmap items', roadmapItems]])
+    for (const step of Object.values(template.jobs).flatMap((j) => j.steps).filter((s) => s.run !== undefined))
+      isTrue(!/\$\{\{/.test(step.run), `${name}, “${step.name}”: an expression inside the script`);
 });
 
 for (const e of failures) console.error(`✗ ${e}`);

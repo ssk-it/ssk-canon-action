@@ -62,9 +62,11 @@ jobs:
     environment: ${{ vars.SSK_CANON_ENVIRONNEMENT || '' }}
     steps:
       # Le push par la clé passe en SSH : l'image de runners d'un cluster peut
-      # n'avoir aucun client SSH ; un Mac ou ubuntu-latest l'ont déjà.
+      # n'avoir aucun client SSH ; un Mac ou ubuntu-latest l'ont déjà, comme
+      # Windows. Seul Linux est concerné, et son shell est celui du runner : sous
+      # Windows, cette ligne ne s'exécuterait pas.
       - name: Installer le client SSH
-        if: vars.SSK_CANON_ENVIRONNEMENT != ''
+        if: vars.SSK_CANON_ENVIRONNEMENT != '' && runner.os == 'Linux'
         run: command -v ssh >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends openssh-client; }
 
       - uses: actions/checkout@v7

@@ -15,10 +15,10 @@
 // `ssk-canon.yml` — RG-langue-du-depot.
 
 import { appendFileSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { formaterAnomalie, langueDuDepot } from './anomalies.mjs';
 import { loadRepo } from './parse.mjs';
 import { checkPiste, planifierCommentairePiste } from './pistes.mjs';
+import { isMainModule } from './main-module.mjs';
 
 /**
  * Checks a roadmap item and updates its comment.
@@ -102,7 +102,7 @@ function offlineApi(issue) {
   };
 }
 
-async function main(argv) {
+export async function main(argv) {
   const args = argv.slice(2);
   const option = (name) => {
     const i = args.indexOf(name);
@@ -141,7 +141,7 @@ async function main(argv) {
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `ecarts=${discrepancies.length}\n`);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url))
+if (isMainModule(import.meta.url))
   main(process.argv).catch((e) => {
     console.error(`::error::${e.message}`);
     process.exit(1);

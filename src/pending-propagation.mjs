@@ -10,7 +10,7 @@
 //   → « oui » ou « non »
 
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { isMainModule } from './main-module.mjs';
 
 /** The prefix of the branches the propagation opens. */
 const PREFIX = 'propagation/';
@@ -20,7 +20,7 @@ export function hasPendingPropagation(pullRequests) {
   return pullRequests.some((pullRequest) => pullRequest.headRefName?.startsWith(PREFIX) === true);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   const pullRequests = JSON.parse(readFileSync(0, 'utf8'));
   console.log(hasPendingPropagation(pullRequests) ? 'oui' : 'non');
 }
