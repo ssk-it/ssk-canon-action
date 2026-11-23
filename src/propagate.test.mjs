@@ -187,6 +187,24 @@ test('is idempotent: does not rewrite an up-to-date specification', (root) => {
   assert(second.ecritures.length === 0, `${second.ecritures.length} write(s) on the second pass`);
 });
 
+test('a specification checked out with CRLF line endings is up to date, not rewritten', (root) => {
+  // On Windows, Git checks files out with CRLF (`core.autocrlf`): the content is
+  // the same, and rewriting every rule would commit nothing but line endings.
+  writeBase(root);
+  writeRule(root, 'RG-a', 'Périmé.');
+  writeScoping(root, '2026-001', 'livree', [{ regle: 'RG-a', operation: 'cree' }], {
+    'RG-a': 'À jour.',
+  });
+
+  propagate(root);
+  const path = join(root, 'rules/RG-a.md');
+  writeFileSync(path, readFileSync(path, 'utf8').replace(/\n/g, '\r\n'));
+
+  const again = propagate(root);
+  assert(again.ok, 'the pass failed');
+  assert(again.ecritures.length === 0, `${again.ecritures.length} write(s) for line endings alone`);
+});
+
 test('an undelivered scoping writes nothing', (root) => {
   writeBase(root);
   writeRule(root, 'RG-a', 'Inchangé.');

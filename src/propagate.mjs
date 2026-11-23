@@ -209,7 +209,10 @@ export function computeWrites(root, delivered) {
 
     const content = formatRule(target, own, target.enonce);
     const path = join(root, dossiers[DOSSIER_DE_COLLECTION[collection]], `${id}.md`);
-    const current = existing ? readFileSync(path, 'utf8') : null;
+    // Line endings are Git's business, not the specification's: on Windows a
+    // checkout turns every `\n` into `\r\n` (`core.autocrlf`), and comparing bytes
+    // would rewrite every rule for that alone.
+    const current = existing ? readFileSync(path, 'utf8').replace(/\r\n/g, '\n') : null;
 
     if (current !== content) {
       writes.push({
